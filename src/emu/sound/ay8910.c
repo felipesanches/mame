@@ -1155,6 +1155,7 @@ const device_type AY8910 = &device_creator<ay8910_device>;
 ay8910_device::ay8910_device(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock)
 	: device_t(mconfig, AY8910, "AY-3-8910A", tag, owner, clock, "ay8910", __FILE__),
 		device_sound_interface(mconfig, *this),
+		m_flags(AY8910_LEGACY_OUTPUT),
 		m_type(PSG_TYPE_AY),
 		m_streams(3),
 		m_ioports(2),
@@ -1177,7 +1178,6 @@ ay8910_device::ay8910_device(const machine_config &mconfig, const char *tag, dev
 		m_zero_is_off(1),
 		m_par(&ay8910_param),
 		m_par_env(&ay8910_param),
-		m_flags(AY8910_LEGACY_OUTPUT),
 		m_port_a_read_cb(*this),
 		m_port_b_read_cb(*this),
 		m_port_a_write_cb(*this),
@@ -1197,6 +1197,7 @@ ay8910_device::ay8910_device(const machine_config &mconfig, device_type type, co
 								psg_type_t psg_type, int streams, int ioports, const char *shortname, const char *source)
 	: device_t(mconfig, type, name, tag, owner, clock, shortname, source),
 		device_sound_interface(mconfig, *this),
+		m_flags(AY8910_LEGACY_OUTPUT),
 		m_type(psg_type),
 		m_streams(streams),
 		m_ioports(ioports),
@@ -1219,7 +1220,6 @@ ay8910_device::ay8910_device(const machine_config &mconfig, device_type type, co
 		m_zero_is_off(  psg_type == PSG_TYPE_AY ? 1 : 0),
 		m_par(          psg_type == PSG_TYPE_AY ? &ay8910_param : &ym2149_param),
 		m_par_env(      psg_type == PSG_TYPE_AY ? &ay8910_param : &ym2149_param_env),
-		m_flags(AY8910_LEGACY_OUTPUT),
 		m_port_a_read_cb(*this),
 		m_port_b_read_cb(*this),
 		m_port_a_write_cb(*this),
