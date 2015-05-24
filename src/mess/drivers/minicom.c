@@ -94,13 +94,48 @@ READ8_MEMBER(minicom_state::minicom_io_r)
 {
 	switch (offset)
 	{
+		case 0:
+			if (!BIT(m_p[3], 6)) //P3.6 = /WR
+			{
+                if (BIT(m_p[2],0)){
+                    return ioport("GROUP0")->read();
+                }
+
+                if (BIT(m_p[2],1)){
+                    return ioport("GROUP1")->read();
+                }
+
+                if (BIT(m_p[2],2)){
+                    return ioport("GROUP2")->read();
+                }
+
+                if (BIT(m_p[2],3)){
+                    return ioport("GROUP3")->read();
+                }
+
+                if (BIT(m_p[2],4)){
+                    return ioport("GROUP4")->read();
+                }
+
+                if (BIT(m_p[2],5)){
+                    return ioport("GROUP5")->read();
+                }
+
+                if (BIT(m_p[2],6)){
+                    return ioport("GROUP6")->read();
+                }
+
+                return m_p[0];
+            }
+            else {
+                return m_p[0];
+            }
 		case 1:
 			//P1.3 seems to be an indicator of whether or not we have a printer device attached.
 			// at address 0xABF the code checks this flag in order to decide which string to display:
 			// "MINIPRINT IS RESET" or "MINICOM IS RESET"
 			return PRINTER_ATTACHED << 3;
 		case 2:
-//          return 0; //para a palestra no Garoa... :-)
 			return 1; //to skip the "NO POWER" warning. I'm not sure why.
 		default:
 #if LOG_IO_PORTS
@@ -169,19 +204,7 @@ WRITE8_MEMBER(minicom_state::minicom_io_w)
 		}
 		case 0x02:
 		{
-			if (data != m_p[offset])
-			{
-#if LOG_IO_PORTS
-				UINT8 changed = m_p[offset] ^ data;
-				if (changed ^ P2_UNKNOWN_BITS)
-				{
-					printf("Write to P2: %02X changed: (        ) (        ) (", data);
-					printbits(changed);
-					printf(") (        )\n");
-				}
-#endif
-				m_p[offset]=data;
-			}
+			m_p[2]=data;
 			break;
 		}
 		case 0x03:
@@ -214,6 +237,7 @@ WRITE8_MEMBER(minicom_state::minicom_io_w)
 				{
 					output_set_digit_value(m_digit_index, BITSWAP16(m_display_data,  9,  1,  3, 11, 12,  4,  2, 10, 14, 6,  7, 5,  0, 15,  13, 8) & 0x3FFF);
 				}
+
 				m_p[offset]=data;
 			}
 			break;
@@ -225,6 +249,88 @@ DRIVER_INIT_MEMBER( minicom_state, minicom )
 {
 }
 
+static INPUT_PORTS_START( minicom )
+	PORT_START( "GROUP0" ) /* Selected by P2.0 */
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_KEYBOARD ) PORT_CODE(KEYCODE_8)
+	PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_KEYBOARD ) PORT_CODE(KEYCODE_7)
+	PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_KEYBOARD ) PORT_CODE(KEYCODE_6)
+	PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_KEYBOARD ) PORT_CODE(KEYCODE_5)
+	PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_KEYBOARD ) PORT_CODE(KEYCODE_4)
+	PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_KEYBOARD ) PORT_CODE(KEYCODE_3)
+	PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_KEYBOARD ) PORT_CODE(KEYCODE_2)
+	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_KEYBOARD ) PORT_CODE(KEYCODE_1)
+
+	PORT_START( "GROUP1" ) /* Selected by P2.1 */
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_ENTER)
+	PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_P)
+	PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_O)
+	PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_I)
+	PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_BACKSPACE)
+	PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_EQUALS) PORT_CHAR('+')
+	PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_0)
+	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_9)
+
+	PORT_START( "GROUP2" ) /* Selected by P2.2 */
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_U)
+	PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_Y)
+	PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_T)
+	PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_R)
+	PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_E)
+	PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_W)
+	PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_Q)
+	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_ESC)
+
+	PORT_START( "GROUP3" ) /* Selected by P2.3 */
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_J)
+	PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_H)
+	PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_G)
+	PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_F)
+	PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_D)
+	PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_S)
+	PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_A)
+	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_UNUSED)
+
+	PORT_START( "GROUP4" ) /* Selected by P2.4 */
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_K)
+	PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("GA (Go Ahead)") PORT_CODE(KEYCODE_RIGHT)
+	PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_STOP) PORT_CHAR('?')
+	PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_COMMA) PORT_CODE(KEYCODE_SLASH)
+	PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_QUOTE) PORT_CHAR('"')
+	PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_COLON) PORT_CHAR(';')
+	PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_L)
+	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_SPACE)
+
+	PORT_START( "GROUP5" ) /* Selected by P2.5 */
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_M)
+	PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_N)
+	PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_B)
+	PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_V)
+	PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_C)
+	PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_X)
+	PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_Z)
+	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("SK (Stop Keying)") PORT_CODE(KEYCODE_LEFT)
+
+	PORT_START( "GROUP6" ) /* Selected by P2.6 */
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_RSHIFT)
+	PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_UNUSED)
+
+	PORT_START( "GROUP_SPECIAL" ) /* Selected by P0.0 */
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_LCONTROL)
+	PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_CODE(KEYCODE_LSHIFT)
+	PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_UNUSED)
+	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_UNUSED)
+INPUT_PORTS_END
+
 static MACHINE_CONFIG_START( minicom, minicom_state )
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", I87C52, XTAL_10MHz) /*FIX-ME: verify the correct clock frequency */
@@ -234,21 +340,21 @@ static MACHINE_CONFIG_START( minicom, minicom_state )
 	/* fluorescent 14-segment display forming a row of 20 characters */
 	MCFG_DEFAULT_LAYOUT(layout_minicom)
 
-/* TODO: Map the keyboard rows/cols inputs (43-key, 4-row keyboard) */
-
 /* TODO: Treat the modem as a sound device. That may be an interesting challenge... :-) */
 MACHINE_CONFIG_END
 
 ROM_START( minicom )
 	ROM_REGION( 0x2000, "maincpu", 0 )
+    /* fw release date: 11th Aug 1997 */
 	ROM_LOAD( "ultratec_minicom_iv.rom",  0x0000, 0x2000, CRC(22881366) SHA1(fc3faea5ecc1476e5bcb7999638f3150d06c9a81) )
 ROM_END
 
 ROM_START( mcom4_02 )
 	ROM_REGION( 0x2000, "maincpu", 0 )
+    /* fw release date: 19th Apr 2002 */
 	ROM_LOAD( "ultratec_minicom_iv_20020419.rom",  0x0000, 0x2000, CRC(99b6cc35) SHA1(32577005bf02042f893c8880f8ce5b3d8a5f55f9) )
 ROM_END
 
-/*    YEAR  NAME      PARENT  COMPAT  MACHINE     INPUT     CLASS          INIT     COMPANY     FULLNAME         FLAGS */
-COMP( 1997, minicom,   0,     0,      minicom,    0,        minicom_state, minicom, "Ultratec", "Minicom IV (1997-08-11)",    GAME_NOT_WORKING | GAME_IMPERFECT_GRAPHICS | GAME_NO_SOUND) /* fw release data: 11th Aug 1997 */
-COMP( 2002, mcom4_02,   0,     0,      minicom,    0,        minicom_state, minicom, "Ultratec", "Minicom IV (2002-04-19)",    GAME_NOT_WORKING | GAME_IMPERFECT_GRAPHICS | GAME_NO_SOUND) /* fw release data: 19th Apr 2002 */
+/*   YEAR  NAME      PARENT COMPAT MACHINE  INPUT    CLASS          INIT     COMPANY     FULLNAME                   FLAGS */
+COMP(1997, minicom,  0,     0,     minicom, minicom, minicom_state, minicom, "Ultratec", "Minicom IV (1997-08-11)", GAME_NOT_WORKING | GAME_IMPERFECT_GRAPHICS | GAME_NO_SOUND)
+COMP(2002, mcom4_02, 0,     0,     minicom, minicom, minicom_state, minicom, "Ultratec", "Minicom IV (2002-04-19)", GAME_NOT_WORKING | GAME_IMPERFECT_GRAPHICS | GAME_NO_SOUND)
