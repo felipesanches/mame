@@ -721,6 +721,7 @@ function linkProjects_mame_mess(_target, _subtarget)
 		"epson",
 		"exidy",
 		"fairch",
+        "fernvale",
 		"fidelity",
 		"fujitsu",
 		"funtech",
@@ -1501,6 +1502,11 @@ files {
 	MAME_DIR .. "src/mess/drivers/channelf.c",
 	MAME_DIR .. "src/mess/audio/channelf.c",
 	MAME_DIR .. "src/mess/video/channelf.c", 
+}
+
+createMESSProjects(_target, _subtarget, "fernvale")
+files {
+	MAME_DIR .. "src/mess/drivers/fernvale.c",
 }
 
 createMESSProjects(_target, _subtarget, "fidelity")
