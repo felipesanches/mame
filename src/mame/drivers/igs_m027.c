@@ -977,24 +977,64 @@ void igs_m027_state::pgm_create_dummy_internal_arm_region()
 {
 	UINT16 *temp16 = (UINT16 *)memregion("maincpu")->base();
 
-	// fill with RX 14
+	// fill with MOV PC, #00000000
 	int i;
 	for (i=0;i<0x4000/2;i+=2)
 	{
-		temp16[i] = 0xff1e;
-		temp16[i+1] = 0xe12f;
-
+    	temp16[i] = 0xF000; // 0xE3A0F000 MOV R15, #00000000
+	    temp16[i+1] = 0xE3A0;
 	}
 
-	// jump straight to external area
-	temp16[(0x0000)/2] = 0xd088;
-	temp16[(0x0002)/2] = 0xe59f;
-	temp16[(0x0004)/2] = 0x0680;
-	temp16[(0x0006)/2] = 0xe3a0;
-	temp16[(0x0008)/2] = 0xff10;
-	temp16[(0x000a)/2] = 0xe12f;
-	temp16[(0x0090)/2] = 0x0400;
-	temp16[(0x0092)/2] = 0x1000;
+	temp16[(0x0000)/2] = 0x1030; // 0xE59F1030 LDR R1, [R15, @start_video_mem]
+	temp16[(0x0002)/2] = 0xE59F;
+
+	temp16[(0x0004)/2] = 0x2030; // 0xE59F2030 LDR R2, [R15, @end_video_mem]
+	temp16[(0x0006)/2] = 0xE59F;
+
+	temp16[(0x0008)/2] = 0x3047; // 0xE3A03047 MOV R3, 0x00000047 //G
+	temp16[(0x000A)/2] = 0xE3A0;
+
+	temp16[(0x000c)/2] = 0x4041; // 0xE3A04041 MOV R4, 0x00000041 //A
+	temp16[(0x000e)/2] = 0xE3A0;
+
+	temp16[(0x0010)/2] = 0x5052; // 0xE3A05052 MOV R5, 0x00000052 //R
+	temp16[(0x0012)/2] = 0xE3A0;
+
+	temp16[(0x0014)/2] = 0x604F; // 0xE3A0604F MOV R6, 0x0000004F //O
+	temp16[(0x0016)/2] = 0xE3A0;
+
+	temp16[(0x0018)/2] = 0x7041; // 0xE3A07041 MOV R7, 0x00000041 //A
+	temp16[(0x001a)/2] = 0xE3A0;
+
+	temp16[(0x001c)/2] = 0x8020; // 0xE3A08020 MOV R8, 0x00000020 // space
+	temp16[(0x001e)/2] = 0xE3A0;
+
+	temp16[(0x0020)/2] = 0x9048; // 0xE3A09048 MOV R9, 0x00000048 //H
+	temp16[(0x0022)/2] = 0xE3A0;
+
+	temp16[(0x0024)/2] = 0xA043; // 0xE3A0A043 MOV R10, 0x00000043 //C
+	temp16[(0x0026)/2] = 0xE3A0;
+
+//start:
+
+	temp16[(0x0028)/2] = 0x0002; //0xE1510002 CMP R1, R2
+	temp16[(0x002a)/2] = 0xE151;
+
+	temp16[(0x002c)/2] = 0x07F8; //0xB8A107F8 STMLTUW R1,{R3-R10}
+	temp16[(0x002e)/2] = 0xB8A1;
+
+	temp16[(0x0030)/2] = 0xFFFC; //0xBAFFFFFC BLT start 
+	temp16[(0x0032)/2] = 0xBAFF;
+
+//loop:
+	temp16[(0x0034)/2] = 0xFFFE; //0xEAFFFFFE B loop 
+	temp16[(0x0036)/2] = 0xEAFF;
+
+	temp16[(0x0038)/2] = 0x4000; //start_video_mem: 0x38004000
+	temp16[(0x003A)/2] = 0x3800;
+
+	temp16[(0x003C)/2] = 0x5fff; //end_video_mem: 0x38005fff
+	temp16[(0x003E)/2] = 0x3800;
 }
 
 
