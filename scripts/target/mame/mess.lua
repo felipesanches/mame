@@ -144,6 +144,7 @@ CPUS["MELPS4"] = true
 CPUS["HPHYBRID"] = true
 CPUS["SM510"] = true
 CPUS["SPARC"] = true
+CPUS["ANOTHERWORLD"] = true
 CPUS["NANOPROCESSOR"] = true
 CPUS["CLIPPER"] = true
 CPUS["CAPRICORN"] = true
@@ -179,6 +180,7 @@ CPUS["M68HC16"] = true
 --------------------------------------------------
 
 --SOUNDS["SAMPLES"] = true
+SOUNDS["ANOTHERWORLD_VM"] = true
 SOUNDS["DAC"] = true
 SOUNDS["DMADAC"] = true
 SOUNDS["SPEAKER"] = true
@@ -1453,6 +1455,7 @@ function linkProjects_mame_mess(_target, _subtarget)
 		"verifone",
 		"vidbrain",
 		"videoton",
+		"virtualmachine",
 		"visual",
 		"votrax",
 		"vtech",
@@ -4388,6 +4391,12 @@ files {
 	MAME_DIR .. "src/mame/machine/v1050kb.cpp",
 	MAME_DIR .. "src/mame/machine/v1050kb.h",
 	MAME_DIR .. "src/mame/video/v1050.cpp",
+}
+
+createMESSProjects(_target, _subtarget, "virtualmachine")
+files {
+	MAME_DIR .. "src/mame/drivers/another_world_vm.cpp",
+	MAME_DIR .. "src/mame/video/anotherworld_vm.cpp",
 }
 
 createMESSProjects(_target, _subtarget, "votrax")

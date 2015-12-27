@@ -21,6 +21,7 @@ using util::BIT;
 #include "cpu/alto2/alto2dsm.h"
 #include "cpu/am29000/am29dasm.h"
 #include "cpu/amis2000/amis2000d.h"
+#include "cpu/anotherworld/anotherworld_dasm.h"
 #include "cpu/apexc/apexcdsm.h"
 #include "cpu/arc/arcdasm.h"
 #include "cpu/arcompact/arcompactdasm.h"

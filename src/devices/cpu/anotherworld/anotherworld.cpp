@@ -1,0 +1,847 @@
+// license:GPL-2.0+
+// copyright-holders:Felipe Sanches
+/*
+	High-Level Emulation of the Another World Virtual Machine
+*/
+
+#include "emu.h"
+#include "debugger.h"
+#include "anotherworld.h"
+#include "sound/anotherw_vm.h"
+#include "includes/anotherworld_vm.h"
+#include "cpu/anotherworld/anotherworld_dasm.h"
+
+device_memory_interface::space_config_vector another_world_cpu_device::memory_space_config() const
+{
+	return space_config_vector
+	{
+		std::make_pair(AS_PROGRAM, &m_program_config),
+		std::make_pair(AS_DATA, &m_data_config),
+		std::make_pair(AS_PALETTE, &m_palette_config),
+		std::make_pair(AS_VIDEO, &m_video_config)
+	};
+}
+
+
+Stack::Stack(uint8_t* sp)
+	: m_sp(sp)
+	, m_overflow(false) { }
+
+
+void Stack::state_save_register(another_world_cpu_device* dev)
+{
+	dev->save_pointer(NAME(m_stacked_values), 256);
+}
+
+
+void Stack::push(uint16_t value)
+{
+	if (*m_sp == 0xFF)
+	{
+		m_overflow = true;
+	}
+	else if (*m_sp == 0x00 && m_overflow)
+	{
+		printf("ERROR: stack overflow\n");
+		//TODO: reset();
+	}
+	m_stacked_values[(*m_sp)++] = value;
+}
+
+
+uint16_t Stack::pop(){
+	if (*m_sp == 0x00 && !m_overflow){
+		printf("ERROR: stack underflow\n");
+		//TODO: reset();
+	} else {
+		m_overflow = false;
+	}
+	return m_stacked_values[--(*m_sp)];
+}
+
+
+void Stack::clean(){
+	*m_sp = 0;
+	m_overflow = false;
+}
+
+
+another_world_cpu_device::another_world_cpu_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: cpu_device(mconfig, ANOTHER_WORLD, tag, owner, clock)
+	, m_program_config("program", ENDIANNESS_LITTLE, 8, 16, 0)
+	, m_data_config("data", ENDIANNESS_LITTLE, 16, 9, 0)
+	, m_palette_config("palette", ENDIANNESS_LITTLE, 8, 11, 0)
+	, m_video_config("video", ENDIANNESS_LITTLE, 8, 16, 0)
+	, m_icount(0)
+	, m_read_input(*this)
+	, m_read_keyboard(*this)
+{
+	m_stack = new Stack(&m_sp);
+	m_requestedNextPart = 0;
+}
+
+
+DEFINE_DEVICE_TYPE(ANOTHER_WORLD, another_world_cpu_device, "AnotherWorld", "Another World CPU")
+
+
+another_world_cpu_device::~another_world_cpu_device()
+{
+	delete m_stack;
+}
+
+
+void another_world_cpu_device::checkThreadRequests()
+{
+	//Check if a part switch has been requested.
+	if (m_requestedNextPart != 0)
+	{
+		initForPart(m_requestedNextPart);
+		m_requestedNextPart = 0;
+	}
+
+	for (int i=0; i<NUM_THREADS; i++)
+	{
+		Thread* thread = &m_threads[i];
+
+		thread->state = thread->requested_state;
+
+		if (thread->requested_PC != NO_REQUEST)
+		{
+			if (thread->requested_PC == DELETE_THIS_THREAD)
+				thread->PC = INACTIVE_THREAD;
+			else
+				thread->PC = thread->requested_PC;
+
+			thread->requested_PC = NO_REQUEST;
+		}
+	}
+}
+
+
+void another_world_cpu_device::input_updatePlayer()
+{
+	int16_t lr = 0;
+	int16_t m = 0;
+	int16_t ud = 0;
+	int8_t input = m_read_input();
+
+	write_vm_variable(VM_VARIABLE_LAST_KEYCHAR, m_read_keyboard());
+
+	if (m_currentPartId != GAME_PART(0)
+	    && m_currentPartId != GAME_PART(9)
+	    && BIT(input, 4))
+		m_requestedNextPart = GAME_PART(9);
+
+	if (BIT(input, 2))
+	{
+		lr = 1;
+		m |= 1;
+	}
+
+	if (BIT(input, 3))
+	{
+		lr = -1;
+		m |= 2;
+	}
+
+	if (BIT(input, 0))
+	{
+		ud = 1;
+		m |= 4;
+	}
+
+	if (BIT(input, 1))
+	{
+		write_vm_variable(VM_VARIABLE_HERO_POS_UP_DOWN, -1);
+		ud = -1;
+		m |= 8;
+	}
+	else
+	{
+		write_vm_variable(VM_VARIABLE_HERO_POS_UP_DOWN, ud);
+	}
+
+	write_vm_variable(VM_VARIABLE_HERO_POS_JUMP_DOWN, ud);
+	write_vm_variable(VM_VARIABLE_HERO_POS_LEFT_RIGHT, lr);
+	write_vm_variable(VM_VARIABLE_HERO_POS_MASK, m);
+
+	int16_t button = 0;
+	if (BIT(input, 7))
+	{
+		button = 1;
+		m |= 0x80;
+	}
+
+	write_vm_variable(VM_VARIABLE_HERO_ACTION, button);
+	write_vm_variable(VM_VARIABLE_HERO_ACTION_POS_MASK, m);
+}
+
+
+void another_world_cpu_device::nextThread()
+{
+
+#ifdef DUMP_VM_EXECUTION_LOG
+	std::ostream log_stream(&m_log_filebuf);
+	log_stream << "\n";
+#endif
+
+	input_updatePlayer();
+	Thread* current;
+	do {
+		if (++m_currentThread == NUM_THREADS)
+		{
+
+#ifdef DUMP_VM_EXECUTION_LOG
+			log_stream << "=== NEW FRAME ===\n";
+#endif
+			/* End of Frame */
+			m_currentThread = 0;
+			checkThreadRequests();
+			((another_world_vm_state*) owner())->updateDisplay(0xFE);
+		}
+		current = &m_threads[m_currentThread];
+	}
+	while(current->state == FROZEN || current->PC == INACTIVE_THREAD);
+
+	PC = current->PC;
+}
+
+
+uint16_t another_world_cpu_device::read_vm_variable(uint8_t i)
+{
+	return m_data->read_word(2*i);
+}
+
+
+void another_world_cpu_device::write_vm_variable(uint8_t i, uint16_t value)
+{
+	m_data->write_word(2*i, value);
+}
+
+
+uint8_t another_world_cpu_device::fetch_byte()
+{
+	uint8_t value = READ_BYTE_AW(PC);
+	INCREMENT_PC_64K;
+	return value;
+}
+
+
+uint16_t another_world_cpu_device::fetch_word()
+{
+	uint16_t value = READ_WORD_AW(PC);
+	INCREMENT_PC_64K;
+	INCREMENT_PC_64K;
+	return value;
+}
+
+
+void another_world_cpu_device::device_start()
+{
+	set_icountptr(m_icount);
+
+	//resolve callbacks
+	m_read_input.resolve_safe(0);
+	m_read_keyboard.resolve_safe(0);
+
+	m_program = &space(AS_PROGRAM);
+	m_data = &space(AS_DATA);
+
+	save_item(NAME(m_pc));
+	save_item(NAME(m_sp));
+	save_item(NAME(m_icount));
+
+	save_item(STRUCT_MEMBER(m_threads, PC));
+	save_item(STRUCT_MEMBER(m_threads, requested_PC));
+	save_item(STRUCT_MEMBER(m_threads, state));
+	save_item(STRUCT_MEMBER(m_threads, requested_state));
+
+	m_stack->state_save_register(this);
+	save_item(NAME(m_currentThread));
+	save_item(NAME(m_currentPartId));
+	save_item(NAME(m_requestedNextPart));
+	save_item(NAME(m_useVideo2));
+
+	// Register state for debugger
+	state_add( ANOTHER_WORLD_PC,         "PC",          m_pc            ).mask(0xFFFF);
+	state_add( ANOTHER_WORLD_SP,         "SP",          m_sp            ).mask(0xFF);
+	state_add( ANOTHER_WORLD_CUR_THREAD, "CUR_THREAD",  m_currentThread ).mask(0xFF);
+
+	//Needed for updating the debugger dialog:
+	state_add( STATE_GENPCBASE,          "CURPC",       m_pc).noshow();
+}
+
+
+void another_world_cpu_device::device_reset()
+{
+	m_stack->clean();
+	m_currentThread = 0;
+	m_currentPartId = GAME_PART(0);
+	m_pc = 0;
+	m_sp = 0;
+
+#ifdef DUMP_VM_EXECUTION_LOG
+	m_log_filebuf.open("address_log.txt", std::ios::out);
+	std::ostream log_stream(&m_log_filebuf);
+
+	log_stream << "begin log\n=== NEW FRAME ===\n";
+#endif
+
+	//TODO: declare the stack as a RAM block so that
+	//      we can inspect it in the Memory View Window.
+	m_stack->clean();
+
+	//all threads are initially disabled and unfrozen
+	for (int i=0; i<NUM_THREADS; i++)
+	{
+		Thread* thread = &m_threads[i];
+		thread->PC = INACTIVE_THREAD;
+		thread->requested_PC = NO_REQUEST;
+		thread->state = UNFROZEN;
+		thread->requested_state = NO_REQUEST;
+	}
+
+#ifdef VM_HACK_INIT_VAR_54_WITH_81
+	// Without this, the Interplay logo does not show up
+	// while running the MSDOS bytecode:
+	write_vm_variable(0x54, 0x0081);
+
+	//TODO: check if this var is read or written anywhere
+	// else during gameplay. Ideally run the whole game with
+	// a watchpoint monitoring this one.
+
+	// Some clues:
+	// [14 - 007F]: 0A jl [HACK_VAR_54], 0x80, 0x00BF
+	// [14 - 00E4]: 0A jge [HACK_VAR_54], 0x80, 0x00F6
+	// [14 - 0165]: 14 and [HACK_VAR_54], 0x0001
+	// [14 - 0169]: 0A je [HACK_VAR_54], 0x00, 0x0199
+	// [18 - 3EAB]: 00 mov [HACK_VAR_54], 0xFFFB
+#endif
+
+#ifdef BYPASS_PROTECTION
+	//This is a hack to skip the code wheel
+	write_vm_variable(VM_VARIABLE_HERO_ACTION, 0xFFFF);
+#endif
+
+	write_vm_variable(VM_VARIABLE_RANDOM_SEED, time(0) );
+}
+
+/* execute instructions on this CPU until icount expires */
+void another_world_cpu_device::execute_run()
+{
+	do
+	{
+		execute_instruction();
+	}
+	while (m_icount > 0);
+}
+
+
+/* execute one instruction */
+void another_world_cpu_device::execute_instruction()
+{
+	debugger_instruction_hook(PC);
+	Thread* current = &m_threads[m_currentThread];
+
+#ifdef DUMP_VM_EXECUTION_LOG
+	uint32_t options = 0;
+	uint8_t _oprom[8], _opram[8];
+
+	for (int i=0; i<8; i++) {
+		_oprom[i] = READ_BYTE_AW(PC+i);
+		_opram[i] = 0;
+	}
+
+	std::ostream log_stream(&m_log_filebuf);
+
+	char tmp[256];
+	snprintf(tmp, sizeof(tmp), "[%02X - %04X]: %02X ", m_currentThread, PC, READ_BYTE_AW(PC));
+	log_stream << tmp;
+
+	extern CPU_DISASSEMBLE( another_world );
+	CPU_DISASSEMBLE_NAME(another_world)(this, log_stream, PC, _oprom, _opram, options);
+	log_stream << "\n";
+#endif
+
+	unsigned char opcode = fetch_byte();
+
+	if (opcode & 0x80)
+	{
+		uint16_t offset = ((opcode << 8) | fetch_byte()) * 2;
+
+		m_useVideo2 = false;
+		int16_t x = fetch_byte();
+		int16_t y = fetch_byte();
+		int16_t h = y - 199;
+		if (h > 0)
+		{
+			y = 199;
+			x += h;
+		}
+
+		// This switches the polygon database to "cinematic" and probably
+		// draws a black polygon over all the screen.
+		((another_world_vm_state*) owner())->setDataBuffer(CINEMATIC, offset);
+		((another_world_vm_state*) owner())->readAndDrawPolygon(COLOR_BLACK, DEFAULT_ZOOM, VMPoint(x,y));
+
+		return;
+	}
+
+	if (opcode & 0x40)
+	{
+		int16_t x, y;
+		uint16_t offset = fetch_word() * 2;
+		x = fetch_byte();
+
+		m_useVideo2 = false;
+
+		if (!(opcode & 0x20))
+		{
+			if (!(opcode & 0x10))
+				x = (x << 8) | fetch_byte();
+			else
+				x = read_vm_variable(x);
+		}
+		else
+		{
+		    if (opcode & 0x10)
+		        x += 0x100;
+		}
+
+		y = fetch_byte();
+
+		if (!(opcode & 8))
+		{
+			if (!(opcode & 4))
+				y = (y << 8) | fetch_byte();
+			else
+				y = read_vm_variable(y);
+		}
+
+		uint16_t zoom = 0x40;
+
+		switch (opcode & 0x03)
+		{
+			case 0:
+				zoom = 0x40;
+				break;
+			case 1:
+				zoom = read_vm_variable(fetch_byte());
+				break;
+			case 2:
+				fetch_byte();
+				break;
+			case 3:
+				m_useVideo2 = true;
+				zoom = 0x40;
+				break;
+		}
+
+		((another_world_vm_state*) owner())->setDataBuffer(m_useVideo2 ? VIDEO_2 : CINEMATIC, offset);
+		((another_world_vm_state*) owner())->readAndDrawPolygon(COLOR_BLACK, zoom, VMPoint(x, y));
+		return;
+	}
+
+	switch (opcode){
+		case 0x00: /* movConst */
+		{
+			uint8_t variableId = fetch_byte();
+			int16_t value = fetch_word();
+			write_vm_variable(variableId, value);
+			return;
+		}
+		case 0x01: /* mov */
+		{
+			uint8_t dstVariableId = fetch_byte();
+			uint8_t srcVariableId = fetch_byte();
+			uint16_t value = read_vm_variable(srcVariableId);
+			write_vm_variable(dstVariableId, value);
+			return;
+		}
+		case 0x02: /* add */
+		{
+			uint8_t dstVariableId = fetch_byte();
+			uint8_t srcVariableId = fetch_byte();
+			uint16_t result = read_vm_variable(dstVariableId);
+			result += read_vm_variable(srcVariableId);
+			write_vm_variable(dstVariableId, result);
+			return;
+		}
+		case 0x03: /* addConst */
+		{
+			/* TODO: Investigate this:
+			if (res->currentPartId == 0x3E86 && _scriptPtr.pc == res->segBytecode + 0x6D48)
+			{
+				warning("VirtualMachine::op_addConst() hack for non-stop looping gun sound bug");
+
+				// The script 0x27 slot 0x17 doesn't stop the gun sound from looping,
+				// I don't really know why; for now, let's play the 'stopping sound' like
+				// the other scripts do
+				//  (0x6D43) jmp(0x6CE5)
+				//  (0x6D46) break
+				//  (0x6D47) VAR(6) += -50
+				snd_playSound(0x5B, 1, 64, 1);
+			}*/
+			uint8_t variableId = fetch_byte();
+			int16_t value = fetch_word();
+			int16_t result = read_vm_variable(variableId) + value;
+			write_vm_variable(variableId, result);
+			return;
+	        }
+		case 0x04: /* CALL subroutine instruction */
+		{
+			uint16_t addr = fetch_word();
+			m_stack->push(PC);
+			PC = addr;
+			return;
+		}
+		case 0x05: /* ret: return from subroutine */
+		{
+			PC = m_stack->pop();
+			return;
+		}
+		case 0x06: /* pauseThread instruction (a.k.a. "break") */
+		{
+			if (current->requested_PC == NO_REQUEST)
+				current->requested_PC = PC;
+
+			nextThread();
+			return;
+		}
+		case 0x07: /* jmp to address */
+		{
+			PC = fetch_word();
+			return;
+		}
+		case 0x08: /* setVect instruction */
+		{
+			uint8_t threadId = fetch_byte() & 0x3F;
+			uint16_t request = fetch_word();
+
+			m_threads[threadId].requested_PC = request;
+			return;
+		}
+		case 0x09: /* DJNZ instrucion ('D'ecrement variable value and 'J'ump if 'N'ot 'Z'ero) */
+		{
+			uint8_t i = fetch_byte();
+			uint16_t value = read_vm_variable(i);
+			value--;
+			write_vm_variable(i, value);
+			uint16_t address = fetch_word();
+			if (value != 0)
+				PC = address;
+			return;
+		}
+		case 0x0A: /* condJmp */
+		{
+			uint8_t subopcode = fetch_byte();
+			uint8_t v = fetch_byte();
+			int16_t b = read_vm_variable(v);
+			uint8_t c = fetch_byte();
+			int16_t a;
+
+			if (subopcode & 0x80)
+				a = read_vm_variable(c);
+			else if (subopcode & 0x40)
+				a = c << 8 | fetch_byte();
+			else
+				a = c;
+
+#ifdef DUMP_VM_EXECUTION_LOG
+			char tmp[256];
+			snprintf(tmp, sizeof(tmp), "subop: 0x%02X v: 0x%02X c: 0x%02X\nvmVar[0x%02X] = 0x%04X\n", subopcode, v, c, v, b);
+			log_stream << tmp;
+#endif
+			// Check if the conditional value is met.
+			bool expr = false;
+			switch (subopcode & 7)
+			{
+				case 0: // jz
+					expr = (b == a);
+					break;
+				case 1: // jnz
+					expr = (b != a);
+					break;
+				case 2: // jg
+					expr = (b > a);
+					break;
+				case 3: // jge
+					expr = (b >= a);
+					break;
+				case 4: // jl
+					expr = (b < a);
+					break;
+				case 5: // jle
+					expr = (b <= a);
+					break;
+				default:
+					printf("ERROR: conditional jump: invalid condition (%d)\n", (subopcode & 7));
+					break;
+			}
+
+			uint16_t offset = fetch_word();
+			if (expr)
+				PC = offset;
+
+			return;
+		}
+		case 0x0B: /* setPalette */
+		{
+			uint16_t paletteId = fetch_word();
+			((another_world_vm_state*) owner())->changePalette((uint8_t ) (paletteId >> 8));
+			return;
+		}
+		case 0x0C: /* resetThread */
+		{
+			uint8_t first = fetch_byte();
+			uint8_t last = fetch_byte();
+			uint8_t type = fetch_byte();
+
+			//Make sure last is within [0, NUM_THREADS-1]
+			last = last % NUM_THREADS;
+
+			if (last < first)
+			{
+				printf("ERROR: resetThread with last (%02X) < first (%02X).\n", last, first);
+				return;
+			}
+
+			switch(type)
+			{
+				case RESET_TYPE__UNFREEZE_CHANNELS:
+					for (int i=first; i<=last; i++)
+						m_threads[i].requested_state = FROZEN;
+					break;
+				case RESET_TYPE__FREEZE_CHANNELS:
+					for (int i=first; i<=last; i++)
+						m_threads[i].requested_state = UNFROZEN;
+					break;
+				case RESET_TYPE__DELETE_CHANNELS:
+					for (int i=first; i<=last; i++)
+						m_threads[i].requested_PC = DELETE_THIS_THREAD;
+					break;
+				default:
+					printf("ERROR: invalid resetThread operation type (%d).\n", type);
+			}
+			return;
+		}
+		case 0x0D: /* selectVideoPage */
+		{
+			uint8_t frameBufferId = fetch_byte();
+			((another_world_vm_state*) owner())->selectVideoPage(frameBufferId);
+			return;
+		}
+		case 0x0E: /* fillVideoPage */
+		{
+			uint8_t pageId = fetch_byte();
+			uint8_t color = fetch_byte();
+			((another_world_vm_state*) owner())->fillPage(pageId, color);
+			return;
+		}
+		case 0x0F: /* copyVideoPage */
+		{
+			uint8_t srcPageId = fetch_byte();
+			uint8_t dstPageId = fetch_byte();
+			((another_world_vm_state*) owner())->copyVideoPage(srcPageId, dstPageId, read_vm_variable(VM_VARIABLE_SCROLL_Y));
+			return;
+		}
+		case 0x10: /* blitFramebuffer */
+		{
+			uint8_t pageId = fetch_byte();
+
+#ifdef VM_HACK_SWITCH_FROM_INTRO_TO_LAKE
+			//Nasty hack....was this present in the original assembly  ??!!
+			//This seems to be necessary for switching from the intro sequence to the lake stage
+			if (m_currentPartId == GAME_PART(0) && read_vm_variable(0x67) == 1)
+				write_vm_variable(0xDC, 0x21);
+
+			// Some clues:
+			// [32 - 0D41]: 00 mov [HACK_VAR_67], 0x0001
+			// [3F - 0D46]: 00 mov [HACK_VAR_67], 0x0000
+			// [00 - 00B2]: 0A jne [HACK_VAR_DC], 0x21, 0x00B9
+			// [03 - 00B2]: 0A jne [HACK_VAR_DC], 0x21, 0x00B9
+			// [3F - 19BB]: 00 mov [HACK_VAR_67], 0x0002
+			// [3F - 1954]: 0A jne [HACK_VAR_67], [0x65], 0x196F
+			// [2E - 35E2]: 0A jne [HACK_VAR_67], 0x01, 0x35E1
+			// [30 - 01F0]: 0A je [HACK_VAR_67], 0x05, 0x01E9
+			// [30 - 01F6]: 0A je [HACK_VAR_67], 0x02, 0x01E9
+			// [30 - 0226]: 0A je [HACK_VAR_67], 0x05, 0x0238
+
+			// Much more with:
+			// grep HACK_VAR_67 address_log.txt|sort|uniq|less
+#endif
+
+			// The bytecode will set vmVariables[VM_VARIABLE_PAUSE_SLICES] from 1 to 5
+			// The virtual machine hence indicate how long the image should be displayed.
+
+#ifdef SPEEDUP_VM_EXECUTION
+			m_icount --;
+#else
+			m_icount -= (int) read_vm_variable(VM_VARIABLE_PAUSE_SLICES);
+#endif
+
+#ifdef VM_HACK_BLITFRAMEBUFFER_VAR_F7
+			//Why ?
+			write_vm_variable(0xF7, 0x0000);
+
+			// Some clues:
+			// [14 - 0A1B]: 02 add [0x37], [HACK_VAR_F7]
+#endif
+			((another_world_vm_state*) owner())->updateDisplay(pageId);
+			return;
+		}
+		case 0x11: /* killThread */
+		{
+			current->PC = INACTIVE_THREAD;
+			nextThread();
+			return;
+		}
+		case 0x12: /* drawString */
+		{
+			uint16_t stringId = fetch_word();
+			uint16_t x = fetch_byte();
+			uint16_t y = fetch_byte();
+			uint16_t color = fetch_byte();
+
+			((another_world_vm_state*) owner())->draw_string(stringId, x, y, color);
+			return;
+		}
+		case 0x13: /* sub */
+		{
+			uint8_t i = fetch_byte();
+			uint8_t j = fetch_byte();
+			uint16_t value = read_vm_variable(i);
+			value -= read_vm_variable(j);
+			write_vm_variable(i, value);
+			return;
+		}
+		case 0x14: /* and */
+		{
+			uint8_t variableId = fetch_byte();
+			uint16_t value = fetch_word();
+			uint16_t result = read_vm_variable(variableId) & value;
+			write_vm_variable(variableId, result);
+			return;
+		}
+		case 0x15: /* or */
+		{
+			uint8_t variableId = fetch_byte();
+			uint16_t value = fetch_word();
+			uint16_t result = read_vm_variable(variableId) | value;
+			write_vm_variable(variableId, result);
+			return;
+		}
+		case 0x16: /* shl */
+		{
+			uint8_t variableId = fetch_byte();
+			uint16_t leftShiftValue = fetch_word();
+			uint16_t result = read_vm_variable(variableId) << leftShiftValue;
+			write_vm_variable(variableId, result);
+			return;
+		}
+		case 0x17: /* shr */
+		{
+			uint8_t variableId = fetch_byte();
+			uint16_t rightShiftValue = fetch_word();
+			uint16_t result = read_vm_variable(variableId) >> rightShiftValue;
+			write_vm_variable(variableId, result);
+			return;
+		}
+		case 0x18: /* play (a.k.a. "playSound") */
+		{
+			uint16_t resourceId = fetch_word();
+			uint8_t freq = fetch_byte();
+			uint8_t vol = fetch_byte();
+			uint8_t channel = fetch_byte();
+			((another_world_vm_state*) owner())->m_mixer->playSound(channel, resourceId, freq, vol);
+			return;
+		}
+		case 0x19: /* load (a.k.a. "updateMemList") */
+		{
+			uint16_t resourceId = fetch_word();
+
+			if (resourceId == 0)
+			{
+				((another_world_vm_state*) owner())->m_mixer->m_player->stop();
+				((another_world_vm_state*) owner())->m_mixer->stopAll();
+				//res->invalidateRes();
+				return;
+			}
+
+#define NUM_MEM_LIST 0x91
+			if (resourceId > NUM_MEM_LIST)
+			{
+				m_requestedNextPart = resourceId;
+			}
+			else
+			{
+				uint8_t screen_resource_indexes[] = {
+					0x12, 0x13, 0x43, 0x44,
+					0x45, 0x46, 0x47, 0x48,
+					0x49, 0x53, 0x90, 0x91
+				};
+				for (int i = 0; i < sizeof(screen_resource_indexes); i++)
+				{
+					if (screen_resource_indexes[i]==resourceId)
+						((another_world_vm_state*) owner())->loadScreen(i);
+				}
+			}
+			return;
+		}
+		case 0x1A: /* playMusic */
+		{
+			uint16_t resNum = fetch_word();
+			uint16_t delay = fetch_word();
+			uint8_t pos = fetch_byte();
+
+			if (resNum != 0)
+			{
+				int retval = ((another_world_vm_state*) owner())->m_mixer->m_player->loadSfxModule(resNum, delay, pos);
+				if (!retval) ((another_world_vm_state*) owner())->m_mixer->m_player->start();
+			}
+			else if (delay != 0)
+			{
+				((another_world_vm_state*) owner())->m_mixer->m_player->setEventsDelay(delay);
+			}
+			else
+			{
+				((another_world_vm_state*) owner())->m_mixer->m_player->stop();
+			}
+			return;
+		}
+	}
+	printf("ERROR: unimplemented opcode: 0x%02X\n", opcode);
+}
+
+void another_world_cpu_device::initForPart(uint16_t partId)
+{
+	((another_world_vm_state*) owner())->m_mixer->m_player->stop();
+	((another_world_vm_state*) owner())->m_mixer->stopAll();
+
+	write_vm_variable(0xE4, 0x14); //why?
+
+	((another_world_vm_state*) owner())->setupPart(partId);
+	m_currentPartId = partId;
+
+#ifdef DUMP_VM_EXECUTION_LOG
+	std::ostream log_stream(&m_log_filebuf);
+	log_stream << "initForPart " << partId << "\n";
+#endif
+	//machine().debug_break();
+
+	for (int i=0; i<NUM_THREADS; i++)
+	{
+		Thread *thread = &m_threads[i];
+		thread->requested_PC = NO_REQUEST;
+		thread->requested_state = NO_REQUEST;
+		thread->PC = INACTIVE_THREAD;
+		thread->state = UNFROZEN;
+	}
+
+	m_threads[0].PC = 0x0000;
+}
+
+std::unique_ptr<util::disasm_interface> another_world_cpu_device::create_disassembler()
+{
+	return std::make_unique<anotherworld_disassembler>();
+}

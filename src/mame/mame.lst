@@ -1406,6 +1406,11 @@ tonpuu                          // 200?, ANES
 angelkds                        // 833-6599 (c) 1988 Sega / Nasco?
 spcpostn                        // (c) 1986 Sega / Nasco
 
+@source:another_world_vm.cpp
+aw_msdos                        // Another World VM with "MSDOS" version of the game bytecode
+aw_amipk                        // Another World VM with "Amiga Press Kit" version of the game bytecode
+aw_geneu                        // Another World VM with "SEGA Genesis (Europe)" version of the game bytecode
+
 @source:anzterm.cpp
 anzterm                         // Burroughs EF315-I220
 
