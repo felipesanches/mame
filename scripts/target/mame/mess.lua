@@ -133,6 +133,7 @@ CPUS["MELPS4"] = true
 CPUS["HPHYBRID"] = true
 CPUS["SM510"] = true
 CPUS["MB86901"] = true
+CPUS["ANOTHERWORLD"] = true
 CPUS["NANOPROCESSOR"] = true
 CPUS["CLIPPER"] = true
 
@@ -1094,6 +1095,7 @@ function linkProjects_mame_mess(_target, _subtarget)
 		"zpa",
 		"zvt",
 		"messshared",
+        "virtualmachine",
 	}
 	if (_subtarget=="mess") then
 	links {
@@ -3219,6 +3221,11 @@ files {
 	MAME_DIR .. "src/mame/machine/v1050kb.cpp",
 	MAME_DIR .. "src/mame/machine/v1050kb.h",
 	MAME_DIR .. "src/mame/video/v1050.cpp",
+}
+
+createMESSProjects(_target, _subtarget, "virtualmachine")
+files {
+    MAME_DIR .. "src/mame/drivers/another_world.cpp",
 }
 
 createMESSProjects(_target, _subtarget, "votrax")

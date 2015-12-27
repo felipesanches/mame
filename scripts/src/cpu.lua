@@ -2433,6 +2433,20 @@ if (CPUS["MB86901"]~=null or _OPTIONS["with-tools"]) then
 end
 
 --------------------------------------------------
+-- ANOTHER WORLD - Virtual Machine
+--@src/devices/cpu/anotherworld/anotherworld.h,CPUS["ANOTHERWORLD"] = true
+--------------------------------------------------
+
+if (CPUS["ANOTHERWORLD"]~=null) then
+    files {
+        MAME_DIR .. "src/devices/cpu/anotherworld/anotherworld.cpp",
+        MAME_DIR .. "src/devices/cpu/anotherworld/anotherworld.h",
+    }
+end
+
+if (CPUS["ANOTHERWORLD"]~=null or _OPTIONS["with-tools"]) then
+    table.insert(disasm_files , MAME_DIR .. "src/devices/cpu/anotherworld/anotherworld_dasm.cpp")
+end
 -- Intergraph CLIPPER (C100/C300/C400) series
 --@src/devices/cpu/clipper/clipper.h,CPUS["CLIPPER"] = true
 --------------------------------------------------
