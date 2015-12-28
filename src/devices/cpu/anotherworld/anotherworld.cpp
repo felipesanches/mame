@@ -9,7 +9,6 @@
 #include "anotherworld.h"
 
 #define PC       m_pc
-#define ACC      m_acc
 
 #define READ_BYTE_AW(A) (m_program->read_byte(A))
 #define WRITE_BYTE_AW(A,V) (m_program->write_byte(A,V))
@@ -31,11 +30,9 @@ another_world_cpu_device::another_world_cpu_device(const machine_config &mconfig
 void another_world_cpu_device::device_start()
 {
     save_item(NAME(m_pc));
-    save_item(NAME(m_acc));
 
     // Register state for debugger
     state_add( ANOTHER_WORLD_PC,         "PC",       m_pc         ).mask(0xFFF);
-    state_add( ANOTHER_WORLD_ACC,        "ACC",      m_acc        ).mask(0xFF);
     state_add(STATE_GENPC, "GENPC", m_pc).formatstr("0%06O").noshow();
 
     m_icountptr = &m_icount;
@@ -44,7 +41,6 @@ void another_world_cpu_device::device_start()
 void another_world_cpu_device::device_reset()
 {
     m_pc = 0;
-    m_acc = 0;
 }
 
 /* execute instructions on this CPU until icount expires */
