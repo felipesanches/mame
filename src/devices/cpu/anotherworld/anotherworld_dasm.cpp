@@ -145,7 +145,7 @@ CPU_DISASSEMBLE( another_world )
             getVariableName(dstVarNameString, oprom[1]);
             uint16_t immediate = (oprom[2] << 8) | oprom[3];
             sprintf(buffer, "add [%s], 0x%04X", dstVarNameString, immediate);
-            return 3;
+            return 4;
         }
         case 0x04: /* call */
         {
@@ -222,8 +222,8 @@ CPU_DISASSEMBLE( another_world )
                 retval = 7;
             } else {
                 sprintf(midterm, "0x%02X", c);
-                offset = (oprom[5] << 8) | oprom[6];
-                retval = 7;
+                offset = (oprom[4] << 8) | oprom[5];
+                retval = 6;
             }
 
             switch (subopcode & 7) {
@@ -365,7 +365,7 @@ CPU_DISASSEMBLE( another_world )
             uint16_t leftShiftValue = (oprom[2] << 8) | oprom[3];
             char varStr[21];
             getVariableName(varStr, variableId);
-            sprintf(buffer, "shl [%s], 0x%04X\n", varStr, leftShiftValue);
+            sprintf(buffer, "shl [%s], 0x%04X", varStr, leftShiftValue);
             return 4;
         }
         case 0x17: /* Shift Right instruction */
@@ -374,7 +374,7 @@ CPU_DISASSEMBLE( another_world )
             uint16_t rightShiftValue = (oprom[2] << 8) | oprom[3];
             char varStr[21];
             getVariableName(varStr, variableId);
-            sprintf(buffer, "shr [%s], 0x%04X\n", varStr, rightShiftValue);
+            sprintf(buffer, "shr [%s], 0x%04X", varStr, rightShiftValue);
             return 4;
         }
         case 0x18: /* play (a.k.a. "playSound") */

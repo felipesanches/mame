@@ -7,16 +7,7 @@
 #include "emu.h"
 #include "debugger.h"
 #include "anotherworld.h"
-
-#define PC       m_pc
-
-#define READ_BYTE_AW(A) (m_program->read_byte(A))
-#define WRITE_BYTE_AW(A,V) (m_program->write_byte(A,V))
-
-#define READ_WORD_AW(A) (READ_BYTE_AW(A+1)*256 + READ_BYTE_AW(A))
-
-#define ADDRESS_MASK_64K    0xFFFF
-#define INCREMENT_PC_64K    (PC = (PC+1) & ADDRESS_MASK_64K)
+#include "anotherworld_hardcoded.h"
 
 const device_type ANOTHER_WORLD  = &device_creator<another_world_cpu_device>;
 
@@ -27,20 +18,68 @@ another_world_cpu_device::another_world_cpu_device(const machine_config &mconfig
 {
 }
 
+void another_world_cpu_device::nextThread(){
+    do {
+        m_currentThread = (m_currentThread+1) % NUM_THREADS;
+        if (m_currentThread == 0){
+            //TODO: update video frame
+        }
+    } while(vmThreads[m_currentThread] >= 0xFFFE ||
+            vmThreadIsFrozen[m_currentThread]);
+
+    PC = vmThreads[m_currentThread];
+}
+            
+uint8_t another_world_cpu_device::fetch_byte(){
+    uint8_t value = READ_BYTE_AW(PC);
+    INCREMENT_PC_64K;
+    return value;
+}
+
+uint16_t another_world_cpu_device::fetch_word(){
+    uint16_t value = READ_WORD_AW(PC);
+    INCREMENT_PC_64K;
+    INCREMENT_PC_64K;
+    return value;
+}
+
 void another_world_cpu_device::device_start()
 {
+    //TODO: declare this as RAM memory so that
+    //      we can inspect it in the Memory View Window.
+    for (int i=0; i<256; i++){
+        vmVariables[i] = 0x00;
+        vmStackCalls[i] = 0x0000;
+    }
+
+    for (int i=0; i<NUM_THREADS; i++){
+        vmThreads[i] = 0xFFFF; //all threads are initially disabled
+        vmThreadIsFrozen[i] = false; //but not frozen
+    }
+            
+    vmVariables[0x54] = 0x81; //TODO: figure out why this is supposedly needed.
+    vmVariables[VM_VARIABLE_RANDOM_SEED] = time(0);
+
+    m_program = &space(AS_PROGRAM);
+
     save_item(NAME(m_pc));
+    save_item(NAME(m_sp));
 
     // Register state for debugger
-    state_add( ANOTHER_WORLD_PC,         "PC",       m_pc         ).mask(0xFFF);
-    state_add(STATE_GENPC, "GENPC", m_pc).formatstr("0%06O").noshow();
+    state_add( ANOTHER_WORLD_PC,   "PC",          m_pc            ).mask(0xFFF);
+    state_add( ANOTHER_WORLD_SP,   "SP",          m_sp            ).mask(0xFF);
+    state_add( ANOTHER_WORLD_SP,   "CUR_THREAD",  m_currentThread ).mask(0xFF);
+    state_add( STATE_GENPC,        "GENPC",       m_pc ).formatstr("0%06O").noshow();
 
     m_icountptr = &m_icount;
 }
 
 void another_world_cpu_device::device_reset()
 {
+    vmStackCalls[0] = 0x0000;
+    m_currentThread = 0;
     m_pc = 0;
+    m_sp = 0;
 }
 
 /* execute instructions on this CPU until icount expires */
@@ -59,12 +98,473 @@ void another_world_cpu_device::execute_instruction()
 {
     debugger_instruction_hook(this, PC);
 //    unsigned char value;
-    unsigned char opcode = READ_BYTE_AW(PC);
-    INCREMENT_PC_64K;
+    unsigned char opcode = fetch_byte();
 
-    switch (opcode & 0xF0){
-        case 0x00:
+    if (opcode & 0x80) 
+    {
+        uint16_t off = ((opcode << 8) | fetch_byte()) * 2;
+
+        //res->_useSegVideo2 = false;
+        int16_t x = fetch_byte();
+        int16_t y = fetch_byte();
+        int16_t h = y - 199;
+        if (h > 0) {
+            y = 199;
+            x += h;
+        }
+        printf("vid_opcd_0x80 : opcode=0x%X off=0x%X x=%d y=%d\n", opcode, off, x, y);
+
+        //TODO: Implement-me!
+        // This switch the polygon database to "cinematic" and probably draws a black polygon
+        // over all the screen.
+//        video->setDataBuffer(res->segCinematic, off);
+//        video->readAndDrawPolygon(COLOR_BLACK, DEFAULT_ZOOM, Point(x,y));
+
+        return;
+    } 
+
+    if (opcode & 0x40) 
+    {
+        int16_t x, y;
+        uint16_t off = fetch_word() * 2;
+        x = fetch_byte();
+
+//        res->_useSegVideo2 = false;
+
+        if (!(opcode & 0x20)) 
+        {
+            if (!(opcode & 0x10))
+            {
+                x = (x << 8) | fetch_byte();
+            } else {
+                x = vmVariables[x];
+            }
+        } 
+        else 
+        {
+            if (opcode & 0x10) {
+                x += 0x100;
+            }
+        }
+
+        y = fetch_byte();
+
+        if (!(opcode & 8))
+        {
+            if (!(opcode & 4)) {
+                y = (y << 8) | fetch_byte();
+            } else {
+                y = vmVariables[y];
+            }
+        }
+
+        uint16_t zoom = fetch_byte();
+
+        if (!(opcode & 2))
+        {
+            if (!(opcode & 1))
+            {
+                DECREMENT_PC_64K;
+                zoom = 0x40;
+            } 
+            else 
+            {
+                zoom = vmVariables[zoom];
+            }
+        }
+        else 
+        {
+            if (opcode & 1) {
+                //res->_useSegVideo2 = true;
+                DECREMENT_PC_64K;
+                zoom = 0x40;
+            }
+        }
+        printf("vid_opcd_0x40 : off=0x%X x=%d y=%d\n", off, x, y);
+
+        //TODO: Implement-me!
+//            video->setDataBuffer(res->_useSegVideo2 ? res->_segVideo2 : res->segCinematic, off);
+//            video->readAndDrawPolygon(0xFF, zoom, Point(x, y));
+        return;
+    }
+    
+    
+    switch (opcode){
+        case 0x00: /* movConst */
+        {
+            uint8_t variableId = fetch_byte();
+            int16_t value = fetch_word();
+            vmVariables[variableId] = value;
             return;
+        }
+        case 0x01: /* mov */
+        {
+            uint8_t dstVariableId = fetch_byte();
+            uint8_t srcVariableId = fetch_byte(); 
+            vmVariables[dstVariableId] = vmVariables[srcVariableId];
+            return;
+        }
+        case 0x02: /* add */
+        {
+            uint8_t dstVariableId = fetch_byte();
+            uint8_t srcVariableId = fetch_byte();
+            vmVariables[dstVariableId] += vmVariables[srcVariableId];
+            return;
+        }
+        case 0x03: /* addConst */
+        {
+            /* TODO: Investigate this:
+            if (res->currentPartId == 0x3E86 && _scriptPtr.pc == res->segBytecode + 0x6D48) {
+                warning("VirtualMachine::op_addConst() hack for non-stop looping gun sound bug");
+                // the script 0x27 slot 0x17 doesn't stop the gun sound from looping, I 
+                // don't really know why ; for now, let's play the 'stopping sound' like 
+                // the other scripts do
+                //  (0x6D43) jmp(0x6CE5)
+                //  (0x6D46) break
+                //  (0x6D47) VAR(6) += -50
+                snd_playSound(0x5B, 1, 64, 1);
+            }*/
+            uint8_t variableId = fetch_byte();
+            int16_t value = fetch_word();
+            vmVariables[variableId] += value;
+            return;
+        }
+        case 0x04: /* CALL subroutine instruction */
+        {
+            UINT16 addr = fetch_word();
+
+            //TODO: Implement the stack memory as another block of RAM.
+            vmStackCalls[SP] = PC;
+            if (SP == 0xFF)
+                printf("ERROR: stack overflow\n");
+
+            ++SP;
+            PC = addr;
+            return;
+        }
+        case 0x05: /* ret: return from subroutine */
+        {
+            if (SP == 0) {
+                printf("ERROR: stack underflow\n");
+            }   
+            --SP;
+            PC = vmStackCalls[SP];
+            return;
+        }
+        case 0x06: /* pauseThread instruction (a.k.a. "break") */
+        {
+            vmThreads[m_currentThread] = PC;
+            nextThread();
+            return;
+        }
+        case 0x07: /* jmp to address */
+        {
+            PC = fetch_word();
+            return;
+        }
+        case 0x08: /* setVect instruction */
+        {
+            uint8_t threadId = fetch_byte();
+            uint16_t pcOffsetRequested = fetch_word();
+            vmThreads[threadId] = pcOffsetRequested;
+            return;
+        }
+        case 0x09: /* DJNZ instrucion:
+                      'D'ecrement variable value and 'J'ump if 'N'ot 'Z'ero  */
+        {
+            uint8_t i = fetch_byte();
+            --vmVariables[i];
+            uint16_t address = fetch_word();
+            if (vmVariables[i] != 0) {
+                PC = address;
+            }
+            return;
+        }
+        case 0x0A: /* condJmp */
+        {
+            //TEST: 0A 00 BC 00 00 B9 0A
+            //      je [0xBC], 0x00, 0xB90A
+            
+
+//TODO: Check the validity of the following bytecode hack:
+#if 0 //BYPASS_PROTECTION
+            //FCS Whoever wrote this is patching the bytecode on the fly. This is ballzy !!
+                    
+            if (res->currentPartId == GAME_PART_FIRST && _scriptPtr.pc == res->segBytecode + 0xCB9) {
+                
+                // (0x0CB8) condJmp(0x80, VAR(41), VAR(30), 0xCD3)
+                *(_scriptPtr.pc + 0x00) = 0x81;
+                *(_scriptPtr.pc + 0x03) = 0x0D;
+                *(_scriptPtr.pc + 0x04) = 0x24;
+                // (0x0D4E) condJmp(0x4, VAR(50), 6, 0xDBC)     
+                *(_scriptPtr.pc + 0x99) = 0x0D;
+                *(_scriptPtr.pc + 0x9A) = 0x5A;
+                printf("VirtualMachine::op_condJmp() bypassing protection");
+                printf("bytecode has been patched/n");
+                
+                //this->bypassProtection() ;
+            }    
+#endif
+
+            uint8_t subopcode = fetch_byte();
+            int16_t b = vmVariables[fetch_byte()];
+            uint8_t c = fetch_byte();
+            int16_t a;
+
+            if (subopcode & 0x80) {
+                a = vmVariables[c];
+            } else if (subopcode & 0x40) {
+                a = c << 8 | fetch_byte();
+            } else {
+                a = c;
+            }
+
+            // Check if the conditional value is met.
+            bool expr = false;
+            switch (subopcode & 7) {
+            case 0: // jz
+                expr = (b == a);
+                break;
+            case 1: // jnz
+                expr = (b != a);
+                break;
+            case 2: // jg
+                expr = (b > a);
+                break;
+            case 3: // jge
+                expr = (b >= a);
+                break;
+            case 4: // jl
+                expr = (b < a);
+                break;
+            case 5: // jle
+                expr = (b <= a);
+                break;
+            default:
+                printf("ERROR: conditional jump: invalid condition (%d)\n", (subopcode & 7));
+                break;
+            }
+
+            //printf("subopcode:0x%02X b:0x%04X c:0x%02X a:0x%04X\n", subopcode, b, c, a);
+
+            uint16_t offset = fetch_word();
+            //printf("offset: 0x%04X\n", offset);
+            if (expr) {
+                PC = offset;
+            }
+            return;
+        }
+        case 0x0B: /* setPalette */
+        {
+            uint16_t paletteId = fetch_word();
+            //TODO: Implement-me!
+            //video->paletteIdRequested = paletteId >> 8;
+            printf("changePalette(%d)\n", paletteId);
+            return;
+        }
+        case 0x0C: /* resetThread */
+        {
+            uint8_t first = fetch_byte();
+            uint8_t last = fetch_byte();
+            uint8_t type = fetch_byte();
+
+            //Make sure last is within [0, NUM_THREADS-1]
+            last = last % NUM_THREADS ;
+            int8_t n = last - first;
+            
+            if (n < 0) {
+                printf("ERROR: resetThread with n < 0.\n");
+                return;
+            }
+
+            enum {
+                RESET_TYPE__FREEZE_CHANNELS=0,
+                RESET_TYPE__UNFREEZE_CHANNELS,
+                RESET_TYPE__DELETE_CHANNELS,
+            };
+
+            switch(type){
+                case RESET_TYPE__FREEZE_CHANNELS:
+                    //printf("freezeChannels (first:%d, last:%d)\n", first, last);
+                    for (int i=first; i<=last; i++){
+                        vmThreadIsFrozen[i] = true;
+                    }
+                    break;
+                case RESET_TYPE__UNFREEZE_CHANNELS:
+                    //printf("unfreezeChannels (first:%d, last:%d)\n", first, last);
+                    for (int i=first; i<=last; i++){
+                        vmThreadIsFrozen[i] = false;
+                    }
+                    break;
+                case RESET_TYPE__DELETE_CHANNELS:
+                    //printf("deleteChannels (first:%d, last:%d)\n", first, last);
+                    for (int i=first; i<=last; i++){
+                        vmThreads[i] = 0xFFFE;
+                    }
+                    break;
+                default:
+                    printf("ERROR: invalid resetThread operation type (%d).\n", type);
+            }
+            return;
+        }
+        case 0x0D: /* selectVideoPage */
+        {
+            uint8_t frameBufferId = fetch_byte();
+            //TODO: Implement-me!
+            //video->changePagePtr1(frameBufferId);
+            printf("selectVideoPage(%d)\n", frameBufferId);
+            return;
+        }
+        case 0x0E: /* fillVideoPage */
+        {
+            uint8_t pageId = fetch_byte();
+            uint8_t color = fetch_byte();
+            printf("fillVideoPage(%d, %d)\n", pageId, color);
+            //TODO:Implement-me!
+            //video->fillPage(pageId, color);
+            return;
+        }
+        case 0x0F: /* copyVideoPage */
+        {
+            uint8_t srcPageId = fetch_byte();
+            uint8_t dstPageId = fetch_byte();
+            printf("copyVideoPage(%d, %d)\n", srcPageId, dstPageId);
+            //TODO: Implement-me!
+            //video->copyPage(srcPageId, dstPageId, vmVariables[VM_VARIABLE_SCROLL_Y]);
+            return;
+        }
+        case 0x10: /* blitFramebuffer */
+        {
+            uint8_t pageId = fetch_byte();
+            printf("blitFramebuffer(%d)\n", pageId);
+            
+            //TODO: Implement-me!
+#if 0
+            inp_handleSpecialKeys();
+
+            //Nasty hack....was this present in the original assembly  ??!!
+            if (res->currentPartId == GAME_PART_FIRST && vmVariables[0x67] == 1) 
+                vmVariables[0xDC] = 0x21;
+            
+            if (!_fastMode) {
+
+                int32_t delay = sys->getTimeStamp() - lastTimeStamp;
+                int32_t timeToSleep = vmVariables[VM_VARIABLE_PAUSE_SLICES] * 20 - delay;
+
+                // The bytecode will set vmVariables[VM_VARIABLE_PAUSE_SLICES] from 1 to 5
+                // The virtual machine hence indicate how long the image should be displayed.
+
+                //printf("vmVariables[VM_VARIABLE_PAUSE_SLICES]=%d\n",vmVariables[VM_VARIABLE_PAUSE_SLICES]);
+
+
+                if (timeToSleep > 0)
+                {
+                //  printf("Sleeping for=%d\n",timeToSleep);
+                    sys->sleep(timeToSleep);
+                }
+
+                lastTimeStamp = sys->getTimeStamp();
+            }
+
+            //WTF ?
+            vmVariables[0xF7] = 0;
+
+            video->updateDisplay(pageId);
+#endif
+            return;
+        }
+        case 0x11: /* killThread */
+        {
+            vmThreads[m_currentThread] = 0xFFFF;
+            nextThread();
+            return;
+        }
+        case 0x12: /* drawString */
+        {
+            uint16_t stringId = fetch_word();
+            uint16_t x = fetch_byte();
+            uint16_t y = fetch_byte();
+            uint16_t color = fetch_byte();
+
+            printf("drawString(0x%04X, x:%d, y:%d, color:%d) text='%s'\n", stringId, x, y, color, getString(stringId));
+
+            //TODO: Implement-me!
+            //video->drawString(color, x, y, stringId);
+            return;
+        }
+        case 0x13: /* sub */
+        {
+            uint8_t i = fetch_byte();
+            uint8_t j = fetch_byte();
+            vmVariables[i] -= vmVariables[j];
+            return;
+        }
+        case 0x14: /* and */
+        {
+            uint8_t variableId = fetch_byte();
+            uint16_t value = fetch_word();
+            vmVariables[variableId] = (uint16_t)vmVariables[variableId] & value;
+            return;
+        }
+        case 0x15: /* or */
+        {
+            uint8_t variableId = fetch_byte();
+            uint16_t value = fetch_word();
+            vmVariables[variableId] = (uint16_t)vmVariables[variableId] | value;
+            return;
+        }
+        case 0x16: /* shl */
+        {
+            uint8_t variableId = fetch_byte();
+            uint16_t leftShiftValue = fetch_word();
+            vmVariables[variableId] = (uint16_t)vmVariables[variableId] << leftShiftValue;
+            return;
+        }
+        case 0x17: /* shr */
+        {
+            uint8_t variableId = fetch_byte();
+            uint16_t rightShiftValue = fetch_word();
+            vmVariables[variableId] = (uint16_t)vmVariables[variableId] >> rightShiftValue;
+            return;
+        }
+        case 0x18: /* play (a.k.a. "playSound") */
+        {
+            uint16_t resourceId = fetch_word();
+            uint8_t freq = fetch_byte();
+            uint8_t vol = fetch_byte();
+            uint8_t channel = fetch_byte();
+            printf("playSound(0x%02X, freq:%d, vol:%d, channel:%d)\n", resourceId, freq, vol, channel);
+            //TODO: Implement-me!
+            //snd_playSound(resourceId, freq, vol, channel);
+            return;
+        }
+        case 0x19: /* load (a.k.a. "updateMemList") */
+        {
+            uint16_t resourceId = fetch_word();
+            printf("load (a.k.a. \"updateMemList\") (0x%02X)\n", resourceId);
+
+            //TODO: Implement-me!
+#if 0
+            if (resourceId == 0) {
+                player->stop();
+                mixer->stopAll();
+                res->invalidateRes();
+            } else {
+                res->loadPartsOrMemoryEntry(resourceId);
+            }
+#endif
+            return;
+        }
+        case 0x1A: /* playMusic */
+        {
+            uint16_t resNum = fetch_word();
+            uint16_t delay = fetch_word();
+            uint8_t pos = fetch_byte();
+            printf("playMusic(0x%X, delay:%d, pos:%d)\n", resNum, delay, pos);
+            //TODO: Implement-me!
+            //snd_playMusic(resNum, delay, pos);
+            return;
+        }
     }
     printf("unimplemented opcode: 0x%02X\n", opcode);
 }

@@ -5,6 +5,18 @@
 #ifndef __ANOTHERWORLD_H__
 #define __ANOTHERWORLD_H__
 
+#define PC       m_pc
+#define SP       m_sp
+#define READ_BYTE_AW(A) (m_program->read_byte(A))
+#define WRITE_BYTE_AW(A,V) (m_program->write_byte(A,V))
+#define READ_WORD_AW(A) (READ_BYTE_AW(A) << 8 | READ_BYTE_AW(A+1))
+
+#define ADDRESS_MASK_64K    0xFFFF
+#define INCREMENT_PC_64K    (PC = (PC+1) & ADDRESS_MASK_64K)
+#define DECREMENT_PC_64K    (PC = (PC-1) & ADDRESS_MASK_64K)
+
+#define NUM_THREADS 64
+
 enum ScriptVars {
     VM_VARIABLE_RANDOM_SEED          = 0x3C,
     VM_VARIABLE_LAST_KEYCHAR         = 0xDA,
@@ -22,7 +34,7 @@ enum ScriptVars {
 /* register IDs */
 enum
 {
-    ANOTHER_WORLD_PC=1
+    ANOTHER_WORLD_PC=1, ANOTHER_WORLD_SP
 };
 
 class another_world_cpu_device : public cpu_device
@@ -39,6 +51,7 @@ protected:
 
     /* processor registers */
     unsigned int m_pc;
+    uint8_t m_sp;
     int m_icount;
 
     address_space *m_program;
@@ -58,8 +71,17 @@ protected:
     virtual UINT32 disasm_min_opcode_bytes() const override { return 1; }
     virtual UINT32 disasm_max_opcode_bytes() const override { return 8; }
 
+    uint16_t vmThreads[NUM_THREADS];
+    bool vmThreadIsFrozen[NUM_THREADS];
+    uint16_t vmStackCalls[256];
+    int16_t  vmVariables[256];
+    int      m_currentThread;
+
 private:
+    void nextThread();
     void execute_instruction();
+    uint8_t fetch_byte();
+    uint16_t fetch_word();
 };
 
 

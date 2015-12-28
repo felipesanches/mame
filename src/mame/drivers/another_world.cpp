@@ -55,8 +55,11 @@ MACHINE_CONFIG_END
 
 ROM_START( anotherw )
     ROM_REGION( 0x10000, "maincpu", ROMREGION_ERASEFF )
-    /* anotherworld_msdos_resource_0x1b.bin */
-    ROM_LOAD( "resource-0x1b.bin", 0x0000, 0x514a, CRC(82ccacd6) SHA1(f093b219e10d3bd9d9fc93d36cb232f13da4881e) )
+    /* anotherworld_msdos_resource_0x15.bin (Protection screens) */
+    ROM_LOAD( "resource-0x15.bin", 0x0000, 0x10e1, CRC(f26172f6) SHA1(d0bc831a0683bb1416900c45be677a51fb9bc0fa) )
+
+    /* anotherworld_msdos_resource_0x1b.bin (introduction cinematic) */
+    //ROM_LOAD( "resource-0x1b.bin", 0x0000, 0x514a, CRC(82ccacd6) SHA1(f093b219e10d3bd9d9fc93d36cb232f13da4881e) )
 ROM_END
 
 /*    YEAR  NAME      PARENT    COMPAT  MACHINE        INPUT          INIT                                COMPANY              FULLNAME */
