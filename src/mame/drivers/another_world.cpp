@@ -64,6 +64,9 @@ ROM_START( anotherw )
 
     /* anotherworld_msdos_resource_0x1b.bin (introduction cinematic) */
     //ROM_LOAD( "resource-0x1b.bin", 0x0000, 0x514a, CRC(82ccacd6) SHA1(f093b219e10d3bd9d9fc93d36cb232f13da4881e) )
+
+    ROM_REGION( 0x0300, "chargen", 0)
+    ROM_LOAD( "anotherworld_chargen.rom", 0x0000, 0x0300, CRC(e2df8c47) SHA1(b79b41835aa2d5747932f8080bb6fb2cf32837d7) )
 ROM_END
 
 /*    YEAR  NAME      PARENT    COMPAT  MACHINE        INPUT          INIT                                COMPANY              FULLNAME */
