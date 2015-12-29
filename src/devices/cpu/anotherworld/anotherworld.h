@@ -34,7 +34,7 @@ enum ScriptVars {
 /* register IDs */
 enum
 {
-    ANOTHER_WORLD_PC=1, ANOTHER_WORLD_SP
+    ANOTHER_WORLD_PC=1, ANOTHER_WORLD_SP, ANOTHER_WORLD_CUR_THREAD
 };
 
 class another_world_cpu_device : public cpu_device

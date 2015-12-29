@@ -61,10 +61,10 @@ void another_world_cpu_device::device_start()
     save_item(NAME(m_sp));
 
     // Register state for debugger
-    state_add( ANOTHER_WORLD_PC,   "PC",          m_pc            ).mask(0xFFF);
-    state_add( ANOTHER_WORLD_SP,   "SP",          m_sp            ).mask(0xFF);
-    state_add( ANOTHER_WORLD_SP,   "CUR_THREAD",  m_currentThread ).mask(0xFF);
-    state_add( STATE_GENPC,        "GENPC",       m_pc ).formatstr("0%06O").noshow();
+    state_add( ANOTHER_WORLD_PC,         "PC",          m_pc            ).mask(0xFFF);
+    state_add( ANOTHER_WORLD_SP,         "SP",          m_sp            ).mask(0xFF);
+    state_add( ANOTHER_WORLD_CUR_THREAD, "CUR_THREAD",  m_currentThread ).mask(0xFF);
+    state_add( STATE_GENPC,              "GENPC",       m_pc ).formatstr("0%06O").noshow();
 
     m_icountptr = &m_icount;
 }
@@ -251,7 +251,7 @@ void another_world_cpu_device::execute_instruction()
             if (SP == 0xFF)
                 printf("ERROR: stack overflow\n");
 
-            ++SP;
+            SP++;
             PC = addr;
             return;
         }
@@ -260,7 +260,7 @@ void another_world_cpu_device::execute_instruction()
             if (SP == 0) {
                 printf("ERROR: stack underflow\n");
             }   
-            --SP;
+            SP--;
             PC = vmStackCalls[SP];
             return;
         }
