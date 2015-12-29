@@ -48,6 +48,7 @@ protected:
     virtual offs_t disasm_disassemble(char *buffer, offs_t pc, const UINT8 *oprom, const UINT8 *opram, UINT32 options) override;
 
     address_space_config m_program_config;
+    address_space_config m_data_config;
 
     /* processor registers */
     unsigned int m_pc;
@@ -55,6 +56,7 @@ protected:
     int m_icount;
 
     address_space *m_program;
+    address_space *m_data;
 
     // device-level overrides
     virtual void device_start() override;
@@ -65,7 +67,10 @@ protected:
     virtual UINT32 execute_max_cycles() const override { return 2; }
 
     // device_memory_interface overrides
-    virtual const address_space_config *memory_space_config(address_spacenum spacenum = AS_0) const override { return (spacenum == AS_PROGRAM) ? &m_program_config : NULL; }
+    virtual const address_space_config *memory_space_config(address_spacenum spacenum = AS_0) const override {
+        return (spacenum == AS_PROGRAM) ? &m_program_config :
+               (spacenum == AS_DATA) ? &m_data_config : NULL;
+    }
 
     // device_disasm_interface overrides
     virtual UINT32 disasm_min_opcode_bytes() const override { return 1; }
@@ -74,7 +79,6 @@ protected:
     uint16_t vmThreads[NUM_THREADS];
     bool vmThreadIsFrozen[NUM_THREADS];
     uint16_t vmStackCalls[256];
-    int16_t  vmVariables[256];
     int      m_currentThread;
 
 private:
@@ -82,6 +86,8 @@ private:
     void execute_instruction();
     uint8_t fetch_byte();
     uint16_t fetch_word();
+    uint16_t read_vm_variable(uint8_t i);
+    void write_vm_variable(uint8_t i, uint16_t value);
 };
 
 

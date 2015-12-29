@@ -14,6 +14,7 @@ const device_type ANOTHER_WORLD  = &device_creator<another_world_cpu_device>;
 another_world_cpu_device::another_world_cpu_device(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock)
     : cpu_device(mconfig, ANOTHER_WORLD, "ANOTHER WORLD", tag, owner, clock, "another_world_cpu", __FILE__),
       m_program_config("program", ENDIANNESS_LITTLE, 8, 16, 0),
+      m_data_config("data", ENDIANNESS_LITTLE, 16, 9, 0),
       m_icount(0)
 {
 }
@@ -29,7 +30,15 @@ void another_world_cpu_device::nextThread(){
 
     PC = vmThreads[m_currentThread];
 }
-            
+
+uint16_t another_world_cpu_device::read_vm_variable(uint8_t i){
+    return m_data->read_word(2*i);
+}
+
+void another_world_cpu_device::write_vm_variable(uint8_t i, uint16_t value){
+    m_data->write_word(2*i, value);
+}
+
 uint8_t another_world_cpu_device::fetch_byte(){
     uint8_t value = READ_BYTE_AW(PC);
     INCREMENT_PC_64K;
@@ -45,22 +54,8 @@ uint16_t another_world_cpu_device::fetch_word(){
 
 void another_world_cpu_device::device_start()
 {
-    //TODO: declare this as RAM memory so that
-    //      we can inspect it in the Memory View Window.
-    for (int i=0; i<256; i++){
-        vmVariables[i] = 0x00;
-        vmStackCalls[i] = 0x0000;
-    }
-
-    for (int i=0; i<NUM_THREADS; i++){
-        vmThreads[i] = 0xFFFF; //all threads are initially disabled
-        vmThreadIsFrozen[i] = false; //but not frozen
-    }
-            
-    vmVariables[0x54] = 0x81; //TODO: figure out why this is supposedly needed.
-    vmVariables[VM_VARIABLE_RANDOM_SEED] = time(0);
-
     m_program = &space(AS_PROGRAM);
+    m_data = &space(AS_DATA);
 
     save_item(NAME(m_pc));
     save_item(NAME(m_sp));
@@ -80,6 +75,20 @@ void another_world_cpu_device::device_reset()
     m_currentThread = 0;
     m_pc = 0;
     m_sp = 0;
+
+    //TODO: declare the stack as a RAM block so that
+    //      we can inspect it in the Memory View Window.
+    for (int i=0; i<256; i++){
+        vmStackCalls[i] = 0x0000;
+    }
+
+    for (int i=0; i<NUM_THREADS; i++){
+        vmThreads[i] = 0xFFFF; //all threads are initially disabled
+        vmThreadIsFrozen[i] = false; //but not frozen
+    }
+
+    write_vm_variable(0x54, 0x0081); //TODO: figure out why this is supposedly needed.
+    write_vm_variable(VM_VARIABLE_RANDOM_SEED, time(0));
 }
 
 /* execute instructions on this CPU until icount expires */
@@ -137,7 +146,7 @@ void another_world_cpu_device::execute_instruction()
             {
                 x = (x << 8) | fetch_byte();
             } else {
-                x = vmVariables[x];
+                x = read_vm_variable(x);
             }
         } 
         else 
@@ -154,7 +163,7 @@ void another_world_cpu_device::execute_instruction()
             if (!(opcode & 4)) {
                 y = (y << 8) | fetch_byte();
             } else {
-                y = vmVariables[y];
+                y = read_vm_variable(y);
             }
         }
 
@@ -169,7 +178,7 @@ void another_world_cpu_device::execute_instruction()
             } 
             else 
             {
-                zoom = vmVariables[zoom];
+                zoom = read_vm_variable(zoom);
             }
         }
         else 
@@ -194,21 +203,24 @@ void another_world_cpu_device::execute_instruction()
         {
             uint8_t variableId = fetch_byte();
             int16_t value = fetch_word();
-            vmVariables[variableId] = value;
+            write_vm_variable(variableId, value);
             return;
         }
         case 0x01: /* mov */
         {
             uint8_t dstVariableId = fetch_byte();
             uint8_t srcVariableId = fetch_byte(); 
-            vmVariables[dstVariableId] = vmVariables[srcVariableId];
+            uint16_t value = read_vm_variable(srcVariableId);
+            write_vm_variable(dstVariableId, value);
             return;
         }
         case 0x02: /* add */
         {
             uint8_t dstVariableId = fetch_byte();
             uint8_t srcVariableId = fetch_byte();
-            vmVariables[dstVariableId] += vmVariables[srcVariableId];
+            uint16_t result = read_vm_variable(dstVariableId);
+            result += read_vm_variable(srcVariableId);
+            write_vm_variable(dstVariableId, result);
             return;
         }
         case 0x03: /* addConst */
@@ -226,7 +238,8 @@ void another_world_cpu_device::execute_instruction()
             }*/
             uint8_t variableId = fetch_byte();
             int16_t value = fetch_word();
-            vmVariables[variableId] += value;
+            int16_t result = read_vm_variable(variableId) + value;
+            write_vm_variable(variableId, result);
             return;
         }
         case 0x04: /* CALL subroutine instruction */
@@ -273,18 +286,17 @@ void another_world_cpu_device::execute_instruction()
                       'D'ecrement variable value and 'J'ump if 'N'ot 'Z'ero  */
         {
             uint8_t i = fetch_byte();
-            --vmVariables[i];
+            uint16_t value = read_vm_variable(i);
+            value--;
+            write_vm_variable(i, value);
             uint16_t address = fetch_word();
-            if (vmVariables[i] != 0) {
+            if (value != 0) {
                 PC = address;
             }
             return;
         }
         case 0x0A: /* condJmp */
         {
-            //TEST: 0A 00 BC 00 00 B9 0A
-            //      je [0xBC], 0x00, 0xB90A
-            
 
 //TODO: Check the validity of the following bytecode hack:
 #if 0 //BYPASS_PROTECTION
@@ -307,12 +319,12 @@ void another_world_cpu_device::execute_instruction()
 #endif
 
             uint8_t subopcode = fetch_byte();
-            int16_t b = vmVariables[fetch_byte()];
+            int16_t b = read_vm_variable(fetch_byte());
             uint8_t c = fetch_byte();
             int16_t a;
 
             if (subopcode & 0x80) {
-                a = vmVariables[c];
+                a = read_vm_variable(c);
             } else if (subopcode & 0x40) {
                 a = c << 8 | fetch_byte();
             } else {
@@ -430,7 +442,7 @@ void another_world_cpu_device::execute_instruction()
             uint8_t dstPageId = fetch_byte();
             printf("copyVideoPage(%d, %d)\n", srcPageId, dstPageId);
             //TODO: Implement-me!
-            //video->copyPage(srcPageId, dstPageId, vmVariables[VM_VARIABLE_SCROLL_Y]);
+            //video->copyPage(srcPageId, dstPageId, read_vm_variable(VM_VARIABLE_SCROLL_Y));
             return;
         }
         case 0x10: /* blitFramebuffer */
@@ -443,13 +455,13 @@ void another_world_cpu_device::execute_instruction()
             inp_handleSpecialKeys();
 
             //Nasty hack....was this present in the original assembly  ??!!
-            if (res->currentPartId == GAME_PART_FIRST && vmVariables[0x67] == 1) 
-                vmVariables[0xDC] = 0x21;
+            if (res->currentPartId == GAME_PART_FIRST && read_vm_variable(0x67) == 1) 
+                write_vm_variable(0xDC, 0x21);
             
             if (!_fastMode) {
 
                 int32_t delay = sys->getTimeStamp() - lastTimeStamp;
-                int32_t timeToSleep = vmVariables[VM_VARIABLE_PAUSE_SLICES] * 20 - delay;
+                int32_t timeToSleep = read_vm_variable(VM_VARIABLE_PAUSE_SLICES) * 20 - delay;
 
                 // The bytecode will set vmVariables[VM_VARIABLE_PAUSE_SLICES] from 1 to 5
                 // The virtual machine hence indicate how long the image should be displayed.
@@ -467,7 +479,7 @@ void another_world_cpu_device::execute_instruction()
             }
 
             //WTF ?
-            vmVariables[0xF7] = 0;
+            write_vm_variable(0xF7, 0x0000);
 
             video->updateDisplay(pageId);
 #endif
@@ -496,35 +508,41 @@ void another_world_cpu_device::execute_instruction()
         {
             uint8_t i = fetch_byte();
             uint8_t j = fetch_byte();
-            vmVariables[i] -= vmVariables[j];
+            uint16_t value = read_vm_variable(i);
+            value -= read_vm_variable(j);
+            write_vm_variable(i, value);
             return;
         }
         case 0x14: /* and */
         {
             uint8_t variableId = fetch_byte();
             uint16_t value = fetch_word();
-            vmVariables[variableId] = (uint16_t)vmVariables[variableId] & value;
+            uint16_t result = read_vm_variable(variableId) & value;
+            write_vm_variable(variableId, result);
             return;
         }
         case 0x15: /* or */
         {
             uint8_t variableId = fetch_byte();
             uint16_t value = fetch_word();
-            vmVariables[variableId] = (uint16_t)vmVariables[variableId] | value;
+            uint16_t result = read_vm_variable(variableId) | value;
+            write_vm_variable(variableId, result);
             return;
         }
         case 0x16: /* shl */
         {
             uint8_t variableId = fetch_byte();
             uint16_t leftShiftValue = fetch_word();
-            vmVariables[variableId] = (uint16_t)vmVariables[variableId] << leftShiftValue;
+            uint16_t result = read_vm_variable(variableId) << leftShiftValue;
+            write_vm_variable(variableId, result);
             return;
         }
         case 0x17: /* shr */
         {
             uint8_t variableId = fetch_byte();
             uint16_t rightShiftValue = fetch_word();
-            vmVariables[variableId] = (uint16_t)vmVariables[variableId] >> rightShiftValue;
+            uint16_t result = read_vm_variable(variableId) >> rightShiftValue;
+            write_vm_variable(variableId, result);
             return;
         }
         case 0x18: /* play (a.k.a. "playSound") */

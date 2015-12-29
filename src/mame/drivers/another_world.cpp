@@ -42,15 +42,19 @@ static INPUT_PORTS_START( another_world )
 */
 INPUT_PORTS_END
 
-static ADDRESS_MAP_START( another_world_map, AS_PROGRAM, 8, another_world_state)
-    ADDRESS_MAP_UNMAP_HIGH
+static ADDRESS_MAP_START( aw_prog_map, AS_PROGRAM, 8, another_world_state )
     AM_RANGE(0x0000, 0xffff) AM_ROM
+ADDRESS_MAP_END
+
+static ADDRESS_MAP_START( aw_data_map, AS_DATA, 16, another_world_state )
+    AM_RANGE(0x00, 0x1ff) AM_RAM
 ADDRESS_MAP_END
 
 static MACHINE_CONFIG_START( another_world, another_world_state )
     /* basic machine hardware */
-    MCFG_CPU_ADD("maincpu", ANOTHER_WORLD, 500000)
-    MCFG_CPU_PROGRAM_MAP(another_world_map)
+    MCFG_CPU_ADD("maincpu", ANOTHER_WORLD, 500000) /* FIX-ME: This clock frequency is arbitrary */
+    MCFG_CPU_PROGRAM_MAP(aw_prog_map)
+    MCFG_CPU_DATA_MAP(aw_data_map)
 MACHINE_CONFIG_END
 
 ROM_START( anotherw )
