@@ -5,18 +5,8 @@
 */
 
 #include "emu.h"
+#include "includes/anotherworld.h"
 #include "cpu/anotherworld/anotherworld.h"
-
-class another_world_state : public driver_device
-{
-public:
-    another_world_state(const machine_config &mconfig, device_type type, const char *tag)
-        : driver_device(mconfig, type, tag)
-    { }
-
-    DECLARE_DRIVER_INIT(another_world);
-    virtual void machine_start() override;
-};
 
 /*
     driver init function
@@ -42,12 +32,44 @@ static INPUT_PORTS_START( another_world )
 */
 INPUT_PORTS_END
 
+/* Graphics Layouts */
+
+static const gfx_layout charlayout =
+{
+    8,8,    /* 8*8 characters */
+    96,     /* 96 characters */
+    4,      /* 4 bits per pixel */
+    { 0 },
+    { 0, 1, 2, 3, 4, 5, 6, 7},
+    { 0*8, 1*8, 2*8, 3*8, 4*8, 5*8, 6*8, 7*8 },
+    8*8    /* every char takes 8 consecutive bytes */
+};
+
+/* Graphics Decode Info */
+
+static GFXDECODE_START( anotherw )
+    GFXDECODE_ENTRY( "chargen", 0, charlayout,            0, 16)
+GFXDECODE_END
+
+TILE_GET_INFO_MEMBER(another_world_state::get_char_tile_info)
+{
+//    int attr = m_colorram[tile_index];
+    int code = m_videoram[tile_index];// + ((attr & 0xe0) << 2);
+//    int color = attr & 0x1f;
+    int color = 15;
+
+    tileinfo.group = color;
+
+    SET_TILE_INFO_MEMBER(0, code, color, 0);
+}
+
 static ADDRESS_MAP_START( aw_prog_map, AS_PROGRAM, 8, another_world_state )
-    AM_RANGE(0x0000, 0xffff) AM_ROM
+    AM_RANGE(0x0000, 0xfbff) AM_ROM
+    AM_RANGE(0xfc00, 0xffff) AM_RAM AM_SHARE("videoram")
 ADDRESS_MAP_END
 
 static ADDRESS_MAP_START( aw_data_map, AS_DATA, 16, another_world_state )
-    AM_RANGE(0x00, 0x1ff) AM_RAM
+    AM_RANGE(0x0000, 0x01ff) AM_RAM //VM Variables
 ADDRESS_MAP_END
 
 static MACHINE_CONFIG_START( another_world, another_world_state )
@@ -55,10 +77,26 @@ static MACHINE_CONFIG_START( another_world, another_world_state )
     MCFG_CPU_ADD("maincpu", ANOTHER_WORLD, 500000) /* FIX-ME: This clock frequency is arbitrary */
     MCFG_CPU_PROGRAM_MAP(aw_prog_map)
     MCFG_CPU_DATA_MAP(aw_data_map)
+
+    /* video hardware */
+    MCFG_SCREEN_ADD("screen", RASTER)
+    MCFG_SCREEN_REFRESH_RATE(60)
+    MCFG_SCREEN_VBLANK_TIME(ATTOSECONDS_IN_USEC(0))
+    MCFG_SCREEN_SIZE(40*8, 25*8)
+    MCFG_SCREEN_VISIBLE_AREA(0*8, 40*8-1, 0*8, 25*8-1)
+    MCFG_SCREEN_UPDATE_DRIVER(another_world_state, screen_update_aw)
+
+    MCFG_SCREEN_PALETTE("palette")
+
+    MCFG_GFXDECODE_ADD("gfxdecode", "palette", anotherw)
+
+    MCFG_PALETTE_ADD("palette", 256)
+    MCFG_PALETTE_INDIRECT_ENTRIES(256)
+//    MCFG_PALETTE_INIT_OWNER(another_world_state, anotherw)
 MACHINE_CONFIG_END
 
 ROM_START( anotherw )
-    ROM_REGION( 0x10000, "maincpu", ROMREGION_ERASEFF )
+    ROM_REGION( 0xfc00, "maincpu", ROMREGION_ERASEFF )
     /* anotherworld_msdos_resource_0x15.bin (Protection screens) */
     ROM_LOAD( "resource-0x15.bin", 0x0000, 0x10e1, CRC(f26172f6) SHA1(d0bc831a0683bb1416900c45be677a51fb9bc0fa) )
 

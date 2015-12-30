@@ -42,6 +42,7 @@ class another_world_cpu_device : public cpu_device
 public:
     // construction/destruction
     another_world_cpu_device(const machine_config &mconfig, const char *_tag, device_t *_owner, UINT32 _clock);
+    //void set_video_pointers(tilemap_t *tm);
 protected:
     
     virtual void execute_run() override;
@@ -88,6 +89,8 @@ private:
     uint16_t fetch_word();
     uint16_t read_vm_variable(uint8_t i);
     void write_vm_variable(uint8_t i, uint16_t value);
+    void write_videoram(uint16_t x, uint16_t y, uint8_t c);
+    //tilemap_t *m_char_tilemap;
 };
 
 

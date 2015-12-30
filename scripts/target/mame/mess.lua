@@ -3226,6 +3226,7 @@ files {
 createMESSProjects(_target, _subtarget, "virtualmachine")
 files {
     MAME_DIR .. "src/mame/drivers/another_world.cpp",
+    MAME_DIR .. "src/mame/video/anotherworld.cpp",
 }
 
 createMESSProjects(_target, _subtarget, "votrax")
