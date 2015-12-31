@@ -16,6 +16,18 @@ enum {
     VIDEO_2=1
 };
 
+struct Polygon {
+    enum {
+        MAX_POINTS = 50
+    };
+
+    uint16_t bbox_w, bbox_h;
+    uint8_t numPoints;
+    Point points[MAX_POINTS];
+
+    void readVertices(const uint8_t *p, uint16_t zoom);
+};
+
 class another_world_state : public driver_device
 {
 public:
@@ -37,7 +49,13 @@ public:
     uint8_t m_curPage;
     bitmap_ind16 m_page_bitmaps[4];
     tilemap_t *m_char_tilemap;
-    uint8_t * m_polygonBuffer;
+    uint8_t* m_polygonData;
+    uint16_t m_data_offset;
+    Polygon m_polygon;
+    int16_t m_hliney;
+
+    //Division precomputing lookup table
+    uint16_t m_interpTable[0x400];
 
     required_shared_ptr<UINT8> m_videoram;
     required_device<gfxdecode_device> m_gfxdecode;
@@ -53,5 +71,13 @@ public:
     void changePalette(uint8_t paletteId);
     void setDataBuffer(uint8_t type, uint16_t offset);
     void readAndDrawPolygon(uint8_t color, uint16_t zoom, const Point &pt);
-
+    void fillPolygon(uint16_t color, uint16_t zoom, const Point &pt);
+    void drawPoint(uint8_t color, int16_t x, int16_t y);
+    void readAndDrawPolygonHierarchy(uint16_t zoom, const Point &pgc);
+    int32_t calcStep(const Point &p1, const Point &p2, uint16_t &dy);
+    void drawLineBlend(int16_t x1, int16_t x2, uint8_t color);
+    void drawLineN(int16_t x1, int16_t x2, uint8_t color);
+    void drawLineP(int16_t x1, int16_t x2, uint8_t color);
 };
+
+typedef void (another_world_state::*drawLine)(int16_t x1, int16_t x2, uint8_t col);
