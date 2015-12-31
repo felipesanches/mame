@@ -375,9 +375,7 @@ void another_world_cpu_device::execute_instruction()
         case 0x0B: /* setPalette */
         {
             uint16_t paletteId = fetch_word();
-            //TODO: Implement-me!
-            //video->paletteIdRequested = paletteId >> 8;
-            printf("changePalette(%d)\n", paletteId);
+            ((another_world_state*) owner())->changePalette((uint8_t ) (paletteId >> 8));
             return;
         }
         case 0x0C: /* resetThread */

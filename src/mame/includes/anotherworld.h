@@ -8,7 +8,8 @@ public:
         m_videoram(*this, "videoram"),
         m_gfxdecode(*this, "gfxdecode"),
         m_maincpu(*this, "maincpu"),
-        m_screen(*this, "screen")
+        m_screen(*this, "screen"),
+        m_palette(*this, "palette")
     { }
 
     DECLARE_DRIVER_INIT(another_world);
@@ -23,9 +24,11 @@ public:
     required_device<gfxdecode_device> m_gfxdecode;
     required_device<another_world_cpu_device> m_maincpu;
     required_device<screen_device> m_screen;
+    required_device<palette_device> m_palette;
     UINT32 screen_update_aw(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
     void draw_charactere(uint8_t character, uint16_t x, uint16_t y, uint8_t color);
     void selectVideoPage(uint8_t pageId);
     void fillPage(uint8_t pageId, uint8_t color);
     void copyVideoPage(uint8_t srcPageId, uint8_t dstPageId, uint16_t vscroll);
+    void changePalette(uint8_t paletteId);
 };

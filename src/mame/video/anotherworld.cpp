@@ -39,6 +39,22 @@ static uint8_t getPagePtrIndex(uint8_t pageId){
     return i;
 }
 
+#define NUM_COLORS 16
+void another_world_state::changePalette(uint8_t paletteId){
+    const uint8_t *colors = memregion("colors")->base();
+    uint8_t r, g, b;
+
+    for (int i = 0; i < NUM_COLORS; ++i)
+    {
+        uint8_t c1 = *(colors + paletteId * 2*NUM_COLORS + 2*i);
+        uint8_t c2 = *(colors + paletteId * 2*NUM_COLORS + 2*i + 1);
+        r = ((c1 & 0x0F) << 2) | ((c1 & 0x0F) >> 2);
+        g = ((c2 & 0xF0) >> 2) | ((c2 & 0xF0) >> 6);
+        b = ((c2 & 0x0F) >> 2) | ((c2 & 0x0F) << 2);
+        m_palette->set_pen_color(i, pal6bit(r), pal6bit(g), pal6bit(b));
+    }
+}
+
 void another_world_state::selectVideoPage(uint8_t pageId){
     m_curPage = getPagePtrIndex(pageId);
 }
