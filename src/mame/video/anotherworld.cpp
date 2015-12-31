@@ -39,6 +39,23 @@ static uint8_t getPagePtrIndex(uint8_t pageId){
     return i;
 }
 
+void another_world_state::setDataBuffer(uint8_t type, uint16_t offset){
+    switch (type){
+        case CINEMATIC:
+            m_polygonBuffer = memregion("cinematic")->base();
+            break;
+        case VIDEO_2:
+            m_polygonBuffer = memregion("video2")->base();
+            break;
+    }
+    //TODO: Implement-me!
+    // use the offset value here...    
+}
+
+void another_world_state::readAndDrawPolygon(uint8_t color, uint16_t zoom, const Point &pt){
+    //TODO: Implement-me!
+}
+
 #define NUM_COLORS 16
 void another_world_state::changePalette(uint8_t paletteId){
     const uint8_t *colors = memregion("colors")->base();
@@ -64,7 +81,7 @@ void another_world_state::fillPage(uint8_t pageId, uint8_t color){
 
     for (int x=0; x<320; x++){
         for (int y=0; y<200; y++){
-            m_page_bitmaps[i].pix16(y, x) = color; //TODO: m_palette->pen(color);
+            m_page_bitmaps[i].pix16(y, x) = color;
         }
     }
 }
@@ -89,7 +106,7 @@ void another_world_state::draw_charactere(uint8_t character, uint16_t x, uint16_
         uint8_t row = font[(character - ' ') * 8 + j];
         for (int i = 0; i < 8; i++) {
             if (row & 0x80) {
-                m_page_bitmaps[m_curPage].pix16(y+j, x+i) = color; //TODO: m_palette->pen(color);
+                m_page_bitmaps[m_curPage].pix16(y+j, x+i) = color;
             }
             row <<= 1;
         }

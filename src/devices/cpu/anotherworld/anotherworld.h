@@ -82,6 +82,9 @@ protected:
     uint16_t vmStackCalls[256];
     int      m_currentThread;
 
+    //video-related:
+    bool m_useVideo2;
+
 private:
     void nextThread();
     void execute_instruction();

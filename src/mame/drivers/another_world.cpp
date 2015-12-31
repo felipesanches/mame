@@ -94,16 +94,18 @@ static MACHINE_CONFIG_START( another_world, another_world_state )
 MACHINE_CONFIG_END
 
 ROM_START( anotherw )
-    ROM_REGION( 0xfc00, "maincpu", ROMREGION_ERASEFF )
-    /* anotherworld_msdos_resource_0x15.bin (bytecode: Protection screens) */
-    ROM_LOAD( "resource-0x15.bin", 0x0000, 0x10e1, CRC(f26172f6) SHA1(d0bc831a0683bb1416900c45be677a51fb9bc0fa) )
+    ROM_REGION( 0xfc00, "maincpu", ROMREGION_ERASEFF ) /* MS-DOS: Bytecode */
+    ROM_LOAD( "resource-0x15.bin", 0x0000, 0x10e1, CRC(f26172f6) SHA1(d0bc831a0683bb1416900c45be677a51fb9bc0fa) ) /* Protection screens */
 
-    /* anotherworld_msdos_resource_0x1b.bin (introduction cinematic) */
-    //ROM_LOAD( "resource-0x1b.bin", 0x0000, 0x514a, CRC(82ccacd6) SHA1(f093b219e10d3bd9d9fc93d36cb232f13da4881e) )
+    ROM_REGION( 0x0800, "colors", 0 ) /* MS-DOS: Palette */
+    ROM_LOAD( "resource-0x14.bin", 0x0000, 0x0800, CRC(d72808cf) SHA1(b078c4a11628a384ab7c3128dfe93eaeb2745c07) ) /* Protection screens */
 
-    ROM_REGION( 0x0800, "colors", 0 )
-    /* anotherworld_msdos_resource_0x14.bin (palette: Protection screens) */
-    ROM_LOAD( "resource-0x14.bin", 0x0000, 0x0800, CRC(d72808cf) SHA1(b078c4a11628a384ab7c3128dfe93eaeb2745c07) )
+    ROM_REGION( 0x2000, "video1", ROMREGION_ERASEFF ) /* MS-DOS: Cinematic */
+    ROM_LOAD( "resource-0x16.bin", 0x0000, 0x1404, CRC(114b0df5) SHA1(41d191da457779b0ce140035889ad2c73bf171b8) ) /* Protection screens */
+    //ROM_LOAD( "resource-0x1b.bin", 0x0000, 0x514a, CRC(82ccacd6) SHA1(f093b219e10d3bd9d9fc93d36cb232f13da4881e) ) /* Intro */
+
+    //ROM_REGION( 0x????, "video2", ROMREGION_ERASEFF ) /* MS-DOS: Video2 */
+    //ROM_LOAD( "resource-0x00.bin", 0x0000, 0x????, CRC(?) SHA1(?) ) /* Protection screens */
 
     ROM_REGION( 0x0300, "chargen", 0)
     ROM_LOAD( "anotherworld_chargen.rom", 0x0000, 0x0300, CRC(e2df8c47) SHA1(b79b41835aa2d5747932f8080bb6fb2cf32837d7) )

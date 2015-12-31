@@ -117,9 +117,9 @@ void another_world_cpu_device::execute_instruction()
 
     if (opcode & 0x80) 
     {
-        uint16_t off = ((opcode << 8) | fetch_byte()) * 2;
+        uint16_t offset = ((opcode << 8) | fetch_byte()) * 2;
 
-        //res->_useSegVideo2 = false;
+        m_useVideo2 = false;
         int16_t x = fetch_byte();
         int16_t y = fetch_byte();
         int16_t h = y - 199;
@@ -127,13 +127,12 @@ void another_world_cpu_device::execute_instruction()
             y = 199;
             x += h;
         }
-        printf("vid_opcd_0x80 : opcode=0x%X off=0x%X x=%d y=%d\n", opcode, off, x, y);
+        printf("vid_opcd_0x80 : opcode=0x%X off=0x%X x=%d y=%d\n", opcode, offset, x, y);
 
-        //TODO: Implement-me!
         // This switch the polygon database to "cinematic" and probably draws a black polygon
         // over all the screen.
-//        video->setDataBuffer(res->segCinematic, off);
-//        video->readAndDrawPolygon(COLOR_BLACK, DEFAULT_ZOOM, Point(x,y));
+        ((another_world_state*) owner())->setDataBuffer(CINEMATIC, offset);
+        ((another_world_state*) owner())->readAndDrawPolygon(COLOR_BLACK, DEFAULT_ZOOM, Point(x,y));
 
         return;
     } 
@@ -141,10 +140,10 @@ void another_world_cpu_device::execute_instruction()
     if (opcode & 0x40) 
     {
         int16_t x, y;
-        uint16_t off = fetch_word() * 2;
+        uint16_t offset = fetch_word() * 2;
         x = fetch_byte();
 
-//        res->_useSegVideo2 = false;
+        m_useVideo2 = false;
 
         if (!(opcode & 0x20)) 
         {
@@ -190,16 +189,15 @@ void another_world_cpu_device::execute_instruction()
         else 
         {
             if (opcode & 1) {
-                //res->_useSegVideo2 = true;
+                m_useVideo2 = true;
                 DECREMENT_PC_64K;
                 zoom = 0x40;
             }
         }
-        printf("vid_opcd_0x40 : off=0x%X x=%d y=%d\n", off, x, y);
+        printf("vid_opcd_0x40 : off=0x%X x=%d y=%d\n", offset, x, y);
 
-        //TODO: Implement-me!
-//            video->setDataBuffer(res->_useSegVideo2 ? res->_segVideo2 : res->segCinematic, off);
-//            video->readAndDrawPolygon(0xFF, zoom, Point(x, y));
+        ((another_world_state*) owner())->setDataBuffer(m_useVideo2 ? VIDEO_2 : CINEMATIC, offset);
+        ((another_world_state*) owner())->readAndDrawPolygon(0xFF, zoom, Point(x, y));
         return;
     }
     

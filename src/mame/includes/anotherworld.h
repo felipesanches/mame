@@ -1,5 +1,21 @@
 #include "cpu/anotherworld/anotherworld.h"
 
+struct Point {
+    int16_t x, y;
+
+    Point() : x(0), y(0) {}
+    Point(int16_t xx, int16_t yy) : x(xx), y(yy) {}
+    Point(const Point &p) : x(p.x), y(p.y) {}
+};
+
+#define COLOR_BLACK 0xFF
+#define DEFAULT_ZOOM 0x40
+
+enum {
+    CINEMATIC=0,
+    VIDEO_2=1
+};
+
 class another_world_state : public driver_device
 {
 public:
@@ -12,23 +28,30 @@ public:
         m_palette(*this, "palette")
     { }
 
-    DECLARE_DRIVER_INIT(another_world);
     virtual void machine_start() override;
-    TILE_GET_INFO_MEMBER(get_char_tile_info);
     virtual void video_start() override;
+    DECLARE_DRIVER_INIT(another_world);
     DECLARE_PALETTE_INIT(anotherw);
+    TILE_GET_INFO_MEMBER(get_char_tile_info);
+
     uint8_t m_curPage;
     bitmap_ind16 m_page_bitmaps[4];
-    tilemap_t    *m_char_tilemap;
+    tilemap_t *m_char_tilemap;
+    uint8_t * m_polygonBuffer;
+
     required_shared_ptr<UINT8> m_videoram;
     required_device<gfxdecode_device> m_gfxdecode;
     required_device<another_world_cpu_device> m_maincpu;
     required_device<screen_device> m_screen;
     required_device<palette_device> m_palette;
+
     UINT32 screen_update_aw(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
     void draw_charactere(uint8_t character, uint16_t x, uint16_t y, uint8_t color);
     void selectVideoPage(uint8_t pageId);
     void fillPage(uint8_t pageId, uint8_t color);
     void copyVideoPage(uint8_t srcPageId, uint8_t dstPageId, uint16_t vscroll);
     void changePalette(uint8_t paletteId);
+    void setDataBuffer(uint8_t type, uint16_t offset);
+    void readAndDrawPolygon(uint8_t color, uint16_t zoom, const Point &pt);
+
 };
