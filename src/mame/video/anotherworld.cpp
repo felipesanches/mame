@@ -18,6 +18,33 @@ void another_world_state::video_start()
     }
 }
 
+void another_world_state::fillPage(uint8_t pageId, uint8_t color){
+    int i;
+    
+    switch(pageId){
+        case 0:
+        case 1:
+        case 2:
+        case 3:
+            i = pageId;
+            break;
+        case 0xFE:
+            i = 2;
+            break;
+        case 0xFF:
+            i = 3;
+            break;
+        default:
+            i = 0;
+    }
+
+    for (int x=0; x<320; x++){
+        for (int y=0; y<200; y++){
+            m_page_bitmaps[i].pix16(y, x) = color; //TODO: m_palette->pen(color);
+        }
+    }
+}
+
 void another_world_state::draw_charactere(uint8_t character, uint16_t x, uint16_t y, uint8_t color){
     const uint8_t *font = memregion("chargen")->base();
 

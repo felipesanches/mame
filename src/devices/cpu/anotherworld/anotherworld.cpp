@@ -437,9 +437,8 @@ void another_world_cpu_device::execute_instruction()
         {
             uint8_t pageId = fetch_byte();
             uint8_t color = fetch_byte();
-            printf("fillVideoPage(%d, %d)\n", pageId, color);
-            //TODO:Implement-me!
-            //video->fillPage(pageId, color);
+//            printf("fillVideoPage(%d, %d)\n", pageId, color);
+            ((another_world_state*) owner())->fillPage(pageId, color);
             return;
         }
         case 0x0F: /* copyVideoPage */
