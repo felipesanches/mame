@@ -428,16 +428,13 @@ void another_world_cpu_device::execute_instruction()
         case 0x0D: /* selectVideoPage */
         {
             uint8_t frameBufferId = fetch_byte();
-            //TODO: Implement-me!
-            //video->changePagePtr1(frameBufferId);
-            printf("selectVideoPage(%d)\n", frameBufferId);
+            ((another_world_state*) owner())->selectVideoPage(frameBufferId);
             return;
         }
         case 0x0E: /* fillVideoPage */
         {
             uint8_t pageId = fetch_byte();
             uint8_t color = fetch_byte();
-//            printf("fillVideoPage(%d, %d)\n", pageId, color);
             ((another_world_state*) owner())->fillPage(pageId, color);
             return;
         }

@@ -18,9 +18,8 @@ void another_world_state::video_start()
     }
 }
 
-void another_world_state::fillPage(uint8_t pageId, uint8_t color){
-    int i;
-    
+static uint8_t getPagePtrIndex(uint8_t pageId){
+    uint8_t i;
     switch(pageId){
         case 0:
         case 1:
@@ -37,6 +36,15 @@ void another_world_state::fillPage(uint8_t pageId, uint8_t color){
         default:
             i = 0;
     }
+    return i;
+}
+
+void another_world_state::selectVideoPage(uint8_t pageId){
+    m_curPage = getPagePtrIndex(pageId);
+}
+
+void another_world_state::fillPage(uint8_t pageId, uint8_t color){
+    uint8_t i = getPagePtrIndex(pageId);
 
     for (int x=0; x<320; x++){
         for (int y=0; y<200; y++){
