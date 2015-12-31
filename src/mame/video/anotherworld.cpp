@@ -53,6 +53,19 @@ void another_world_state::fillPage(uint8_t pageId, uint8_t color){
     }
 }
 
+void another_world_state::copyVideoPage(uint8_t srcPageId, uint8_t dstPageId, uint16_t vscroll){
+//TODO: add support for vertical scrolling
+    uint8_t src = getPagePtrIndex(srcPageId);
+    uint8_t dest = getPagePtrIndex(dstPageId);
+    
+    for (int x=0; x<320; x++){
+        for (int y=0; y<200; y++){
+            uint16_t color = m_page_bitmaps[src].pix16(y, x);
+            m_page_bitmaps[dest].pix16(y, x) = color;
+        }
+    }    
+}
+
 void another_world_state::draw_charactere(uint8_t character, uint16_t x, uint16_t y, uint8_t color){
     const uint8_t *font = memregion("chargen")->base();
 

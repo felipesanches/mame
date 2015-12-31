@@ -442,9 +442,7 @@ void another_world_cpu_device::execute_instruction()
         {
             uint8_t srcPageId = fetch_byte();
             uint8_t dstPageId = fetch_byte();
-            printf("copyVideoPage(%d, %d)\n", srcPageId, dstPageId);
-            //TODO: Implement-me!
-            //video->copyPage(srcPageId, dstPageId, read_vm_variable(VM_VARIABLE_SCROLL_Y));
+            ((another_world_state*) owner())->copyVideoPage(srcPageId, dstPageId, read_vm_variable(VM_VARIABLE_SCROLL_Y));
             return;
         }
         case 0x10: /* blitFramebuffer */

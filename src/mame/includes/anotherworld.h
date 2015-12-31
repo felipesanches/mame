@@ -27,4 +27,5 @@ public:
     void draw_charactere(uint8_t character, uint16_t x, uint16_t y, uint8_t color);
     void selectVideoPage(uint8_t pageId);
     void fillPage(uint8_t pageId, uint8_t color);
+    void copyVideoPage(uint8_t srcPageId, uint8_t dstPageId, uint16_t vscroll);
 };
