@@ -8,6 +8,7 @@
 #include "debugger.h"
 #include "anotherworld.h"
 #include "anotherworld_hardcoded.h"
+#include "includes/anotherworld.h"
 
 const device_type ANOTHER_WORLD  = &device_creator<another_world_cpu_device>;
 
@@ -31,16 +32,9 @@ void another_world_cpu_device::nextThread(){
     PC = vmThreads[m_currentThread];
 }
 
-//void another_world_cpu_device::set_video_pointers(tilemap_t *tm){
-//    m_char_tilemap = tm;
-//}
-
 void another_world_cpu_device::write_videoram(uint16_t x, uint16_t y, uint8_t c){
     uint16_t offset = 40*y + x;
     m_program->write_byte(0xfc00 + offset, c);
-//    printf("write to videoram: offset=0x%04X value=0x%02X\n", offset, c);
-    //if (m_char_tilemap)
-    //    m_char_tilemap->mark_tile_dirty(0);
 }
 
 uint16_t another_world_cpu_device::read_vm_variable(uint8_t i){
@@ -62,41 +56,6 @@ uint16_t another_world_cpu_device::fetch_word(){
     INCREMENT_PC_64K;
     INCREMENT_PC_64K;
     return value;
-}
-
-static uint8_t ascii_to_aw_encoding(uint8_t c){
-    if (c >= '0' && c <= '9') return c - 'A' + 0x10;
-    if (c >= 'A' && c <= 'Z') return c - 'A' + 0x21;
-    if (c >= 'a' && c <= 'z') return c - 'a' + 0x41;
-    switch(c){
-        case ' ': return 0x00;
-        case '!': return 0x01;
-        case '"': return 0x02;
-        case '#': return 0x03;
-        case '$': return 0x04;
-        case '%': return 0x05;
-        case '&': return 0x06;
-        case '\'': return 0x07;
-        case '(': return 0x08;
-        case ')': return 0x09;
-        case '*': return 0x0A;
-        case '+': return 0x0B;
-        case ',': return 0x0C;
-        case '-': return 0x0D;
-        //case '°': return 0x0E;
-        case '/': return 0x0F;
-        case ':': return 0x1A;
-        case ';': return 0x1B;
-        case '<': return 0x1C;
-        case '=': return 0x1D;
-        case '>': return 0x1E;
-        case '?': return 0x1F;
-        case '[': return 0x3B;
-        case '_': return 0x3F;
-        //case '²': return 0x5B;
-        case '}': return 0x5D;
-        default: return 0x5F;        
-    }
 }
 
 void another_world_cpu_device::device_start()
@@ -541,23 +500,19 @@ void another_world_cpu_device::execute_instruction()
         case 0x12: /* drawString */
         {
             uint16_t stringId = fetch_word();
-            uint16_t x = fetch_byte()/8;
-            uint16_t y = fetch_byte()/8;
+            uint16_t x = fetch_byte();
+            uint16_t y = fetch_byte();
             uint16_t color = fetch_byte();
 
-            //TODO: set colorram to configure the color of the printerd text strings
-            //TODO: Reimplement this to allow for text strings to be printed
-            //       in x,y coordinates not aligned to the 8x8 pixels character grid (this sucks!)
-
-            printf("drawString(0x%04X, x:%d, y:%d, color:%d) text='%s'\n", stringId, x, y, color, getString(stringId));
+//            printf("drawString(0x%04X, x:%d, y:%d, color:%d) text='%s'\n", stringId, x, y, color, getString(stringId));
 
             uint16_t x0 = x;
             for (const char* c = getString(stringId); *c != '\0'; c++){
                 if (*c == '\n'){
-                    y++;
+                    y+=8;
                     x=x0;
                 } else {
-                    write_videoram(x++, y, ascii_to_aw_encoding((uint8_t) *c));
+                    ((another_world_state*) owner())->draw_charactere((uint8_t) *c, x+=8, y, (uint8_t) color);
                 }
             }
             return;

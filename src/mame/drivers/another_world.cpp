@@ -87,7 +87,6 @@ static MACHINE_CONFIG_START( another_world, another_world_state )
     MCFG_SCREEN_UPDATE_DRIVER(another_world_state, screen_update_aw)
 
     MCFG_SCREEN_PALETTE("palette")
-
     MCFG_GFXDECODE_ADD("gfxdecode", "palette", anotherw)
 
     MCFG_PALETTE_ADD("palette", 256)
