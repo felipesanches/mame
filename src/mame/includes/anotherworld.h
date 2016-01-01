@@ -44,6 +44,10 @@ public:
     virtual void video_start() override;
     DECLARE_DRIVER_INIT(another_world);
     DECLARE_PALETTE_INIT(anotherw);
+
+    DECLARE_READ16_MEMBER(left_right_r);
+    DECLARE_READ16_MEMBER(up_down_r);
+    DECLARE_READ16_MEMBER(action_r);
     TILE_GET_INFO_MEMBER(get_char_tile_info);
 
     uint8_t m_curPage;

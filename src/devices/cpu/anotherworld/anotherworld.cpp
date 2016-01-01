@@ -112,7 +112,6 @@ void another_world_cpu_device::execute_run()
 void another_world_cpu_device::execute_instruction()
 {
     debugger_instruction_hook(this, PC);
-//    unsigned char value;
     unsigned char opcode = fetch_byte();
 
     if (opcode & 0x80) 
@@ -127,7 +126,7 @@ void another_world_cpu_device::execute_instruction()
             y = 199;
             x += h;
         }
-        printf("vid_opcd_0x80 : opcode=0x%X off=0x%X x=%d y=%d\n", opcode, offset, x, y);
+//        printf("vid_opcd_0x80 : opcode=0x%X off=0x%X x=%d y=%d\n", opcode, offset, x, y);
 
         // This switch the polygon database to "cinematic" and probably draws a black polygon
         // over all the screen.
@@ -194,7 +193,7 @@ void another_world_cpu_device::execute_instruction()
                 zoom = 0x40;
             }
         }
-        printf("vid_opcd_0x40 : off=0x%X x=%d y=%d\n", offset, x, y);
+//        printf("vid_opcd_0x40 : off=0x%X x=%d y=%d\n", offset, x, y);
 
         ((another_world_state*) owner())->setDataBuffer(m_useVideo2 ? VIDEO_2 : CINEMATIC, offset);
         ((another_world_state*) owner())->readAndDrawPolygon(0xFF, zoom, Point(x, y));
