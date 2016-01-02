@@ -262,7 +262,7 @@ void another_world_state::drawPoint(uint8_t color, int16_t x, int16_t y) {
 
 #define NUM_COLORS 16
 void another_world_state::changePalette(uint8_t paletteId){
-    const uint8_t *colors = memregion("colors")->base();
+    const uint8_t *colors = memregion("palettes")->base();
     uint8_t r, g, b;
 
     for (int i = 0; i < NUM_COLORS; ++i)
