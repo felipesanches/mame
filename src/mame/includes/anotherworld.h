@@ -42,6 +42,7 @@ public:
 
     virtual void machine_start() override;
     virtual void video_start() override;
+    DECLARE_MACHINE_START(anotherw);
     DECLARE_DRIVER_INIT(another_world);
     DECLARE_PALETTE_INIT(anotherw);
 
