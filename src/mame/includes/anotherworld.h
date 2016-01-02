@@ -51,8 +51,12 @@ public:
     DECLARE_READ16_MEMBER(action_r);
     TILE_GET_INFO_MEMBER(get_char_tile_info);
 
-    uint8_t m_curPage;
+    bitmap_ind16* m_curPagePtr;
+    bitmap_ind16 m_screen_bitmap;
     bitmap_ind16 m_page_bitmaps[4];
+    bitmap_ind16* m_pagePtrs[4];
+
+    
     tilemap_t *m_char_tilemap;
     uint8_t* m_polygonData;
     uint16_t m_data_offset;
@@ -83,6 +87,8 @@ public:
     void drawLineBlend(int16_t x1, int16_t x2, uint8_t color);
     void drawLineN(int16_t x1, int16_t x2, uint8_t color);
     void drawLineP(int16_t x1, int16_t x2, uint8_t color);
+    void updateDisplay(uint8_t pageId);
+    bitmap_ind16* getPagePtr(uint8_t pageId);
 };
 
 typedef void (another_world_state::*drawLine)(int16_t x1, int16_t x2, uint8_t col);

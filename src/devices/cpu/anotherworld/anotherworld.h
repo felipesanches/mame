@@ -84,6 +84,7 @@ protected:
 
     //video-related:
     bool m_useVideo2;
+    time_t m_lastTimeStamp;
 
 private:
     void nextThread();

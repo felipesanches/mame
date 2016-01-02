@@ -93,7 +93,7 @@ ADDRESS_MAP_END
 
 static MACHINE_CONFIG_START( another_world, another_world_state )
     /* basic machine hardware */
-    MCFG_CPU_ADD("maincpu", ANOTHER_WORLD, 200) /* FIX-ME: This clock frequency is arbitrary */
+    MCFG_CPU_ADD("maincpu", ANOTHER_WORLD, 500) /* FIX-ME: This clock frequency is arbitrary */
     MCFG_CPU_PROGRAM_MAP(aw_prog_map)
     MCFG_CPU_DATA_MAP(aw_data_map)
 
@@ -116,15 +116,13 @@ MACHINE_CONFIG_END
 
 MACHINE_START_MEMBER(another_world_state, anotherw)
 {
-    
-    
     membank("bytecode_bank")->configure_entries(0, 10, memregion("bytecode")->base(), 0x10000);
     membank("palette_bank")->configure_entries(0, 10, memregion("palettes")->base(), 0x0800);
     membank("video1_bank")->configure_entries(0, 10, memregion("video1")->base(), 0x10000);
 
-    membank("bytecode_bank")->set_entry(1);
-    membank("palette_bank")->set_entry(1);
-    membank("video1_bank")->set_entry(1);
+    membank("bytecode_bank")->set_entry(5);
+    membank("palette_bank")->set_entry(5);
+    membank("video1_bank")->set_entry(5);
 }
 
 ROM_START( anotherw )

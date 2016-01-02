@@ -8,41 +8,44 @@ void another_world_state::video_start()
     m_char_tilemap = &machine().tilemap().create(m_gfxdecode, tilemap_get_info_delegate(FUNC(another_world_state::get_char_tile_info),this), TILEMAP_SCAN_ROWS,  8, 8, 40, 25);
     m_char_tilemap->configure_groups(*m_gfxdecode->gfx(0), 0x4f);
 
-    m_curPage = 0;
     for (int i=0; i<4; i++){
         m_screen->register_screen_bitmap(m_page_bitmaps[i]);
+        m_pagePtrs[i] = &m_page_bitmaps[i];
     }
+    m_screen->register_screen_bitmap(m_screen_bitmap);
+    m_curPagePtr = &m_page_bitmaps[0];
+
+    //this is weird...
+    m_pagePtrs[2] = &m_page_bitmaps[2];
+    m_pagePtrs[3] = &m_page_bitmaps[1];
 
     for (int c = 0; c < 40*25; c++){
         m_videoram[c] = 0x00;
     }
-    
-    m_interpTable[0] = 0x4000;
 
+    m_interpTable[0] = 0x4000;
     for (int i = 1; i < 0x400; ++i) {
         m_interpTable[i] = 0x4000 / i;
     }
 }
 
-static uint8_t getPagePtrIndex(uint8_t pageId){
-    uint8_t i;
+bitmap_ind16* another_world_state::getPagePtr(uint8_t pageId){
     switch(pageId){
         case 0:
         case 1:
         case 2:
         case 3:
-            i = pageId;
+            return m_pagePtrs[pageId];
             break;
         case 0xFE:
-            i = 2;
+            return m_pagePtrs[2];
             break;
         case 0xFF:
-            i = 3;
+            return m_pagePtrs[3];
             break;
         default:
-            i = 0;
+            return m_pagePtrs[0];
     }
-    return i;
 }
 
 void another_world_state::setDataBuffer(uint8_t type, uint16_t offset){
@@ -151,32 +154,29 @@ int32_t another_world_state::calcStep(const Point &p1, const Point &p2, uint16_t
 void another_world_state::drawLineBlend(int16_t x1, int16_t x2, uint8_t color) {
     int16_t xmax = MAX(x1, x2);
     int16_t xmin = MIN(x1, x2);
-    uint8_t i = getPagePtrIndex(m_curPage);
 
     for (int16_t x=xmin; x<=xmax; x++){
-        color = m_page_bitmaps[i].pix16(m_hliney, x);
-        m_page_bitmaps[i].pix16(m_hliney, x) = (color & 0x7) | 0x8;
+        color = m_curPagePtr->pix16(m_hliney, x);
+        m_curPagePtr->pix16(m_hliney, x) = (color & 0x7) | 0x8;
     }
 }
 
 void another_world_state::drawLineN(int16_t x1, int16_t x2, uint8_t color) {
     int16_t xmax = MAX(x1, x2);
     int16_t xmin = MIN(x1, x2);
-    uint8_t cur = getPagePtrIndex(m_curPage);
 
     for (int16_t x=xmin; x<=xmax; x++){
-        m_page_bitmaps[cur].pix16(m_hliney, x) = color;
+        m_curPagePtr->pix16(m_hliney, x) = color;
     }
 }
 
 void another_world_state::drawLineP(int16_t x1, int16_t x2, uint8_t color) {
     int16_t xmax = MAX(x1, x2);
     int16_t xmin = MIN(x1, x2);
-    uint8_t cur = getPagePtrIndex(m_curPage);
 
     for (int16_t x=xmin; x<=xmax; x++){
-        color = m_page_bitmaps[0].pix16(m_hliney, x);
-        m_page_bitmaps[cur].pix16(m_hliney, x) = color;
+        color = m_pagePtrs[0]->pix16(m_hliney, x);
+        m_curPagePtr->pix16(m_hliney, x) = color;
     }
 }
 
@@ -255,9 +255,35 @@ void another_world_state::fillPolygon(uint16_t color, uint16_t zoom, const Point
     }
 }
 
+void another_world_state::updateDisplay(uint8_t pageId) {
+    if (pageId != 0xFE) {
+        if (pageId == 0xFF) {
+            bitmap_ind16* tmp = m_pagePtrs[2];
+            m_pagePtrs[2] = m_pagePtrs[3];
+            m_pagePtrs[3] = tmp;
+        } else {
+            m_pagePtrs[2] = getPagePtr(pageId);
+        }
+    }
+
+#if 0
+    //Check if we need to change the palette
+    if (paletteIdRequested != NO_PALETTE_CHANGE_REQUESTED) {
+        changePal(paletteIdRequested);
+        paletteIdRequested = NO_PALETTE_CHANGE_REQUESTED;
+    }
+#endif
+
+    for (int x=0; x<320; x++){
+        for (int y=0; y<200; y++){
+            uint16_t color = m_pagePtrs[2]->pix16(y, x);
+            m_screen_bitmap.pix16(y, x) = color;
+        }
+    }
+}
+
 void another_world_state::drawPoint(uint8_t color, int16_t x, int16_t y) {
-    uint8_t i = getPagePtrIndex(m_curPage);
-    m_page_bitmaps[i].pix16(y, x) = color;
+    m_curPagePtr->pix16(y, x) = color;
 }
 
 #define NUM_COLORS 16
@@ -277,30 +303,29 @@ void another_world_state::changePalette(uint8_t paletteId){
 }
 
 void another_world_state::selectVideoPage(uint8_t pageId){
-    m_curPage = getPagePtrIndex(pageId);
+    m_curPagePtr = getPagePtr(pageId);
 }
 
 void another_world_state::fillPage(uint8_t pageId, uint8_t color){
-    uint8_t i = getPagePtrIndex(pageId);
+    bitmap_ind16* page = getPagePtr(pageId);
 
     for (int x=0; x<320; x++){
         for (int y=0; y<200; y++){
-            m_page_bitmaps[i].pix16(y, x) = color;
+            page->pix16(y, x) = color;
         }
     }
 }
 
 void another_world_state::copyVideoPage(uint8_t srcPageId, uint8_t dstPageId, uint16_t vscroll){
 //TODO: add support for vertical scrolling
-    uint8_t src = getPagePtrIndex(srcPageId);
-    uint8_t dest = getPagePtrIndex(dstPageId);
+    bitmap_ind16* src = getPagePtr(srcPageId);
+    bitmap_ind16* dest = getPagePtr(dstPageId);
     
     for (int x=0; x<320; x++){
         for (int y=0; y<200; y++){
-            uint16_t color = m_page_bitmaps[src].pix16(y, x);
-            m_page_bitmaps[dest].pix16(y, x) = color;
+            dest->pix16(y, x) = src->pix16(y, x);
         }
-    }    
+    }
 }
 
 void another_world_state::draw_charactere(uint8_t character, uint16_t x, uint16_t y, uint8_t color){
@@ -310,7 +335,7 @@ void another_world_state::draw_charactere(uint8_t character, uint16_t x, uint16_
         uint8_t row = font[(character - ' ') * 8 + j];
         for (int i = 0; i < 8; i++) {
             if (row & 0x80) {
-                m_page_bitmaps[m_curPage].pix16(y+j, x+i) = color;
+                m_curPagePtr->pix16(y+j, x+i) = color;
             }
             row <<= 1;
         }
@@ -322,7 +347,6 @@ UINT32 another_world_state::screen_update_aw(screen_device &screen, bitmap_ind16
 //    bitmap.fill(m_palette->black_pen(), cliprect);
     
     //m_char_tilemap->draw(screen, bitmap, cliprect, 0, 0);
-    copybitmap(bitmap, m_page_bitmaps[m_curPage], 0, 0, 0, 0, cliprect);
-    
+    copybitmap(bitmap, m_screen_bitmap, 0, 0, 0, 0, cliprect);    
     return 0;
 }

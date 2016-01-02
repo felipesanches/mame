@@ -24,7 +24,7 @@ void another_world_cpu_device::nextThread(){
     do {
         m_currentThread = (m_currentThread+1) % NUM_THREADS;
         if (m_currentThread == 0){
-            //TODO: update video frame
+            ((another_world_state*) owner())->updateDisplay(0);
         }
     } while(vmThreads[m_currentThread] >= 0xFFFE ||
             vmThreadIsFrozen[m_currentThread]);
@@ -81,6 +81,7 @@ void another_world_cpu_device::device_reset()
     m_currentThread = 0;
     m_pc = 0;
     m_sp = 0;
+    m_lastTimeStamp = time(0);
 
     //TODO: declare the stack as a RAM block so that
     //      we can inspect it in the Memory View Window.
@@ -443,41 +444,30 @@ void another_world_cpu_device::execute_instruction()
         case 0x10: /* blitFramebuffer */
         {
             uint8_t pageId = fetch_byte();
-            printf("blitFramebuffer(%d)\n", pageId);
+            printf("blitFramebuffer(pageId:%d, PAUSE_SLICES:%d)\n", pageId, read_vm_variable(VM_VARIABLE_PAUSE_SLICES));
             
-            //TODO: Implement-me!
 #if 0
-            inp_handleSpecialKeys();
-
             //Nasty hack....was this present in the original assembly  ??!!
             if (res->currentPartId == GAME_PART_FIRST && read_vm_variable(0x67) == 1) 
                 write_vm_variable(0xDC, 0x21);
+#endif            
+//            time_t timeToSleep = read_vm_variable(VM_VARIABLE_PAUSE_SLICES) * 20.0 / 100.0;
+
+            // The bytecode will set vmVariables[VM_VARIABLE_PAUSE_SLICES] from 1 to 5
+            // The virtual machine hence indicate how long the image should be displayed.
+
+            //printf("vmVariables[VM_VARIABLE_PAUSE_SLICES]=%d\n",vmVariables[VM_VARIABLE_PAUSE_SLICES]);
             
-            if (!_fastMode) {
+//            while(time(0) - m_lastTimeStamp < timeToSleep) {
+                //wait
+//            };
 
-                int32_t delay = sys->getTimeStamp() - lastTimeStamp;
-                int32_t timeToSleep = read_vm_variable(VM_VARIABLE_PAUSE_SLICES) * 20 - delay;
+            m_lastTimeStamp = time(0);
 
-                // The bytecode will set vmVariables[VM_VARIABLE_PAUSE_SLICES] from 1 to 5
-                // The virtual machine hence indicate how long the image should be displayed.
-
-                //printf("vmVariables[VM_VARIABLE_PAUSE_SLICES]=%d\n",vmVariables[VM_VARIABLE_PAUSE_SLICES]);
-
-
-                if (timeToSleep > 0)
-                {
-                //  printf("Sleeping for=%d\n",timeToSleep);
-                    sys->sleep(timeToSleep);
-                }
-
-                lastTimeStamp = sys->getTimeStamp();
-            }
-
-            //WTF ?
+            //Why ?
             write_vm_variable(0xF7, 0x0000);
 
-            video->updateDisplay(pageId);
-#endif
+            ((another_world_state*) owner())->updateDisplay(pageId);
             return;
         }
         case 0x11: /* killThread */
