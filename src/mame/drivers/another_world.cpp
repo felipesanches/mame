@@ -78,8 +78,10 @@ TILE_GET_INFO_MEMBER(another_world_state::get_char_tile_info)
 }
 
 static ADDRESS_MAP_START( aw_prog_map, AS_PROGRAM, 8, another_world_state )
-    AM_RANGE(0x0000, 0xfbff) AM_ROMBANK("bytecode_bank")
-    AM_RANGE(0xfc00, 0xffff) AM_RAM AM_SHARE("videoram")
+    AM_RANGE(0x00000, 0x0fbff) AM_ROMBANK("bytecode_bank")
+    AM_RANGE(0x0fc00, 0x0ffff) AM_RAM AM_SHARE("videoram")
+    AM_RANGE(0x10000, 0x1ffff) AM_ROMBANK("video1_bank") /* FIX-ME: This is just a hack for setting up a video1 bank */
+    AM_RANGE(0x20000, 0x207ff) AM_ROMBANK("palette_bank") /* FIX-ME: This is just a hack for setting up a palette bank */
 ADDRESS_MAP_END
 
 static ADDRESS_MAP_START( aw_data_map, AS_DATA, 16, another_world_state )
@@ -91,7 +93,7 @@ ADDRESS_MAP_END
 
 static MACHINE_CONFIG_START( another_world, another_world_state )
     /* basic machine hardware */
-    MCFG_CPU_ADD("maincpu", ANOTHER_WORLD, 5000) /* FIX-ME: This clock frequency is arbitrary */
+    MCFG_CPU_ADD("maincpu", ANOTHER_WORLD, 200) /* FIX-ME: This clock frequency is arbitrary */
     MCFG_CPU_PROGRAM_MAP(aw_prog_map)
     MCFG_CPU_DATA_MAP(aw_data_map)
 
@@ -112,18 +114,17 @@ static MACHINE_CONFIG_START( another_world, another_world_state )
     MCFG_PALETTE_INDIRECT_ENTRIES(16) /*I am not sure yet what does it mean...*/
 MACHINE_CONFIG_END
 
-//TODO: use this to switch bytecode bank:    membank("bytecode_bank")->set_entry(n);
-
 MACHINE_START_MEMBER(another_world_state, anotherw)
 {
+    
+    
     membank("bytecode_bank")->configure_entries(0, 10, memregion("bytecode")->base(), 0x10000);
-    membank("bytecode_bank")->set_entry(0);
+    membank("palette_bank")->configure_entries(0, 10, memregion("palettes")->base(), 0x0800);
+    membank("video1_bank")->configure_entries(0, 10, memregion("video1")->base(), 0x10000);
 
-    //membank("palette_bank")->configure_entries(0, 10, memregion("palettes")->base(), 0x10000);
-    //membank("palette_bank")->set_entry(0);
-
-    //membank("video1_bank")->configure_entries(0, 10, memregion("video1")->base(), 0x10000);
-    //membank("video1_bank")->set_entry(0);
+    membank("bytecode_bank")->set_entry(1);
+    membank("palette_bank")->set_entry(1);
+    membank("video1_bank")->set_entry(1);
 }
 
 ROM_START( anotherw )

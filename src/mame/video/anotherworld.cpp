@@ -48,7 +48,7 @@ static uint8_t getPagePtrIndex(uint8_t pageId){
 void another_world_state::setDataBuffer(uint8_t type, uint16_t offset){
     switch (type){
         case CINEMATIC:
-            m_polygonData = memregion("video1")->base();
+            m_polygonData = (uint8_t *) membank("video1_bank")->base();
             break;
         case VIDEO_2:
             m_polygonData = memregion("video2")->base();
@@ -262,7 +262,7 @@ void another_world_state::drawPoint(uint8_t color, int16_t x, int16_t y) {
 
 #define NUM_COLORS 16
 void another_world_state::changePalette(uint8_t paletteId){
-    const uint8_t *colors = memregion("palettes")->base();
+    const uint8_t *colors = (const uint8_t *) membank("palette_bank")->base();
     uint8_t r, g, b;
 
     for (int i = 0; i < NUM_COLORS; ++i)
