@@ -49,6 +49,9 @@ public:
     DECLARE_READ16_MEMBER(left_right_r);
     DECLARE_READ16_MEMBER(up_down_r);
     DECLARE_READ16_MEMBER(action_r);
+    DECLARE_READ16_MEMBER(pos_mask_r);
+    DECLARE_READ16_MEMBER(action_pos_mask_r);
+
     TILE_GET_INFO_MEMBER(get_char_tile_info);
 
     bitmap_ind16* m_curPagePtr;

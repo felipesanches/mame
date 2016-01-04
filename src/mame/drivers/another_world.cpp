@@ -20,31 +20,42 @@ void another_world_state::machine_start(){
 
 static INPUT_PORTS_START( another_world )
       PORT_START("keyboard")
-      PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Arrow up") PORT_CODE(KEYCODE_UP)
-      PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Arrow down") PORT_CODE(KEYCODE_DOWN)
-      PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Arrow left") PORT_CODE(KEYCODE_LEFT)
-      PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Arrow right") PORT_CODE(KEYCODE_RIGHT)
-      PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Action") PORT_CODE(KEYCODE_LCONTROL)
+      PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Arrow up") PORT_CODE(KEYCODE_RIGHT)
+      PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Arrow down") PORT_CODE(KEYCODE_LEFT)
+      PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Arrow left") PORT_CODE(KEYCODE_DOWN)
+      PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Arrow right") PORT_CODE(KEYCODE_UP)
+      PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Action") PORT_CODE(KEYCODE_LCONTROL)
+      
+      //TODO: hookup the actual keyboard letter keys as inputs for usage in the password screen
 INPUT_PORTS_END
 
 READ16_MEMBER(another_world_state::up_down_r)
 {
     int value = ioport("keyboard")->read();
-    return (value & 0x01) ? 0xFFFF : (value & 0x02) ? 1 : 0;
+    return (value & 0x08) ? 0xFFFF : (value & 0x04) ? 1 : 0;
 }
 
 READ16_MEMBER(another_world_state::left_right_r)
 {
     int value = ioport("keyboard")->read();
-    return (value & 0x04) ? 0xFFFF : (value & 0x08) ? 1 : 0;
+    return (value & 0x02) ? 0xFFFF : (value & 0x01) ? 1 : 0;
 }
 
 READ16_MEMBER(another_world_state::action_r)
 {
     int value = ioport("keyboard")->read();
-    return (value & 0x10) ? 1 : 0;
+    return (value & 0x80) ? 1 : 0;
 }
 
+READ16_MEMBER(another_world_state::pos_mask_r)
+{
+    return ioport("keyboard")->read() & 0xf;
+}
+
+READ16_MEMBER(another_world_state::action_pos_mask_r)
+{
+    return ioport("keyboard")->read();
+}
 
 /* Graphics Layouts */
 
@@ -85,9 +96,11 @@ static ADDRESS_MAP_START( aw_prog_map, AS_PROGRAM, 8, another_world_state )
 ADDRESS_MAP_END
 
 static ADDRESS_MAP_START( aw_data_map, AS_DATA, 16, another_world_state )
-    AM_RANGE(0x01F4, 0x01f5) AM_READ(action_r)
-    AM_RANGE(0x01F6, 0x01f7) AM_READ(up_down_r)
-    AM_RANGE(0x01F8, 0x01f9) AM_READ(left_right_r)
+    AM_RANGE(0x01f4, 0x01f5) AM_READ(action_r)
+    AM_RANGE(0x01f6, 0x01f7) AM_READ(up_down_r)
+    AM_RANGE(0x01f8, 0x01f9) AM_READ(left_right_r)
+    AM_RANGE(0x01fa, 0x01fb) AM_READ(pos_mask_r)
+    AM_RANGE(0x01fc, 0x01fd) AM_READ(action_pos_mask_r)
     AM_RANGE(0x0000, 0x01ff) AM_RAM //VM Variables
 ADDRESS_MAP_END
 
