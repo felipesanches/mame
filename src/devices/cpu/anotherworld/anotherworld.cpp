@@ -24,7 +24,7 @@ void another_world_cpu_device::nextThread(){
     do {
         m_currentThread = (m_currentThread+1) % NUM_THREADS;
         if (m_currentThread == 0){
-            ((another_world_state*) owner())->updateDisplay(0);
+            ((another_world_state*) owner())->updateDisplay(0xFE);
         }
     } while(vmThreads[m_currentThread] >= 0xFFFE ||
             vmThreadIsFrozen[m_currentThread]);

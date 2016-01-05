@@ -10,14 +10,12 @@ void another_world_state::video_start()
 
     for (int i=0; i<4; i++){
         m_screen->register_screen_bitmap(m_page_bitmaps[i]);
-        m_pagePtrs[i] = &m_page_bitmaps[i];
     }
     m_screen->register_screen_bitmap(m_screen_bitmap);
-    m_curPagePtr = &m_page_bitmaps[0];
 
-    //this is weird...
-    m_pagePtrs[2] = &m_page_bitmaps[2];
-    m_pagePtrs[3] = &m_page_bitmaps[1];
+    m_curPagePtr2 = &m_page_bitmaps[2];
+    m_curPagePtr3 = &m_page_bitmaps[1];
+    m_curPagePtr1 = getPagePtr(0xFE);
 
     for (int c = 0; c < 40*25; c++){
         m_videoram[c] = 0x00;
@@ -35,16 +33,16 @@ bitmap_ind16* another_world_state::getPagePtr(uint8_t pageId){
         case 1:
         case 2:
         case 3:
-            return m_pagePtrs[pageId];
-            break;
-        case 0xFE:
-            return m_pagePtrs[2];
+            return &m_page_bitmaps[pageId];
             break;
         case 0xFF:
-            return m_pagePtrs[3];
+            return m_curPagePtr3;
+            break;
+        case 0xFE:
+            return m_curPagePtr2;
             break;
         default:
-            return m_pagePtrs[0];
+            return &m_page_bitmaps[0];
     }
 }
 
@@ -156,8 +154,8 @@ void another_world_state::drawLineBlend(int16_t x1, int16_t x2, uint8_t color) {
     int16_t xmin = MIN(x1, x2);
 
     for (int16_t x=xmin; x<=xmax; x++){
-        color = m_curPagePtr->pix16(m_hliney, x);
-        m_curPagePtr->pix16(m_hliney, x) = (color & 0x7) | 0x8;
+        color = m_curPagePtr1->pix16(m_hliney, x);
+        m_curPagePtr1->pix16(m_hliney, x) = (color & 0x7) | 0x8;
     }
 }
 
@@ -166,7 +164,7 @@ void another_world_state::drawLineN(int16_t x1, int16_t x2, uint8_t color) {
     int16_t xmin = MIN(x1, x2);
 
     for (int16_t x=xmin; x<=xmax; x++){
-        m_curPagePtr->pix16(m_hliney, x) = color;
+        m_curPagePtr1->pix16(m_hliney, x) = color;
     }
 }
 
@@ -175,8 +173,8 @@ void another_world_state::drawLineP(int16_t x1, int16_t x2, uint8_t color) {
     int16_t xmin = MIN(x1, x2);
 
     for (int16_t x=xmin; x<=xmax; x++){
-        color = m_pagePtrs[0]->pix16(m_hliney, x);
-        m_curPagePtr->pix16(m_hliney, x) = color;
+        color = m_page_bitmaps[0].pix16(m_hliney, x);
+        m_curPagePtr1->pix16(m_hliney, x) = color;
     }
 }
 
@@ -258,11 +256,11 @@ void another_world_state::fillPolygon(uint16_t color, uint16_t zoom, const Point
 void another_world_state::updateDisplay(uint8_t pageId) {
     if (pageId != 0xFE) {
         if (pageId == 0xFF) {
-            bitmap_ind16* tmp = m_pagePtrs[2];
-            m_pagePtrs[2] = m_pagePtrs[3];
-            m_pagePtrs[3] = tmp;
+            bitmap_ind16* tmp = m_curPagePtr2;
+            m_curPagePtr2 = m_curPagePtr3;
+            m_curPagePtr3 = tmp;
         } else {
-            m_pagePtrs[2] = getPagePtr(pageId);
+            m_curPagePtr2 = getPagePtr(pageId);
         }
     }
 
@@ -276,14 +274,14 @@ void another_world_state::updateDisplay(uint8_t pageId) {
 
     for (int x=0; x<320; x++){
         for (int y=0; y<200; y++){
-            uint16_t color = m_pagePtrs[2]->pix16(y, x);
+            uint16_t color = m_curPagePtr2->pix16(y, x);
             m_screen_bitmap.pix16(y, x) = color;
         }
     }
 }
 
 void another_world_state::drawPoint(uint8_t color, int16_t x, int16_t y) {
-    m_curPagePtr->pix16(y, x) = color;
+    m_curPagePtr1->pix16(y, x) = color;
 }
 
 #define NUM_COLORS 16
@@ -303,7 +301,7 @@ void another_world_state::changePalette(uint8_t paletteId){
 }
 
 void another_world_state::selectVideoPage(uint8_t pageId){
-    m_curPagePtr = getPagePtr(pageId);
+    m_curPagePtr1 = getPagePtr(pageId);
 }
 
 void another_world_state::fillPage(uint8_t pageId, uint8_t color){
@@ -335,7 +333,7 @@ void another_world_state::draw_charactere(uint8_t character, uint16_t x, uint16_
         uint8_t row = font[(character - ' ') * 8 + j];
         for (int i = 0; i < 8; i++) {
             if (row & 0x80) {
-                m_curPagePtr->pix16(y+j, x+i) = color;
+                m_curPagePtr1->pix16(y+j, x+i) = color;
             }
             row <<= 1;
         }
