@@ -106,7 +106,11 @@ ADDRESS_MAP_END
 
 static MACHINE_CONFIG_START( another_world, another_world_state )
     /* basic machine hardware */
-    MCFG_CPU_ADD("maincpu", ANOTHER_WORLD, 500) /* FIX-ME: This clock frequency is arbitrary */
+    MCFG_CPU_ADD("maincpu", ANOTHER_WORLD, 50) /* This clock is based on the finest
+                                                * pause interval resolution
+                                                * 20msec = 50Hz
+                                                * (only the "pause" opcode consumes cycles)
+                                                */
     MCFG_CPU_PROGRAM_MAP(aw_prog_map)
     MCFG_CPU_DATA_MAP(aw_data_map)
 

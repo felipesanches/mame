@@ -81,7 +81,6 @@ void another_world_cpu_device::device_reset()
     m_currentThread = 0;
     m_pc = 0;
     m_sp = 0;
-    m_lastTimeStamp = time(0);
 
     //TODO: declare the stack as a RAM block so that
     //      we can inspect it in the Memory View Window.
@@ -106,7 +105,6 @@ void another_world_cpu_device::execute_run()
     do
     {
         execute_instruction();
-        m_icount --;
     }
     while (m_icount > 0);
 }
@@ -446,25 +444,15 @@ void another_world_cpu_device::execute_instruction()
         case 0x10: /* blitFramebuffer */
         {
             uint8_t pageId = fetch_byte();
-            printf("blitFramebuffer(pageId:%d, PAUSE_SLICES:%d)\n", pageId, read_vm_variable(VM_VARIABLE_PAUSE_SLICES));
-            
+            //printf("blitFramebuffer(pageId:%d, PAUSE_SLICES:%d)\n", pageId, read_vm_variable(VM_VARIABLE_PAUSE_SLICES));
 #if 0
             //Nasty hack....was this present in the original assembly  ??!!
             if (res->currentPartId == GAME_PART_FIRST && read_vm_variable(0x67) == 1) 
                 write_vm_variable(0xDC, 0x21);
-#endif            
-//            time_t timeToSleep = read_vm_variable(VM_VARIABLE_PAUSE_SLICES) * 20.0 / 100.0;
-
+#endif
             // The bytecode will set vmVariables[VM_VARIABLE_PAUSE_SLICES] from 1 to 5
             // The virtual machine hence indicate how long the image should be displayed.
-
-            //printf("vmVariables[VM_VARIABLE_PAUSE_SLICES]=%d\n",vmVariables[VM_VARIABLE_PAUSE_SLICES]);
-            
-//            while(time(0) - m_lastTimeStamp < timeToSleep) {
-                //wait
-//            };
-
-            m_lastTimeStamp = time(0);
+            m_icount -= (int) read_vm_variable(VM_VARIABLE_PAUSE_SLICES);
 
             //Why ?
             write_vm_variable(0xF7, 0x0000);
