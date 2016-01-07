@@ -94,6 +94,8 @@ void another_world_cpu_device::device_reset()
         vmThreadIsFrozen[i] = false; //but not frozen
     }
 
+    vmThreads[0] = 0x0000;
+
     write_vm_variable(0x54, 0x0081); //TODO: figure out why this is supposedly needed.
     write_vm_variable(VM_VARIABLE_RANDOM_SEED, time(0));
 }
@@ -559,11 +561,28 @@ void another_world_cpu_device::execute_instruction()
                 player->stop();
                 mixer->stopAll();
                 res->invalidateRes();
-            } else {
-                res->loadPartsOrMemoryEntry(resourceId);
+                return;
             }
-#endif
-            return;
+#endif   
+
+#define NUM_MEM_LIST 0x91 /* TODO: check this! */
+
+            if (resourceId > NUM_MEM_LIST) {
+//                player->stop();
+//                mixer->stopAll();
+
+                write_vm_variable(0xE4, 0x14); //why?
+
+                ((another_world_state*) owner())->setupPart(resourceId);
+
+                for (int i=0; i<NUM_THREADS; i++){
+                    vmThreadIsFrozen[i] = true;
+                    vmThreads[i] = 0xFFFF;
+                    m_currentThread = 0;
+                }
+                vmThreads[0] = 0x0000;
+            }
+        return;
         }
         case 0x1A: /* playMusic */
         {

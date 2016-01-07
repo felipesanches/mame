@@ -133,13 +133,23 @@ MACHINE_START_MEMBER(another_world_state, anotherw)
     membank("palette_bank")->configure_entries(0, 10, memregion("palettes")->base(), 0x0800);
     membank("video1_bank")->configure_entries(0, 10, memregion("video1")->base(), 0x10000);
 
-    membank("bytecode_bank")->set_entry(5);
-    membank("palette_bank")->set_entry(5);
-    membank("video1_bank")->set_entry(5);
+    setupPart(0);
+}
+
+void another_world_state::setupPart(uint16_t resourceId){
+    uint8_t bank = resourceId & 0xf;
+
+    if (bank==9) bank--; //password screen TODO: do we really need this?!
+
+    if (bank < 9){
+        membank("bytecode_bank")->set_entry(bank);
+        membank("palette_bank")->set_entry(bank);
+        membank("video1_bank")->set_entry(bank);
+    }
 }
 
 ROM_START( aw_msdos )
-    ROM_REGION( 0xa0000, "bytecode", ROMREGION_ERASEFF ) /* MS-DOS: Bytecode */
+    ROM_REGION( 0x90000, "bytecode", ROMREGION_ERASEFF ) /* MS-DOS: Bytecode */
     ROM_LOAD( "resource-0x15.bin", 0x00000, 0x10e1, CRC(f26172f6) SHA1(d0bc831a0683bb1416900c45be677a51fb9bc0fa) ) /* Protection screens */
     ROM_LOAD( "resource-0x18.bin", 0x10000, 0x268f, CRC(77edb7c0) SHA1(e30861c118818bd6e6c6e22205d3a657a87a2523) ) /* introduction cinematic */
     ROM_LOAD( "resource-0x1b.bin", 0x20000, 0x514a, CRC(82ccacd6) SHA1(f093b219e10d3bd9d9fc93d36cb232f13da4881e) ) /* lake initial stage + beast hunt */
@@ -148,32 +158,29 @@ ROM_START( aw_msdos )
     ROM_LOAD( "resource-0x24.bin", 0x50000, 0x205f, CRC(eba90ce1) SHA1(d5470f4cee0a261af6e50436cba5b916eaa6ae22) ) /* battlechar cinematic */
     ROM_LOAD( "resource-0x27.bin", 0x60000, 0xc630, CRC(d6d9b3be) SHA1(33fb28e37b1fc69993b41e3ee3ec1f17f9a0e3b1) )
     ROM_LOAD( "resource-0x2a.bin", 0x70000, 0x0b46, CRC(2bfb51c6) SHA1(6a6b293ecf7656f42fb5ba2fae9b9caa1de95a51) )
-    ROM_LOAD( "resource-0x7e.bin", 0x80000, 0x10a1, CRC(c1d2eab1) SHA1(7b47c2797ad3d11d66d7d3ab7b6f6d6f1aeacc4a) )
-    ROM_LOAD( "resource-0x7e.bin", 0x90000, 0x10a1, CRC(c1d2eab1) SHA1(7b47c2797ad3d11d66d7d3ab7b6f6d6f1aeacc4a) ) /* password screen */
+    ROM_LOAD( "resource-0x7e.bin", 0x80000, 0x10a1, CRC(c1d2eab1) SHA1(7b47c2797ad3d11d66d7d3ab7b6f6d6f1aeacc4a) ) /* password screen */
 
-    ROM_REGION( 0x5000, "palettes", 0 ) /* MS-DOS: Palette */
+    ROM_REGION( 0x4800, "palettes", 0 ) /* MS-DOS: Palette */
     ROM_LOAD( "resource-0x14.bin", 0x0000, 0x0800, CRC(d72808cf) SHA1(b078c4a11628a384ab7c3128dfe93eaeb2745c07) ) /* Protection screens */
     ROM_LOAD( "resource-0x17.bin", 0x0800, 0x0800, CRC(47fffea1) SHA1(90d179214abc7cae251eb880c193abf6b628468d) ) /* introduction cinematic */
     ROM_LOAD( "resource-0x1a.bin", 0x1000, 0x0800, CRC(7f113f5b) SHA1(36a68781be5dac1533b08000f22166516e2e2f6f) ) /* lake initial stage + beast hunt */
-    ROM_LOAD( "resource-0x1d.bin", 0x1800, 0x0800, CRC(e4de15de) SHA1(523fe81af8da8967abb1015a158d54998e2c13c2) ) /* battlechar cinematic */
+    ROM_LOAD( "resource-0x1d.bin", 0x1800, 0x0800, CRC(e4de15de) SHA1(523fe81af8da8967abb1015a158d54998e2c13c2) )
     ROM_LOAD( "resource-0x20.bin", 0x2000, 0x0800, CRC(b2ec0730) SHA1(1568de3eb0de055771a47137e99a3f833ee2727d) )
-    ROM_LOAD( "resource-0x23.bin", 0x2800, 0x0800, CRC(a348edf0) SHA1(79d83dc3814470d134be6042138f2788105572b1) )
+    ROM_LOAD( "resource-0x23.bin", 0x2800, 0x0800, CRC(a348edf0) SHA1(79d83dc3814470d134be6042138f2788105572b1) ) /* battlechar cinematic */
     ROM_LOAD( "resource-0x26.bin", 0x3000, 0x0800, CRC(496504ed) SHA1(3c1e6630e2cc45b10d15174750e3e3c27b8aa642) )
     ROM_LOAD( "resource-0x29.bin", 0x3800, 0x0800, CRC(3a47eb2b) SHA1(ea89ff64ddf1e6928779f381176c002d9bb901ce) )
-    ROM_LOAD( "resource-0x7d.bin", 0x4000, 0x0800, CRC(30a8a552) SHA1(a84d3129d6119d7669eb8179459b145cc1f543b7) )
-    ROM_LOAD( "resource-0x7d.bin", 0x4800, 0x0800, CRC(30a8a552) SHA1(a84d3129d6119d7669eb8179459b145cc1f543b7) ) /* password screen */
+    ROM_LOAD( "resource-0x7d.bin", 0x4000, 0x0800, CRC(30a8a552) SHA1(a84d3129d6119d7669eb8179459b145cc1f543b7) ) /* password screen */
 
-    ROM_REGION( 0xa0000, "video1", ROMREGION_ERASEFF ) /* MS-DOS: Cinematic */
+    ROM_REGION( 0x90000, "video1", ROMREGION_ERASEFF ) /* MS-DOS: Cinematic */
     ROM_LOAD( "resource-0x16.bin", 0x00000, 0x1404, CRC(114b0df5) SHA1(41d191da457779b0ce140035889ad2c73bf171b8) ) /* Protection screens */
     ROM_LOAD( "resource-0x19.bin", 0x10000, 0xfece, CRC(89c1285e) SHA1(4ed7e5558583fe7b442bd615f8ba3e19ebd25174) ) /* introduction cinematic */
     ROM_LOAD( "resource-0x1c.bin", 0x20000, 0xe0a6, CRC(374a9f2c) SHA1(b358843f81e2ca09d0be9957d9b012d96a134dc7) ) /* lake initial stage + beast hunt */
-    ROM_LOAD( "resource-0x1f.bin", 0x30000, 0xd1d8, CRC(e11e2762) SHA1(33229378309d4bee4ff286b0713bf30d7591797a) ) /* battlechar cinematic */
+    ROM_LOAD( "resource-0x1f.bin", 0x30000, 0xd1d8, CRC(e11e2762) SHA1(33229378309d4bee4ff286b0713bf30d7591797a) )
     ROM_LOAD( "resource-0x22.bin", 0x40000, 0xfe6c, CRC(774b3023) SHA1(5b29e56485c10040a81cd9c860bc634547f3f8f4) )
-    ROM_LOAD( "resource-0x25.bin", 0x50000, 0x721c, CRC(973c87df) SHA1(5fab9f14ab51e78cf95965f244e8b6464c96a64f) )
+    ROM_LOAD( "resource-0x25.bin", 0x50000, 0x721c, CRC(973c87df) SHA1(5fab9f14ab51e78cf95965f244e8b6464c96a64f) ) /* battlechar cinematic */
     ROM_LOAD( "resource-0x28.bin", 0x60000, 0xfdbe, CRC(0ff476d6) SHA1(61352b6dd8a66687c01c460a19d752772218abc0) )
     ROM_LOAD( "resource-0x2b.bin", 0x70000, 0x4e3a, CRC(94f58241) SHA1(fb812f75da62639094e095461dc5391b94bc0bd2) )
-    ROM_LOAD( "resource-0x7f.bin", 0x80000, 0x13b8, CRC(125a7e9e) SHA1(1a38a2f3ab0df86ebfa6dea3feb74cd7488fb329) )
-    ROM_LOAD( "resource-0x7f.bin", 0x90000, 0x13b8, CRC(125a7e9e) SHA1(1a38a2f3ab0df86ebfa6dea3feb74cd7488fb329) ) /* password screen */
+    ROM_LOAD( "resource-0x7f.bin", 0x80000, 0x13b8, CRC(125a7e9e) SHA1(1a38a2f3ab0df86ebfa6dea3feb74cd7488fb329) ) /* password screen */
 
     ROM_REGION( 0x8000, "video2", ROMREGION_ERASEFF ) /* MS-DOS: Video2 */
     ROM_LOAD( "resource-0x11.bin", 0x0000, 0x6214, CRC(2ea7976e) SHA1(93309c022be0f74064bf31618f8433b1c4d093dc) )
@@ -306,7 +313,7 @@ ROM_START(aw_amipk)
        http://www.thedigitalounge.com/dl/AnotherWorld-Retro-presskit.zip
      */
 
-    ROM_REGION( 0xa0000, "bytecode", ROMREGION_ERASEFF ) /* Amiga: Bytecode */
+    ROM_REGION( 0x90000, "bytecode", ROMREGION_ERASEFF ) /* Amiga: Bytecode */
     ROM_LOAD( "resource-0x15.bin", 0x00000, 0x0DD8, CRC(256f1a59) SHA1(d63ff7333b44309be84719b59d8325773e8bbacc) )
     ROM_LOAD( "resource-0x18.bin", 0x10000, 0x2530, CRC(ceb83037) SHA1(90900a34cd892ca0143b42519f44e12f478363fc) )
     ROM_LOAD( "resource-0x1b.bin", 0x20000, 0x4C02, CRC(58632e5e) SHA1(9ebdcca0b5b06b8045d59430dc390dc839d7cffa) )
@@ -316,9 +323,8 @@ ROM_START(aw_amipk)
     ROM_LOAD( "resource-0x27.bin", 0x60000, 0x99DC, CRC(70658790) SHA1(17ff6ed674d9fbc089095344f28dc770dc12b022) )
     ROM_LOAD( "resource-0x2a.bin", 0x70000, 0x09F4, CRC(2c5feaf3) SHA1(ec39742fe7f5dc1ee0bc48a1f4768e58994dc6eb) )
     ROM_LOAD( "resource-0x7e.bin", 0x80000, 0x0CC6, CRC(69502adb) SHA1(5605fcd4ccaeed38ef559beea5167f5c112dbad2) )
-    ROM_LOAD( "resource-0x7e.bin", 0x90000, 0x0CC6, CRC(69502adb) SHA1(5605fcd4ccaeed38ef559beea5167f5c112dbad2) )
 
-    ROM_REGION( 0x5000, "palettes", 0 ) /* Amiga: Palette */
+    ROM_REGION( 0x4800, "palettes", 0 ) /* Amiga: Palette */
     ROM_LOAD( "resource-0x14.bin", 0x0000, 0x800, CRC(9014fbcf) SHA1(25d4d0adf5d391c56470fd901ec543d10ff6e47a) )
     ROM_LOAD( "resource-0x17.bin", 0x0800, 0x800, CRC(9aad9bf2) SHA1(25629d95041e560279372ad1974a85ff3d976bec) )
     ROM_LOAD( "resource-0x1a.bin", 0x1000, 0x800, CRC(aa0a59d9) SHA1(9bfb05a6d90897e03b3b553160e7b575aaa58627) )
@@ -328,9 +334,8 @@ ROM_START(aw_amipk)
     ROM_LOAD( "resource-0x26.bin", 0x3000, 0x800, CRC(7d81ceb1) SHA1(e2067de55fd54533be04a4fcc6ead36debf414b0) )
     ROM_LOAD( "resource-0x29.bin", 0x3800, 0x800, CRC(ff34b1f5) SHA1(8bf1a6ffc206dda4c69f982e3589bb1bd593ba55) )
     ROM_LOAD( "resource-0x7d.bin", 0x4000, 0x800, CRC(479f78d5) SHA1(62a8f1863bc08747c7c57d337e95d0e2a7a01d31) )
-    ROM_LOAD( "resource-0x7d.bin", 0x4800, 0x800, CRC(479f78d5) SHA1(62a8f1863bc08747c7c57d337e95d0e2a7a01d31) )
 
-    ROM_REGION( 0xa0000, "video1", ROMREGION_ERASEFF ) /* Amiga: Cinematic */
+    ROM_REGION( 0x90000, "video1", ROMREGION_ERASEFF ) /* Amiga: Cinematic */
     ROM_LOAD( "resource-0x16.bin", 0x00000, 0x1090, CRC(ed7318ea) SHA1(34067e81613335837de25b4564808d6b78ed43a6) )
     ROM_LOAD( "resource-0x19.bin", 0x10000, 0xFE7A, CRC(a3c05a66) SHA1(f6d04525399bc4945a675351619426b11dc846d5) )
     ROM_LOAD( "resource-0x1c.bin", 0x20000, 0xFDBA, CRC(c40cce3a) SHA1(5229b1dac15088152ec2be77c0ede002860d9c3c) )
@@ -340,7 +345,6 @@ ROM_START(aw_amipk)
     ROM_LOAD( "resource-0x28.bin", 0x60000, 0xFF9A, CRC(5a56d563) SHA1(799df15d736729004a9dffb390ad09c0d7b2369a) )
     ROM_LOAD( "resource-0x2b.bin", 0x70000, 0x4E3A, CRC(cf09c940) SHA1(edb0d045047769e3fd76b75da61b0d5d2afd99d9) )
     ROM_LOAD( "resource-0x7f.bin", 0x80000, 0x13B8, CRC(2a44528f) SHA1(e40b9d2b4a126d339668a2d713bfc48d73bb3fb8) )
-    ROM_LOAD( "resource-0x7f.bin", 0x90000, 0x13B8, CRC(2a44528f) SHA1(e40b9d2b4a126d339668a2d713bfc48d73bb3fb8) )
 
     ROM_REGION( 0x8000, "video2", ROMREGION_ERASEFF ) /* Amiga: Video2 */
     ROM_LOAD( "resource-0x11.bin", 0x0000, 0x6214, CRC(2ea7976e) SHA1(93309c022be0f74064bf31618f8433b1c4d093dc) )

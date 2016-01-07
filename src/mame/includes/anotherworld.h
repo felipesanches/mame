@@ -76,6 +76,8 @@ public:
     required_device<screen_device> m_screen;
     required_device<palette_device> m_palette;
 
+    void setupPart(uint16_t resourceId);
+
     UINT32 screen_update_aw(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
     void draw_charactere(uint8_t character, uint16_t x, uint16_t y, uint8_t color);
     void selectVideoPage(uint8_t pageId);
