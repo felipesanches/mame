@@ -564,11 +564,11 @@ void another_world_cpu_device::execute_instruction()
                 ((another_world_state*) owner())->setupPart(resourceId);
 
                 for (int i=0; i<NUM_THREADS; i++){
-                    vmThreadIsFrozen[i] = true;
+                    vmThreadIsFrozen[i] = false;
                     vmThreads[i] = 0xFFFF;
                     m_currentThread = 0;
                 }
-                vmThreads[0] = 0x0000;
+                PC = vmThreads[0] = 0x0000;
             }
         return;
         }
