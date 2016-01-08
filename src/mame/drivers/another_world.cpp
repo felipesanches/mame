@@ -137,7 +137,7 @@ MACHINE_START_MEMBER(another_world_state, anotherw)
     membank("palette_bank")->configure_entries(0, 10, memregion("palettes")->base(), 0x0800);
     membank("video1_bank")->configure_entries(0, 10, memregion("video1")->base(), 0x10000);
 
-    setupPart(0);
+    setupPart(1);
 }
 
 void another_world_state::setupPart(uint16_t resourceId){

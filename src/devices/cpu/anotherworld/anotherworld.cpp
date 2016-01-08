@@ -23,7 +23,17 @@ another_world_cpu_device::another_world_cpu_device(const machine_config &mconfig
 void another_world_cpu_device::nextThread(){
     do {
         m_currentThread = (m_currentThread+1) % NUM_THREADS;
+
         if (m_currentThread == 0){
+            for (int i=0; i<NUM_THREADS; i++){
+                vmThreadIsFrozen[i] = requested_state[i];
+
+                uint16_t n = requested_PC[i];
+                if (n != VM_NO_SETVEC_REQUESTED){
+                    vmThreads[i] = (n == 0xFFFE) ? VM_INACTIVE_THREAD : n;
+                    requested_PC[i] = VM_NO_SETVEC_REQUESTED;
+                }
+            }
             ((another_world_state*) owner())->updateDisplay(0xFE);
         }
     } while(vmThreads[m_currentThread] >= 0xFFFE ||
@@ -89,11 +99,14 @@ void another_world_cpu_device::device_reset()
     }
 
     for (int i=0; i<NUM_THREADS; i++){
-        vmThreads[i] = 0xFFFF; //all threads are initially disabled
-        vmThreadIsFrozen[i] = false; //but not frozen
+        vmThreads[i] = 0xFFFF;
+        requested_PC[i] = 0xFFFF; //all threads are initially disabled
+
+        vmThreadIsFrozen[i] = false;
+        requested_state[i] = false; //but not frozen
     }
 
-    vmThreads[0] = 0x0000;
+    requested_PC[0] = 0x0000;
 
     write_vm_variable(0x54, 0x0081); //TODO: figure out why this is supposedly needed.
     write_vm_variable(VM_VARIABLE_RANDOM_SEED, time(0));
@@ -270,7 +283,7 @@ void another_world_cpu_device::execute_instruction()
         }
         case 0x06: /* pauseThread instruction (a.k.a. "break") */
         {
-            vmThreads[m_currentThread] = PC;
+            requested_PC[m_currentThread] = PC;
             nextThread();
             return;
         }
@@ -283,7 +296,7 @@ void another_world_cpu_device::execute_instruction()
         {
             uint8_t threadId = fetch_byte();
             uint16_t pcOffsetRequested = fetch_word();
-            vmThreads[threadId] = pcOffsetRequested;
+            requested_PC[threadId] = pcOffsetRequested;
             return;
         }
         case 0x09: /* DJNZ instrucion:
@@ -401,19 +414,19 @@ void another_world_cpu_device::execute_instruction()
                 case RESET_TYPE__FREEZE_CHANNELS:
                     //printf("freezeChannels (first:%d, last:%d)\n", first, last);
                     for (int i=first; i<=last; i++){
-                        vmThreadIsFrozen[i] = true;
+                        requested_state[i] = true;
                     }
                     break;
                 case RESET_TYPE__UNFREEZE_CHANNELS:
                     //printf("unfreezeChannels (first:%d, last:%d)\n", first, last);
                     for (int i=first; i<=last; i++){
-                        vmThreadIsFrozen[i] = false;
+                        requested_state[i] = false;
                     }
                     break;
                 case RESET_TYPE__DELETE_CHANNELS:
                     //printf("deleteChannels (first:%d, last:%d)\n", first, last);
                     for (int i=first; i<=last; i++){
-                        vmThreads[i] = 0xFFFE;
+                        requested_PC[i] = 0xFFFE;
                     }
                     break;
                 default:
@@ -563,12 +576,14 @@ void another_world_cpu_device::execute_instruction()
 
                 ((another_world_state*) owner())->setupPart(resourceId);
 
-                for (int i=0; i<NUM_THREADS; i++){
-                    vmThreadIsFrozen[i] = false;
-                    vmThreads[i] = 0xFFFF;
-                    m_currentThread = 0;
+                for (int i=1; i<NUM_THREADS; i++){
+                    requested_state[i] = true;
+                    requested_PC[i] = 0xFFFF;
                 }
-                PC = vmThreads[0] = 0x0000;
+
+                requested_state[0] = false;
+                requested_PC[0] = 0x0000;
+                nextThread();
             }
         return;
         }

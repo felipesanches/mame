@@ -15,6 +15,8 @@
 #define INCREMENT_PC_64K    (PC = (PC+1) & ADDRESS_MASK_64K)
 #define DECREMENT_PC_64K    (PC = (PC-1) & ADDRESS_MASK_64K)
 
+#define VM_NO_SETVEC_REQUESTED 0xFFFF
+#define VM_INACTIVE_THREAD 0xFFFF
 #define NUM_THREADS 64
 
 enum ScriptVars {
@@ -78,9 +80,11 @@ protected:
     virtual UINT32 disasm_max_opcode_bytes() const override { return 8; }
 
     uint16_t vmThreads[NUM_THREADS];
+    uint16_t requested_PC[NUM_THREADS];
     bool vmThreadIsFrozen[NUM_THREADS];
+    bool requested_state[NUM_THREADS];
     uint16_t vmStackCalls[256];
-    int      m_currentThread;
+    int m_currentThread;
 
     //video-related:
     bool m_useVideo2;
