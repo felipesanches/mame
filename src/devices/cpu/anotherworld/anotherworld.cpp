@@ -92,6 +92,11 @@ void another_world_cpu_device::device_reset()
     m_pc = 0;
     m_sp = 0;
 
+#ifdef DUMP_VM_EXECUTION_LOG
+    m_address_log = fopen("address_log.txt", "w");
+    fprintf(m_address_log, "begin log\n");
+#endif
+
     //TODO: declare the stack as a RAM block so that
     //      we can inspect it in the Memory View Window.
     for (int i=0; i<256; i++){
@@ -126,7 +131,14 @@ void another_world_cpu_device::execute_run()
 void another_world_cpu_device::execute_instruction()
 {
     debugger_instruction_hook(this, PC);
+
+#ifdef DUMP_VM_EXECUTION_LOG
+    int pcounter = PC;
     unsigned char opcode = fetch_byte();
+    fprintf(m_address_log, "[%X]: %X\n", pcounter, opcode);
+#else
+    unsigned char opcode = fetch_byte();
+#endif
 
     if (opcode & 0x80) 
     {
@@ -467,7 +479,12 @@ void another_world_cpu_device::execute_instruction()
 #endif
             // The bytecode will set vmVariables[VM_VARIABLE_PAUSE_SLICES] from 1 to 5
             // The virtual machine hence indicate how long the image should be displayed.
+
+#ifdef SPEEDUP_VM_EXECUTION
+            m_icount --;
+#else
             m_icount -= (int) read_vm_variable(VM_VARIABLE_PAUSE_SLICES);
+#endif
 
             //Why ?
             write_vm_variable(0xF7, 0x0000);
@@ -577,6 +594,9 @@ void another_world_cpu_device::execute_instruction()
                 write_vm_variable(0xE4, 0x14); //why?
 
                 ((another_world_state*) owner())->setupPart(resourceId);
+#ifdef DUMP_VM_EXECUTION_LOG
+                fprintf(m_address_log, "initForPart %d\n", resourceId);
+#endif
 
                 for (int i=1; i<NUM_THREADS; i++){
                     requested_state[i] = true;

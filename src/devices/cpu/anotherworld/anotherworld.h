@@ -19,6 +19,10 @@
 #define VM_INACTIVE_THREAD 0xFFFF
 #define NUM_THREADS 64
 
+//a couple optional features for easing VM debugging:
+//#define DUMP_VM_EXECUTION_LOG
+//#define SPEEDUP_VM_EXECUTION
+
 enum ScriptVars {
     VM_VARIABLE_RANDOM_SEED          = 0x3C,
     VM_VARIABLE_LAST_KEYCHAR         = 0xDA,
@@ -88,6 +92,10 @@ protected:
 
     //video-related:
     bool m_useVideo2;
+
+#ifdef DUMP_VM_EXECUTION_LOG
+    FILE* m_address_log;
+#endif
 
 private:
     void nextThread();
