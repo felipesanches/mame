@@ -283,7 +283,9 @@ void another_world_cpu_device::execute_instruction()
         }
         case 0x06: /* pauseThread instruction (a.k.a. "break") */
         {
-            requested_PC[m_currentThread] = PC;
+            if (requested_PC[m_currentThread] == VM_NO_SETVEC_REQUESTED)
+                requested_PC[m_currentThread] = PC;
+
             nextThread();
             return;
         }
