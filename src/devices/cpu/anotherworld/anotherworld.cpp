@@ -501,7 +501,7 @@ void another_world_cpu_device::execute_instruction()
         case 0x12: /* drawString */
         {
             uint16_t stringId = fetch_word();
-            uint16_t x = fetch_byte();
+            uint16_t x = 8 * (fetch_byte()-1);
             uint16_t y = fetch_byte();
             uint16_t color = fetch_byte();
 
