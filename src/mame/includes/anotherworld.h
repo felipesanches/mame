@@ -27,6 +27,8 @@ public:
     void setChannelVolume(uint8_t channel, uint8_t volume);
     void stopAll();
 
+    static const uint16_t frequenceTable[];
+
 protected:
     // device-level overrides
     virtual void device_start() override;
@@ -45,7 +47,7 @@ protected:
     {
     public:
         anotherw_channel();
-        void mix(direct_read_data &direct, stream_sample_t *buffer, int samples);
+        void mix(stream_sample_t *buffer, int samples);
 
         offs_t          m_base_offset;  // pointer to the base memory location
         UINT32          m_sample;       // current sample number
@@ -119,7 +121,8 @@ public:
         m_gfxdecode(*this, "gfxdecode"),
         m_maincpu(*this, "maincpu"),
         m_screen(*this, "screen"),
-        m_palette(*this, "palette")
+        m_palette(*this, "palette"),
+        m_mixer(*this, "samples")
     { }
 
     virtual void machine_start() override;
@@ -157,6 +160,7 @@ public:
     required_device<another_world_cpu_device> m_maincpu;
     required_device<screen_device> m_screen;
     required_device<palette_device> m_palette;
+    required_device<anotherw_sound_device> m_mixer;
 
     void setupPart(uint16_t resourceId);
 
@@ -177,6 +181,8 @@ public:
     void drawLineP(int16_t x1, int16_t x2, uint8_t color);
     void updateDisplay(uint8_t pageId);
     bitmap_ind16* getPagePtr(uint8_t pageId);
+
+    void playSound(uint16_t resNum, uint8_t freq, uint8_t vol, uint8_t channel);
 };
 
 typedef void (another_world_state::*drawLine)(int16_t x1, int16_t x2, uint8_t col);

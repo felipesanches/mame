@@ -105,10 +105,10 @@ void anotherw_sound_device::sound_stream_update(sound_stream &stream, stream_sam
 
     // iterate over channels and accumulate sample data
     for (auto & elem : m_channels)
-        elem.mix(*m_direct, outputs[0], samples);
+        elem.mix(outputs[0], samples);
 }
 
-#define OUTPUT_SAMPLE_RATE 44100 //FIX-ME!!!!!!
+#define OUTPUT_SAMPLE_RATE 384000
 void anotherw_sound_device::playChannel(uint8_t channel, const MixerChunk *mc, uint16_t freq, uint8_t volume) {
     assert(channel < AUDIO_NUM_CHANNELS);
 
@@ -179,15 +179,15 @@ anotherw_sound_device::anotherw_channel::anotherw_channel()
 {
 }
 
-static int8_t addclamp(int a, int b) {
+static int16_t addclamp(int a, int b) {
     int add = a + b;
-    if (add < -128) {
-        add = -128;
+    if (add < -32768) {
+        add = -32768;
     }
-    else if (add > 127) {
-        add = 127;
+    else if (add > 32767) {
+        add = 32767;
     }
-    return (int8_t)add;
+    return (int16_t)add;
 }
 
 //-------------------------------------------------
@@ -195,7 +195,7 @@ static int8_t addclamp(int a, int b) {
 //  add them to an output stream
 //-------------------------------------------------
 
-void anotherw_sound_device::anotherw_channel::mix(direct_read_data &direct, stream_sample_t *buffer, int samples)
+void anotherw_sound_device::anotherw_channel::mix(stream_sample_t *buffer, int samples)
 {
     // skip if not active
     if (!m_active)
@@ -232,7 +232,64 @@ void anotherw_sound_device::anotherw_channel::mix(direct_read_data &direct, stre
         int8_t b = (int8_t)((b1 * (0xFF - ilc) + b2 * ilc) >> 8);
 
         // set volume and clamp
-        *pBuf = addclamp(*pBuf, (int)b * m_volume / 0x40);
+        *pBuf = addclamp(*pBuf, ((int)b << 8) * m_volume / 0x40);
+    }
+}
+
+static uint8_t resource_indexes[] = {
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+    0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
+    0x12, 0x13, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31,
+    0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39,
+    0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0x41,
+    0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49,
+    0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f, 0x50, 0x51,
+    0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59,
+    0x5a, 0x5b, 0x5c, 0x5d, 0x5e, 0x5f, 0x60, 0x61,
+    0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69,
+    0x6a, 0x6b, 0x6c, 0x6d, 0x6e, 0x6f, 0x70, 0x71,
+    0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79,
+    0x7a, 0x7b, 0x7c, 0x80, 0x81, 0x82, 0x83, 0x84,
+    0x88, 0x89, 0x8a, 0x8b, 0x8c, 0x8d, 0x8e, 0x90,
+    0x91
+};
+
+static uint32_t resource_offset(uint16_t resNum){
+    for (int i=0; i<sizeof(resource_indexes); i++){
+        if (resNum == i) return resource_indexes[i];
+    }
+
+    printf("ERROR! Resource 0x%X not found!\n", resNum);
+    return 0;
+}
+
+const uint16_t anotherw_sound_device::frequenceTable[] = {
+    0x0CFF, 0x0DC3, 0x0E91, 0x0F6F, 0x1056, 0x114E, 0x1259, 0x136C,
+    0x149F, 0x15D9, 0x1726, 0x1888, 0x19FD, 0x1B86, 0x1D21, 0x1EDE,
+    0x20AB, 0x229C, 0x24B3, 0x26D7, 0x293F, 0x2BB2, 0x2E4C, 0x3110,
+    0x33FB, 0x370D, 0x3A43, 0x3DDF, 0x4157, 0x4538, 0x4998, 0x4DAE,
+    0x5240, 0x5764, 0x5C9A, 0x61C8, 0x6793, 0x6E19, 0x7485, 0x7BBD
+};
+
+void another_world_state::playSound(uint16_t resNum, uint8_t freq, uint8_t vol, uint8_t channel){
+    printf("playSound(0x%02X, freq:%d, vol:%d, channel:%d)\n", resNum, freq, vol, channel);
+
+    const uint8_t * samples = memregion("samples")->base() + resource_offset(resNum) * 0x10000;
+
+    if (vol == 0) {
+        m_mixer->stopChannel(channel);
+    } else {
+        struct anotherw_sound_device::MixerChunk mc;
+        memset(&mc, 0, sizeof(mc));
+        mc.data = samples + 8; // skip header
+        mc.len = (*(samples+1) << 8 | *(samples)) * 2;
+        mc.loopLen = (*(samples+3) << 8 | *(samples+2)) * 2;
+        if (mc.loopLen != 0) {
+            mc.loopPos = mc.len;
+        }
+        assert(freq < 40);
+        uint16_t f = anotherw_sound_device::frequenceTable[freq];
+        m_mixer->playChannel(channel & 3, &mc, f, MIN(vol, 0x3F));
     }
 }
 
@@ -361,7 +418,6 @@ static MACHINE_CONFIG_START( another_world, another_world_state )
     /* sound hardware */
     MCFG_SPEAKER_STANDARD_MONO("mono")
 
-    // Sample rate = 384000 ?
     MCFG_SOUND_ADD("samples", ANOTHERW_SOUND, 384000)
     MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
 MACHINE_CONFIG_END

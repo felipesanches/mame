@@ -565,9 +565,7 @@ void another_world_cpu_device::execute_instruction()
             uint8_t freq = fetch_byte();
             uint8_t vol = fetch_byte();
             uint8_t channel = fetch_byte();
-            printf("playSound(0x%02X, freq:%d, vol:%d, channel:%d)\n", resourceId, freq, vol, channel);
-            //TODO: Implement-me!
-            //snd_playSound(resourceId, freq, vol, channel);
+            ((another_world_state*) owner())->playSound(resourceId, freq, vol, channel);
             return;
         }
         case 0x19: /* load (a.k.a. "updateMemList") */
