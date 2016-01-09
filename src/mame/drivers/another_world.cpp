@@ -8,6 +8,234 @@
 #include "includes/anotherworld.h"
 #include "cpu/anotherworld/anotherworld.h"
 
+// device type definition
+const device_type ANOTHERW_SOUND = &device_creator<anotherw_sound_device>;
+
+// default address map
+static ADDRESS_MAP_START( anotherw_sound, AS_0, 8, anotherw_sound_device )
+    AM_RANGE(0x00000, 0x3ffff) AM_ROM
+ADDRESS_MAP_END
+
+//-------------------------------------------------
+//  anotherw_sound_device - constructor
+//-------------------------------------------------
+
+anotherw_sound_device::anotherw_sound_device(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock)
+    : device_t(mconfig, ANOTHERW_SOUND, "ANOTHERW_SOUND", tag, owner, clock, "anotherw_sound", __FILE__),
+        device_sound_interface(mconfig, *this),
+        device_memory_interface(mconfig, *this),
+        m_space_config("samples", ENDIANNESS_LITTLE, 8, 18, 0, nullptr, *ADDRESS_MAP_NAME(anotherw_sound)),
+        m_bank_installed(false),
+        m_bank_offs(0),
+        m_stream(nullptr),
+        m_direct(nullptr)
+{
+}
+
+//-------------------------------------------------
+//  device_start - device-specific startup
+//-------------------------------------------------
+
+void anotherw_sound_device::device_start()
+{
+    // find our direct access
+    m_direct = &space().direct();
+
+    // create the stream
+    m_stream = machine().sound().stream_alloc(*this, 0, 1, clock());
+
+    memset(m_channels, 0, sizeof(m_channels));
+}
+
+
+//-------------------------------------------------
+//  device_reset - device-specific reset
+//-------------------------------------------------
+
+void anotherw_sound_device::device_reset()
+{
+    m_stream->update();
+    for (auto & elem : m_channels)
+        elem.m_active = false;
+}
+
+
+//-------------------------------------------------
+//  device_post_load - device-specific post-load
+//-------------------------------------------------
+
+void anotherw_sound_device::device_post_load()
+{
+    set_bank_base(m_bank_offs);
+    device_clock_changed();
+}
+
+
+//-------------------------------------------------
+//  device_clock_changed - called if the clock
+//  changes
+//-------------------------------------------------
+
+void anotherw_sound_device::device_clock_changed()
+{
+    m_stream->set_sample_rate(clock());
+}
+
+
+//-------------------------------------------------
+//  memory_space_config - return a description of
+//  any address spaces owned by this device
+//-------------------------------------------------
+
+const address_space_config *anotherw_sound_device::memory_space_config(address_spacenum spacenum) const
+{
+    return (spacenum == 0) ? &m_space_config : nullptr;
+}
+
+
+//-------------------------------------------------
+//  stream_generate - handle update requests for
+//  our sound stream
+//-------------------------------------------------
+
+void anotherw_sound_device::sound_stream_update(sound_stream &stream, stream_sample_t **inputs, stream_sample_t **outputs, int samples)
+{
+    // reset the output stream
+    memset(outputs[0], 0, samples * sizeof(*outputs[0]));
+
+    // iterate over channels and accumulate sample data
+    for (auto & elem : m_channels)
+        elem.mix(*m_direct, outputs[0], samples);
+}
+
+#define OUTPUT_SAMPLE_RATE 44100 //FIX-ME!!!!!!
+void anotherw_sound_device::playChannel(uint8_t channel, const MixerChunk *mc, uint16_t freq, uint8_t volume) {
+    assert(channel < AUDIO_NUM_CHANNELS);
+
+    anotherw_channel *ch = &m_channels[channel];
+    ch->m_active = true;
+    ch->m_volume = volume;
+    ch->m_chunk = *mc;
+    ch->m_chunkPos = 0;
+    ch->m_chunkInc = (freq << 8) / OUTPUT_SAMPLE_RATE;
+}
+
+void anotherw_sound_device::stopChannel(uint8_t channel) {
+    assert(channel < AUDIO_NUM_CHANNELS);
+    m_channels[channel].m_active = false;
+}
+
+void anotherw_sound_device::setChannelVolume(uint8_t channel, uint8_t volume) {
+    assert(channel < AUDIO_NUM_CHANNELS);
+    m_channels[channel].m_volume = volume;
+}
+
+void anotherw_sound_device::stopAll() {
+    for (uint8_t i = 0; i < AUDIO_NUM_CHANNELS; ++i) {
+        m_channels[i].m_active = false;        
+    }
+}
+
+//-------------------------------------------------
+//  set_bank_base - old-style bank management;
+//  assumes multiple 256k banks
+//-------------------------------------------------
+
+void anotherw_sound_device::set_bank_base(offs_t base)
+{
+    m_stream->update();
+
+    // if we are setting a non-zero base, and we have no bank, allocate one
+    if (!m_bank_installed && base != 0)
+    {
+        // override our memory map with a bank
+        space().install_read_bank(0x00000, 0x3ffff, tag());
+        m_bank_installed = true;
+    }
+
+    // if we have a bank number, set the base pointer
+    if (m_bank_installed)
+    {
+        m_bank_offs = base;
+        membank(tag())->set_base(m_region->base() + base);
+    }
+}
+
+
+//**************************************************************************
+//  ANOTHERW CHANNEL
+//**************************************************************************
+
+//-------------------------------------------------
+//  anotherw_channel - constructor
+//-------------------------------------------------
+
+anotherw_sound_device::anotherw_channel::anotherw_channel()
+    : m_base_offset(0),
+      m_sample(0),
+      m_count(0),
+      m_active(false),
+      m_volume(0)
+{
+}
+
+static int8_t addclamp(int a, int b) {
+    int add = a + b;
+    if (add < -128) {
+        add = -128;
+    }
+    else if (add > 127) {
+        add = 127;
+    }
+    return (int8_t)add;
+}
+
+//-------------------------------------------------
+//  generate_samples and
+//  add them to an output stream
+//-------------------------------------------------
+
+void anotherw_sound_device::anotherw_channel::mix(direct_read_data &direct, stream_sample_t *buffer, int samples)
+{
+    // skip if not active
+    if (!m_active)
+        return;
+
+    stream_sample_t *pBuf = buffer;
+
+    // loop while we still have samples to generate
+    for (int j = 0; j < samples; ++j, ++pBuf) {
+        uint16_t p1, p2;
+        uint16_t ilc = (m_chunkPos & 0xFF);
+        p1 = m_chunkPos >> 8;
+        m_chunkPos += m_chunkInc;
+
+        if (m_chunk.loopLen != 0) {
+            if (p1 == m_chunk.loopPos + m_chunk.loopLen - 1) {
+                printf("Looping sample\n");
+                m_chunkPos = p2 = m_chunk.loopPos;
+            } else {
+                p2 = p1 + 1;
+            }
+        } else {
+            if (p1 == m_chunk.len - 1) {
+                printf("Stopping sample\n");
+                m_active = false;
+                break;
+            } else {
+                p2 = p1 + 1;
+            }
+        }
+        // interpolate
+        int8_t b1 = *(int8_t *)(m_chunk.data + p1);
+        int8_t b2 = *(int8_t *)(m_chunk.data + p2);
+        int8_t b = (int8_t)((b1 * (0xFF - ilc) + b2 * ilc) >> 8);
+
+        // set volume and clamp
+        *pBuf = addclamp(*pBuf, (int)b * m_volume / 0x40);
+    }
+}
+
 /*
     driver init function
 */
@@ -129,6 +357,13 @@ static MACHINE_CONFIG_START( another_world, another_world_state )
 
     MCFG_PALETTE_ADD("palette", 16)
     MCFG_PALETTE_INDIRECT_ENTRIES(16) /*I am not sure yet what does it mean...*/
+
+    /* sound hardware */
+    MCFG_SPEAKER_STANDARD_MONO("mono")
+
+    // Sample rate = 384000 ?
+    MCFG_SOUND_ADD("samples", ANOTHERW_SOUND, 384000)
+    MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
 MACHINE_CONFIG_END
 
 MACHINE_START_MEMBER(another_world_state, anotherw)
@@ -192,7 +427,7 @@ ROM_START( aw_msdos )
     ROM_REGION( 0x0300, "chargen", 0)
     ROM_LOAD( "anotherworld_chargen.rom", 0x0000, 0x0300, CRC(e2df8c47) SHA1(b79b41835aa2d5747932f8080bb6fb2cf32837d7) )
 
-    ROM_REGION( 0x700000, "unknown", ROMREGION_ERASEFF ) /* MS-DOS: Unknown resources. I guess most of these are sound samples (maybe all?!) */
+    ROM_REGION( 0x700000, "samples", ROMREGION_ERASEFF ) /* MS-DOS: Unknown resources. I guess most of these are sound samples (maybe all?!) */
     ROM_LOAD( "resource-0x01.bin", 0x000000, 0x1A3C, CRC(baa9a633) SHA1(6d76db3a050bbb6696a7a24048144aa0820c354a) )
     ROM_LOAD( "resource-0x02.bin", 0x010000, 0x2E34, CRC(117f183a) SHA1(b39c6b22df38f0f64b2e86dc0b002e39071eaf3c) )
     ROM_LOAD( "resource-0x03.bin", 0x020000, 0x69F8, CRC(49526d55) SHA1(2204c21463852bfbc47f65862e4d7b5bfcfec2ef) )
@@ -359,7 +594,7 @@ ROM_START(aw_amipk)
      * TODO: extract the font from the amiga version and confirm it is the same.
      */
 
-    ROM_REGION( 0x700000, "unknown", ROMREGION_ERASEFF )
+    ROM_REGION( 0x700000, "samples", ROMREGION_ERASEFF )
     /* Amiga: Unknown resources.
      *        I guess most of these are sound samples (maybe all?!)
      */    
@@ -477,7 +712,6 @@ ROM_START(aw_amipk)
     ROM_LOAD( "resource-0x91.bin", 0x6f0000, 0x7D00, CRC(81449e16) SHA1(220bd63808dbc240472e1897eaae7d96ac726310) )
 ROM_END
 
-
 /*    YEAR  NAME      PARENT    COMPAT  MACHINE        INPUT          INIT                                COMPANY              FULLNAME */
-COMP( 199?, aw_msdos, 0,        0,      another_world, another_world, another_world_state, another_world, "Delphine Software", "Another World (VM) - MSDOS" , MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
-COMP( 199?, aw_amipk, 0,        0,      another_world, another_world, another_world_state, another_world, "Delphine Software", "Another World (VM) - Amiga version - nologo - noprotec (from 2011 presskit 'bonus')" , MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
+COMP( 199?, aw_msdos, 0,        0,      another_world, another_world, another_world_state, another_world, "Delphine Software", "Another World (VM) - MSDOS" , MACHINE_NOT_WORKING)
+COMP( 199?, aw_amipk, 0,        0,      another_world, another_world, another_world_state, another_world, "Delphine Software", "Another World (VM) - Amiga version - nologo - noprotec (from 2011 presskit 'bonus')" , MACHINE_NOT_WORKING)

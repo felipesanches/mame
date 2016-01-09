@@ -1,5 +1,83 @@
 #include "cpu/anotherworld/anotherworld.h"
 
+/******************************
+ * Audio-related declarations *
+ ******************************/
+
+#define AUDIO_NUM_CHANNELS 4
+class anotherw_sound_device : public device_t,
+                              public device_sound_interface,
+                              public device_memory_interface
+{
+public:
+    // construction/destruction
+    anotherw_sound_device(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock);
+
+    struct MixerChunk {
+        const uint8_t *data;
+        uint16_t len;
+        uint16_t loopPos;
+        uint16_t loopLen;
+    };
+
+    // runtime configuration
+    void set_bank_base(offs_t base);
+    void playChannel(uint8_t channel, const MixerChunk *mc, uint16_t freq, uint8_t volume);
+    void stopChannel(uint8_t channel);
+    void setChannelVolume(uint8_t channel, uint8_t volume);
+    void stopAll();
+
+protected:
+    // device-level overrides
+    virtual void device_start() override;
+    virtual void device_reset() override;
+    virtual void device_post_load() override;
+    virtual void device_clock_changed() override;
+
+    // device_memory_interface overrides
+    virtual const address_space_config *memory_space_config(address_spacenum spacenum = AS_0) const override;
+
+    // device_sound_interface overrides
+    virtual void sound_stream_update(sound_stream &stream, stream_sample_t **inputs, stream_sample_t **outputs, int samples) override;
+
+    // a single channel
+    class anotherw_channel
+    {
+    public:
+        anotherw_channel();
+        void mix(direct_read_data &direct, stream_sample_t *buffer, int samples);
+
+        offs_t          m_base_offset;  // pointer to the base memory location
+        UINT32          m_sample;       // current sample number
+        UINT32          m_count;        // total samples to play
+
+        uint8_t m_active;
+        uint8_t m_volume;
+        MixerChunk m_chunk;
+        uint32_t m_chunkPos;
+        uint32_t m_chunkInc;
+    };
+
+    // configuration state
+    const address_space_config  m_space_config;
+
+    // internal state
+    static const int ANOTHERW_CHANNELS = 4;
+
+    anotherw_channel    m_channels[ANOTHERW_CHANNELS];
+    bool                m_bank_installed;
+    offs_t              m_bank_offs;
+    sound_stream *      m_stream;
+    direct_read_data *  m_direct;
+};
+
+// device type definition
+extern const device_type ANOTHERW_SOUND;
+
+/******************************
+ * Video-related declarations *
+ ******************************/
+
 struct Point {
     int16_t x, y;
 
@@ -27,6 +105,10 @@ struct Polygon {
 
     void readVertices(const uint8_t *p, uint16_t zoom);
 };
+
+/*******************************
+ * Driver-related declarations *
+ *******************************/
 
 class another_world_state : public driver_device
 {
