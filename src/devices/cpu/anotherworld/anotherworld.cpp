@@ -89,6 +89,7 @@ void another_world_cpu_device::device_reset()
 {
     vmStackCalls[0] = 0x0000;
     m_currentThread = 0;
+    m_currentPartId = GAME_PART(0);
     m_pc = 0;
     m_sp = 0;
 
@@ -110,8 +111,6 @@ void another_world_cpu_device::device_reset()
         vmThreadIsFrozen[i] = false;
         requested_state[i] = false; //but not frozen
     }
-
-    requested_PC[0] = 0x0000;
 
     write_vm_variable(0x54, 0x0081); //TODO: figure out why this is supposedly needed.
     write_vm_variable(VM_VARIABLE_RANDOM_SEED, time(0));
@@ -472,9 +471,10 @@ void another_world_cpu_device::execute_instruction()
         {
             uint8_t pageId = fetch_byte();
             //printf("blitFramebuffer(pageId:%d, PAUSE_SLICES:%d)\n", pageId, read_vm_variable(VM_VARIABLE_PAUSE_SLICES));
-#if 0
+#if 1
             //Nasty hack....was this present in the original assembly  ??!!
-            if (res->currentPartId == GAME_PART_FIRST && read_vm_variable(0x67) == 1) 
+            //This seems to be necessary for switching from the intro sequence to the lake stage
+            if (m_currentPartId == GAME_PART(0) && read_vm_variable(0x67) == 1)
                 write_vm_variable(0xDC, 0x21);
 #endif
             // The bytecode will set vmVariables[VM_VARIABLE_PAUSE_SLICES] from 1 to 5
@@ -588,24 +588,25 @@ void another_world_cpu_device::execute_instruction()
 #define NUM_MEM_LIST 0x91 /* TODO: check this! */
 
             if (resourceId > NUM_MEM_LIST) {
+
 //                player->stop();
 //                mixer->stopAll();
 
                 write_vm_variable(0xE4, 0x14); //why?
 
+                m_currentPartId = resourceId;
                 ((another_world_state*) owner())->setupPart(resourceId);
 #ifdef DUMP_VM_EXECUTION_LOG
                 fprintf(m_address_log, "initForPart %d\n", resourceId);
 #endif
 
-                for (int i=1; i<NUM_THREADS; i++){
-                    requested_state[i] = true;
+                PC = 0x0000;
+                for (int i=0; i<NUM_THREADS; i++){
+                    requested_state[i] = false;
+                    vmThreadIsFrozen[i] = false;
                     requested_PC[i] = 0xFFFF;
+                    vmThreads[i] = 0xFFFF;
                 }
-
-                requested_state[0] = false;
-                requested_PC[0] = 0x0000;
-                nextThread();
             }
         return;
         }

@@ -18,6 +18,7 @@
 #define VM_NO_SETVEC_REQUESTED 0xFFFF
 #define VM_INACTIVE_THREAD 0xFFFF
 #define NUM_THREADS 64
+#define GAME_PART(n) (0x3E80 + n)
 
 //a couple optional features for easing VM debugging:
 //#define DUMP_VM_EXECUTION_LOG
@@ -89,6 +90,7 @@ protected:
     bool requested_state[NUM_THREADS];
     uint16_t vmStackCalls[256];
     int m_currentThread;
+    uint16_t m_currentPartId;
 
     //video-related:
     bool m_useVideo2;
