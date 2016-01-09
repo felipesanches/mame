@@ -4,10 +4,8 @@
  * Audio-related declarations *
  ******************************/
 
-#define AUDIO_NUM_CHANNELS 4
 class anotherw_sound_device : public device_t,
-                              public device_sound_interface,
-                              public device_memory_interface
+                              public device_sound_interface
 {
 public:
     // construction/destruction
@@ -21,7 +19,6 @@ public:
     };
 
     // runtime configuration
-    void set_bank_base(offs_t base);
     void playChannel(uint8_t channel, const MixerChunk *mc, uint16_t freq, uint8_t volume);
     void stopChannel(uint8_t channel);
     void setChannelVolume(uint8_t channel, uint8_t volume);
@@ -36,9 +33,6 @@ protected:
     virtual void device_post_load() override;
     virtual void device_clock_changed() override;
 
-    // device_memory_interface overrides
-    virtual const address_space_config *memory_space_config(address_spacenum spacenum = AS_0) const override;
-
     // device_sound_interface overrides
     virtual void sound_stream_update(sound_stream &stream, stream_sample_t **inputs, stream_sample_t **outputs, int samples) override;
 
@@ -49,10 +43,8 @@ protected:
         anotherw_channel();
         void mix(stream_sample_t *buffer, int samples);
 
-        offs_t          m_base_offset;  // pointer to the base memory location
-        UINT32          m_sample;       // current sample number
-        UINT32          m_count;        // total samples to play
-
+        uint32_t m_sample;       // current sample number
+        uint32_t m_count;        // total samples to play
         uint8_t m_active;
         uint8_t m_volume;
         MixerChunk m_chunk;
@@ -60,17 +52,11 @@ protected:
         uint32_t m_chunkInc;
     };
 
-    // configuration state
-    const address_space_config  m_space_config;
-
     // internal state
     static const int ANOTHERW_CHANNELS = 4;
 
     anotherw_channel    m_channels[ANOTHERW_CHANNELS];
-    bool                m_bank_installed;
-    offs_t              m_bank_offs;
     sound_stream *      m_stream;
-    direct_read_data *  m_direct;
 };
 
 // device type definition

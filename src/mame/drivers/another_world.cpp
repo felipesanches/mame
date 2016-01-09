@@ -11,11 +11,6 @@
 // device type definition
 const device_type ANOTHERW_SOUND = &device_creator<anotherw_sound_device>;
 
-// default address map
-static ADDRESS_MAP_START( anotherw_sound, AS_0, 8, anotherw_sound_device )
-    AM_RANGE(0x00000, 0x3ffff) AM_ROM
-ADDRESS_MAP_END
-
 //-------------------------------------------------
 //  anotherw_sound_device - constructor
 //-------------------------------------------------
@@ -23,12 +18,7 @@ ADDRESS_MAP_END
 anotherw_sound_device::anotherw_sound_device(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock)
     : device_t(mconfig, ANOTHERW_SOUND, "ANOTHERW_SOUND", tag, owner, clock, "anotherw_sound", __FILE__),
         device_sound_interface(mconfig, *this),
-        device_memory_interface(mconfig, *this),
-        m_space_config("samples", ENDIANNESS_LITTLE, 8, 18, 0, nullptr, *ADDRESS_MAP_NAME(anotherw_sound)),
-        m_bank_installed(false),
-        m_bank_offs(0),
-        m_stream(nullptr),
-        m_direct(nullptr)
+        m_stream(nullptr)
 {
 }
 
@@ -38,9 +28,6 @@ anotherw_sound_device::anotherw_sound_device(const machine_config &mconfig, cons
 
 void anotherw_sound_device::device_start()
 {
-    // find our direct access
-    m_direct = &space().direct();
-
     // create the stream
     m_stream = machine().sound().stream_alloc(*this, 0, 1, clock());
 
@@ -66,7 +53,6 @@ void anotherw_sound_device::device_reset()
 
 void anotherw_sound_device::device_post_load()
 {
-    set_bank_base(m_bank_offs);
     device_clock_changed();
 }
 
@@ -80,18 +66,6 @@ void anotherw_sound_device::device_clock_changed()
 {
     m_stream->set_sample_rate(clock());
 }
-
-
-//-------------------------------------------------
-//  memory_space_config - return a description of
-//  any address spaces owned by this device
-//-------------------------------------------------
-
-const address_space_config *anotherw_sound_device::memory_space_config(address_spacenum spacenum) const
-{
-    return (spacenum == 0) ? &m_space_config : nullptr;
-}
-
 
 //-------------------------------------------------
 //  stream_generate - handle update requests for
@@ -110,7 +84,7 @@ void anotherw_sound_device::sound_stream_update(sound_stream &stream, stream_sam
 
 #define OUTPUT_SAMPLE_RATE 384000
 void anotherw_sound_device::playChannel(uint8_t channel, const MixerChunk *mc, uint16_t freq, uint8_t volume) {
-    assert(channel < AUDIO_NUM_CHANNELS);
+    assert(channel < ANOTHERW_CHANNELS);
 
     anotherw_channel *ch = &m_channels[channel];
     ch->m_active = true;
@@ -121,46 +95,20 @@ void anotherw_sound_device::playChannel(uint8_t channel, const MixerChunk *mc, u
 }
 
 void anotherw_sound_device::stopChannel(uint8_t channel) {
-    assert(channel < AUDIO_NUM_CHANNELS);
+    assert(channel < ANOTHERW_CHANNELS);
     m_channels[channel].m_active = false;
 }
 
 void anotherw_sound_device::setChannelVolume(uint8_t channel, uint8_t volume) {
-    assert(channel < AUDIO_NUM_CHANNELS);
+    assert(channel < ANOTHERW_CHANNELS);
     m_channels[channel].m_volume = volume;
 }
 
 void anotherw_sound_device::stopAll() {
-    for (uint8_t i = 0; i < AUDIO_NUM_CHANNELS; ++i) {
+    for (uint8_t i = 0; i < ANOTHERW_CHANNELS; ++i) {
         m_channels[i].m_active = false;        
     }
 }
-
-//-------------------------------------------------
-//  set_bank_base - old-style bank management;
-//  assumes multiple 256k banks
-//-------------------------------------------------
-
-void anotherw_sound_device::set_bank_base(offs_t base)
-{
-    m_stream->update();
-
-    // if we are setting a non-zero base, and we have no bank, allocate one
-    if (!m_bank_installed && base != 0)
-    {
-        // override our memory map with a bank
-        space().install_read_bank(0x00000, 0x3ffff, tag());
-        m_bank_installed = true;
-    }
-
-    // if we have a bank number, set the base pointer
-    if (m_bank_installed)
-    {
-        m_bank_offs = base;
-        membank(tag())->set_base(m_region->base() + base);
-    }
-}
-
 
 //**************************************************************************
 //  ANOTHERW CHANNEL
@@ -171,8 +119,7 @@ void anotherw_sound_device::set_bank_base(offs_t base)
 //-------------------------------------------------
 
 anotherw_sound_device::anotherw_channel::anotherw_channel()
-    : m_base_offset(0),
-      m_sample(0),
+    : m_sample(0),
       m_count(0),
       m_active(false),
       m_volume(0)
@@ -236,6 +183,7 @@ void anotherw_sound_device::anotherw_channel::mix(stream_sample_t *buffer, int s
     }
 }
 
+//TODO: Maybe this shuld be stored in a ROM asset as well?
 static uint8_t resource_indexes[] = {
     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
     0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
