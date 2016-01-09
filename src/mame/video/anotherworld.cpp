@@ -3,6 +3,9 @@
 #include "emu.h"
 #include "includes/anotherworld.h"
 
+#define SCREEN_WIDTH 320
+#define SCREEN_HEIGHT 200
+
 void another_world_state::video_start()
 {
     m_char_tilemap = &machine().tilemap().create(m_gfxdecode, tilemap_get_info_delegate(FUNC(another_world_state::get_char_tile_info),this), TILEMAP_SCAN_ROWS,  8, 8, 40, 25);
@@ -60,16 +63,16 @@ void another_world_state::setDataBuffer(uint8_t type, uint16_t offset){
 }
 
 void Polygon::readVertices(const uint8_t *p, uint16_t zoom) {
-    bbox_w = (*p++) * zoom / 64;
-    bbox_h = (*p++) * zoom / 64;
+    bbox_w = (*p++) * zoom / DEFAULT_ZOOM;
+    bbox_h = (*p++) * zoom / DEFAULT_ZOOM;
     numPoints = *p++;
     assert((numPoints & 1) == 0 && numPoints < MAX_POINTS);
 
     //Read all points, directly from bytecode segment
     for (int i = 0; i < numPoints; ++i) {
         Point *pt = &points[i];
-        pt->x = (*p++) * zoom / 64;
-        pt->y = (*p++) * zoom / 64;
+        pt->x = (*p++) * zoom / DEFAULT_ZOOM;
+        pt->y = (*p++) * zoom / DEFAULT_ZOOM;
     }
 }
 
@@ -114,8 +117,8 @@ void another_world_state::readAndDrawPolygon(uint8_t color, uint16_t zoom, const
 void another_world_state::readAndDrawPolygonHierarchy(uint16_t zoom, const Point &pgc) {
 
     Point pt(pgc);
-    pt.x -= m_polygonData[m_data_offset++] * zoom / 64;
-    pt.y -= m_polygonData[m_data_offset++] * zoom / 64;
+    pt.x -= m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
+    pt.y -= m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
 
     int16_t children = m_polygonData[m_data_offset++];
 
@@ -124,8 +127,8 @@ void another_world_state::readAndDrawPolygonHierarchy(uint16_t zoom, const Point
         offset = offset << 8 | m_polygonData[m_data_offset++];
         
         Point po(pt);
-        po.x += m_polygonData[m_data_offset++] * zoom / 64;
-        po.y += m_polygonData[m_data_offset++] * zoom / 64;
+        po.x += m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
+        po.y += m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
 
         uint16_t color = 0xFF;
         if (offset & 0x8000) {
@@ -190,7 +193,7 @@ void another_world_state::fillPolygon(uint16_t color, uint16_t zoom, const Point
     int16_t y1 = pt.y - m_polygon.bbox_h / 2;
     int16_t y2 = pt.y + m_polygon.bbox_h / 2;
 
-    if (x1 > 319 || x2 < 0 || y1 > 199 || y2 < 0)
+    if (x1 > (SCREEN_WIDTH-1) || x2 < 0 || y1 > (SCREEN_HEIGHT-1) || y2 < 0)
         return;
 
     m_hliney = y1;
@@ -238,16 +241,16 @@ void another_world_state::fillPolygon(uint16_t color, uint16_t zoom, const Point
                 if (m_hliney >= 0) {
                     x1 = cpt1 >> 16;
                     x2 = cpt2 >> 16;
-                    if (x1 <= 319 && x2 >= 0) {
+                    if (x1 <= (SCREEN_WIDTH-1) && x2 >= 0) {
                         if (x1 < 0) x1 = 0;
-                        if (x2 > 319) x2 = 319;
+                        if (x2 > (SCREEN_WIDTH-1)) x2 = (SCREEN_WIDTH-1);
                         (this->*drawFct)(x1, x2, color);
                     }
                 }
                 cpt1 += step1;
                 cpt2 += step2;
                 m_hliney++;
-                if (m_hliney > 199) return;
+                if (m_hliney > (SCREEN_HEIGHT-1)) return;
             }
         }
     }
@@ -272,8 +275,8 @@ void another_world_state::updateDisplay(uint8_t pageId) {
     }
 #endif
 
-    for (int x=0; x<320; x++){
-        for (int y=0; y<200; y++){
+    for (int x=0; x<SCREEN_WIDTH; x++){
+        for (int y=0; y<SCREEN_HEIGHT; y++){
             uint16_t color = m_curPagePtr2->pix16(y, x);
             m_screen_bitmap.pix16(y, x) = color;
         }
@@ -307,8 +310,8 @@ void another_world_state::selectVideoPage(uint8_t pageId){
 void another_world_state::fillPage(uint8_t pageId, uint8_t color){
     bitmap_ind16* page = getPagePtr(pageId);
 
-    for (int x=0; x<320; x++){
-        for (int y=0; y<200; y++){
+    for (int x=0; x<SCREEN_WIDTH; x++){
+        for (int y=0; y<SCREEN_HEIGHT; y++){
             page->pix16(y, x) = color;
         }
     }
@@ -319,8 +322,8 @@ void another_world_state::copyVideoPage(uint8_t srcPageId, uint8_t dstPageId, ui
     bitmap_ind16* src = getPagePtr(srcPageId);
     bitmap_ind16* dest = getPagePtr(dstPageId);
     
-    for (int x=0; x<320; x++){
-        for (int y=0; y<200; y++){
+    for (int x=0; x<SCREEN_WIDTH; x++){
+        for (int y=0; y<SCREEN_HEIGHT; y++){
             dest->pix16(y, x) = src->pix16(y, x);
         }
     }
