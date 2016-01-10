@@ -82,7 +82,7 @@ void anotherw_sound_device::sound_stream_update(sound_stream &stream, stream_sam
         elem.mix(outputs[0], samples);
 }
 
-#define OUTPUT_SAMPLE_RATE 384000
+#define OUTPUT_SAMPLE_RATE 31677
 void anotherw_sound_device::playChannel(uint8_t channel, const MixerChunk *mc, uint16_t freq, uint8_t volume) {
     assert(channel < ANOTHERW_CHANNELS);
 
@@ -365,7 +365,7 @@ static MACHINE_CONFIG_START( another_world, another_world_state )
     /* sound hardware */
     MCFG_SPEAKER_STANDARD_MONO("mono")
 
-    MCFG_SOUND_ADD("samples", ANOTHERW_SOUND, 384000)
+    MCFG_SOUND_ADD("samples", ANOTHERW_SOUND, 31677)
     MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
 MACHINE_CONFIG_END
 
