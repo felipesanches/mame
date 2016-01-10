@@ -1,12 +1,19 @@
 // license:GPL-2.0+
-// copyright-holders:Felipe Sanches
+// copyright-holders:Felipe Sanches, Gregory Montoir, Fabien Sanglard
 /*
     Another World game (Virtual Machine based driver)
+
+    MAME-based driver by Felipe Sanches <juca@members.fsf.org>
+
+    Heavily based on Fabien Sanglard's Another World Bytecode Interpreter:
+    https://github.com/fabiensanglard/Another-World-Bytecode-Interpreter
 */
 
 #include "emu.h"
 #include "includes/anotherworld.h"
 #include "cpu/anotherworld/anotherworld.h"
+
+#define READ_BE_UINT16(p) (*(p) << 8 | *(p + 1))
 
 // device type definition
 const device_type ANOTHERW_SOUND = &device_creator<anotherw_sound_device>;
@@ -32,8 +39,11 @@ void anotherw_sound_device::device_start()
     m_stream = machine().sound().stream_alloc(*this, 0, 1, clock());
 
     memset(m_channels, 0, sizeof(m_channels));
-}
 
+    const uint8_t * base_ptr = ((another_world_state*) owner())->memregion("samples")->base();
+    m_player = new SfxPlayer(this, base_ptr);
+    m_timer = machine().scheduler().timer_alloc(timer_expired_delegate(FUNC(anotherw_sound_device::musicPlayerCallback),this));
+}
 
 //-------------------------------------------------
 //  device_reset - device-specific reset
@@ -67,6 +77,12 @@ void anotherw_sound_device::device_clock_changed()
     m_stream->set_sample_rate(clock());
 }
 
+
+TIMER_CALLBACK_MEMBER(anotherw_sound_device::musicPlayerCallback)
+{
+    m_player->handleEvents();
+}
+
 //-------------------------------------------------
 //  stream_generate - handle update requests for
 //  our sound stream
@@ -84,6 +100,7 @@ void anotherw_sound_device::sound_stream_update(sound_stream &stream, stream_sam
 
 #define OUTPUT_SAMPLE_RATE 31677
 void anotherw_sound_device::playChannel(uint8_t channel, const MixerChunk *mc, uint16_t freq, uint8_t volume) {
+    //printf("play channel #%d freq:%d volume:%d\n", channel, freq, volume);
     assert(channel < ANOTHERW_CHANNELS);
 
     anotherw_channel *ch = &m_channels[channel];
@@ -95,16 +112,19 @@ void anotherw_sound_device::playChannel(uint8_t channel, const MixerChunk *mc, u
 }
 
 void anotherw_sound_device::stopChannel(uint8_t channel) {
+    //printf("stop channel #%d\n", channel);
     assert(channel < ANOTHERW_CHANNELS);
     m_channels[channel].m_active = false;
 }
 
 void anotherw_sound_device::setChannelVolume(uint8_t channel, uint8_t volume) {
+    //printf("set channel #%d volume = %X\n", channel, volume);
     assert(channel < ANOTHERW_CHANNELS);
     m_channels[channel].m_volume = volume;
 }
 
 void anotherw_sound_device::stopAll() {
+    //printf("Stop all channels!\n");
     for (uint8_t i = 0; i < ANOTHERW_CHANNELS; ++i) {
         m_channels[i].m_active = false;        
     }
@@ -159,14 +179,14 @@ void anotherw_sound_device::anotherw_channel::mix(stream_sample_t *buffer, int s
 
         if (m_chunk.loopLen != 0) {
             if (p1 == m_chunk.loopPos + m_chunk.loopLen - 1) {
-                printf("Looping sample\n");
+                //printf("Looping sample\n");
                 m_chunkPos = p2 = m_chunk.loopPos;
             } else {
                 p2 = p1 + 1;
             }
         } else {
             if (p1 == m_chunk.len - 1) {
-                printf("Stopping sample\n");
+                //printf("Stopping sample\n");
                 m_active = false;
                 break;
             } else {
@@ -219,7 +239,7 @@ const uint16_t anotherw_sound_device::frequenceTable[] = {
 };
 
 void another_world_state::playSound(uint16_t resNum, uint8_t freq, uint8_t vol, uint8_t channel){
-    printf("playSound(0x%02X, freq:%d, vol:%d, channel:%d)\n", resNum, freq, vol, channel);
+    //printf("playSound(0x%02X, freq:%d, vol:%d, channel:%d)\n", resNum, freq, vol, channel);
 
     const uint8_t * samples = memregion("samples")->base() + resource_offset(resNum) * 0x10000;
 
@@ -229,14 +249,178 @@ void another_world_state::playSound(uint16_t resNum, uint8_t freq, uint8_t vol, 
         struct anotherw_sound_device::MixerChunk mc;
         memset(&mc, 0, sizeof(mc));
         mc.data = samples + 8; // skip header
-        mc.len = (*(samples+1) << 8 | *(samples)) * 2;
-        mc.loopLen = (*(samples+3) << 8 | *(samples+2)) * 2;
+        mc.len = READ_BE_UINT16(samples) * 2;
+        mc.loopLen = READ_BE_UINT16(samples+2) * 2;
         if (mc.loopLen != 0) {
             mc.loopPos = mc.len;
         }
         assert(freq < 40);
         uint16_t f = anotherw_sound_device::frequenceTable[freq];
         m_mixer->playChannel(channel & 3, &mc, f, MIN(vol, 0x3F));
+    }
+}
+
+/****************
+ * Music Player *
+ ****************/
+
+SfxPlayer::SfxPlayer(anotherw_sound_device *mixer, const uint8_t * resources_base_ptr)
+    : m_mixer(mixer), m_base_ptr(resources_base_ptr), m_delay(0), m_resNum(0) {
+}
+
+void SfxPlayer::initPlayer() {
+}
+
+void SfxPlayer::freePlayer() {
+    stop();
+}
+
+void SfxPlayer::setEventsDelay(uint16_t delay) {
+    //printf("SfxPlayer::setEventsDelay(%d)\n", delay);
+    m_delay = delay * 60 / 7050;
+}
+
+void SfxPlayer::loadSfxModule(uint16_t resNum, uint16_t delay, uint8_t pos) {
+
+    printf("SfxPlayer::loadSfxModule(resNum:0x%X, delay:%d, pos:%d)\n", resNum, delay, pos);
+
+    const uint8_t * resource_ptr = ((uint8_t*) m_base_ptr) + resource_offset(resNum) * 0x10000;
+
+    m_resNum = resNum;
+    memset(&m_sfxMod, 0, sizeof(SfxModule));
+    m_sfxMod.curOrder = pos;
+    m_sfxMod.numOrder = READ_BE_UINT16(resource_ptr + 0x3E);
+
+    printf("SfxPlayer::loadSfxModule() curOrder = 0x%X numOrder = 0x%X\n", m_sfxMod.curOrder, m_sfxMod.numOrder);
+    for (int i = 0; i < 0x80; ++i) {
+        m_sfxMod.orderTable[i] = *(resource_ptr + 0x40 + i);
+    }
+    if (delay == 0) {
+        m_delay =  READ_BE_UINT16(resource_ptr);
+    } else {
+        m_delay = delay;
+    }
+    m_delay = m_delay * 60 / 7050;
+    m_sfxMod.data = resource_ptr + 0xC0;
+    printf("SfxPlayer::loadSfxModule() eventDelay = %d ms\n", m_delay);
+    prepareInstruments(resource_ptr + 2);
+}
+
+void SfxPlayer::prepareInstruments(const uint8_t *p) {
+
+    memset(m_sfxMod.samples, 0, sizeof(m_sfxMod.samples));
+
+    for (int i = 0; i < 15; ++i) {
+        SfxInstrument *ins = &m_sfxMod.samples[i];
+        uint16_t resNum = READ_BE_UINT16(p); p += 2;
+        if (resNum != 0) {
+            ins->volume = READ_BE_UINT16(p);
+            ins->data = ((uint8_t*) m_base_ptr) + resource_offset(resNum) * 0x10000;
+            memset(ins->data + 8, 0, 4);
+            printf("Loaded instrument 0x%X n=%d volume=%d\n", resNum, i, ins->volume);
+        }
+        p += 2; // skip volume
+    }
+}
+
+void SfxPlayer::start() {
+    m_sfxMod.curPos = 0;
+    m_mixer->m_timer->adjust(attotime::from_msec(m_delay), 0, attotime::from_msec(m_delay));
+}
+
+void SfxPlayer::stop() {
+    if (m_resNum != 0) {
+        m_resNum = 0;
+        m_mixer->m_timer->adjust(attotime::zero);
+    }
+}
+
+void SfxPlayer::handleEvents() {
+    uint8_t order = m_sfxMod.orderTable[m_sfxMod.curOrder];
+    const uint8_t *patternData = m_sfxMod.data + m_sfxMod.curPos + order * 1024;
+    for (uint8_t ch = 0; ch < 4; ++ch) {
+        handlePattern(ch, patternData);
+        patternData += 4;
+    }
+    m_sfxMod.curPos += (4 * 4);
+    //printf("SfxPlayer::handleEvents() order = 0x%X curPos = 0x%X\n", order, m_sfxMod.curPos);
+    if (m_sfxMod.curPos >= 1024) {
+        m_sfxMod.curPos = 0;
+        order = m_sfxMod.curOrder + 1;
+        if (order == m_sfxMod.numOrder) {
+            m_resNum = 0;
+            m_mixer->m_timer->adjust(attotime::never);
+            m_mixer->stopAll();
+        }
+        m_sfxMod.curOrder = order;
+    }
+}
+
+void SfxPlayer::handlePattern(uint8_t channel, const uint8_t *data) {
+    //printf("==== handlePattern ==== channel:%d data:%X\n", channel, (unsigned int) (uint64_t) data);
+    SfxPattern pat;
+    memset(&pat, 0, sizeof(SfxPattern));
+    pat.note_1 = READ_BE_UINT16(data + 0);
+    pat.note_2 = READ_BE_UINT16(data + 2);
+    if (pat.note_1 != 0xFFFD) {
+        uint16_t sample = (pat.note_2 & 0xF000) >> 12;
+        if (sample != 0) {
+            uint8_t *ptr = m_sfxMod.samples[sample - 1].data;
+            if (ptr != 0) {
+                //printf("SfxPlayer::handlePattern() preparing sample %d\n", sample);
+                pat.sampleVolume = m_sfxMod.samples[sample - 1].volume;
+                pat.sampleStart = 8;
+                pat.sampleBuffer = ptr;
+                pat.sampleLen = READ_BE_UINT16(ptr) * 2;
+                uint16_t loopLen = READ_BE_UINT16(ptr + 2) * 2;
+                if (loopLen != 0) {
+                    pat.loopPos = pat.sampleLen;
+                    pat.loopData = ptr;
+                    pat.loopLen = loopLen;
+                } else {
+                    pat.loopPos = 0;
+                    pat.loopData = 0;
+                    pat.loopLen = 0;
+                }
+                int16_t m = pat.sampleVolume;
+                uint8_t effect = (pat.note_2 & 0x0F00) >> 8;
+                if (effect == 5) { // volume up
+                    uint8_t volume = (pat.note_2 & 0xFF);
+                    m += volume;
+                    if (m > 0x3F) {
+                        m = 0x3F;
+                    }
+                } else if (effect == 6) { // volume down
+                    uint8_t volume = (pat.note_2 & 0xFF);
+                    m -= volume;
+                    if (m < 0) {
+                        m = 0;
+                    }   
+                }
+                m_mixer->setChannelVolume(channel, m);
+                pat.sampleVolume = m;
+            }
+        }
+    }
+    if (pat.note_1 == 0xFFFD) {
+        printf("SfxPlayer::handlePattern() _scriptVars[VM_VARIABLE_MUS_MARK] = 0x%X\n", pat.note_2);
+        ((another_world_state*) m_mixer->owner())->m_maincpu->write_vm_variable(VM_VARIABLE_MUS_MARK, pat.note_2);
+    } else if (pat.note_1 != 0) {
+        if (pat.note_1 == 0xFFFE) {
+            m_mixer->stopChannel(channel);
+        } else if (pat.sampleBuffer != 0) {
+            struct anotherw_sound_device::MixerChunk mc;
+            memset(&mc, 0, sizeof(mc));
+            mc.data = pat.sampleBuffer + pat.sampleStart;
+            mc.len = pat.sampleLen;
+            mc.loopPos = pat.loopPos;
+            mc.loopLen = pat.loopLen;
+            assert(pat.note_1 >= 0x37 && pat.note_1 < 0x1000);
+            // convert amiga period value to hz
+            uint16_t freq = 7159092 / (pat.note_1 * 2);
+            //printf("SfxPlayer::handlePattern() adding sample freq = 0x%X\n", freq);
+            m_mixer->playChannel(channel, &mc, freq, pat.sampleVolume);
+        }
     }
 }
 

@@ -573,22 +573,18 @@ void another_world_cpu_device::execute_instruction()
             uint16_t resourceId = fetch_word();
             printf("load (a.k.a. \"updateMemList\") (0x%02X)\n", resourceId);
 
-            //TODO: Implement-me!
-#if 0
             if (resourceId == 0) {
-                player->stop();
-                mixer->stopAll();
-                res->invalidateRes();
+                ((another_world_state*) owner())->m_mixer->m_player->stop();
+                ((another_world_state*) owner())->m_mixer->stopAll();
+                //res->invalidateRes();
                 return;
             }
-#endif   
 
 #define NUM_MEM_LIST 0x91 /* TODO: check this! */
 
             if (resourceId > NUM_MEM_LIST) {
-
-//                player->stop();
-//                mixer->stopAll();
+                ((another_world_state*) owner())->m_mixer->m_player->stop();
+                ((another_world_state*) owner())->m_mixer->stopAll();
 
                 write_vm_variable(0xE4, 0x14); //why?
 
@@ -613,9 +609,15 @@ void another_world_cpu_device::execute_instruction()
             uint16_t resNum = fetch_word();
             uint16_t delay = fetch_word();
             uint8_t pos = fetch_byte();
-            printf("playMusic(0x%X, delay:%d, pos:%d)\n", resNum, delay, pos);
-            //TODO: Implement-me!
-            //snd_playMusic(resNum, delay, pos);
+            
+            if (resNum != 0) {
+                ((another_world_state*) owner())->m_mixer->m_player->loadSfxModule(resNum, delay, pos);
+                ((another_world_state*) owner())->m_mixer->m_player->start();
+            } else if (delay != 0) {
+                ((another_world_state*) owner())->m_mixer->m_player->setEventsDelay(delay);
+            } else {
+                ((another_world_state*) owner())->m_mixer->m_player->stop();
+            }
             return;
         }
     }

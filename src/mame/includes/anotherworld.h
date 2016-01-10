@@ -25,7 +25,9 @@ public:
     void stopAll();
 
     static const uint16_t frequenceTable[];
-
+    struct SfxPlayer*  m_player;
+    emu_timer* m_timer;
+    TIMER_CALLBACK_MEMBER(musicPlayerCallback);
 protected:
     // device-level overrides
     virtual void device_start() override;
@@ -43,24 +45,78 @@ protected:
         anotherw_channel();
         void mix(stream_sample_t *buffer, int samples);
 
-        uint32_t m_sample;       // current sample number
-        uint32_t m_count;        // total samples to play
-        uint8_t m_active;
-        uint8_t m_volume;
-        MixerChunk m_chunk;
-        uint32_t m_chunkPos;
-        uint32_t m_chunkInc;
+        uint32_t    m_sample;       // current sample number
+        uint32_t    m_count;        // total samples to play
+        uint8_t     m_active;
+        uint8_t     m_volume;
+        MixerChunk  m_chunk;
+        uint32_t    m_chunkPos;
+        uint32_t    m_chunkInc;
     };
 
     // internal state
     static const int ANOTHERW_CHANNELS = 4;
 
-    anotherw_channel    m_channels[ANOTHERW_CHANNELS];
-    sound_stream *      m_stream;
+    anotherw_channel   m_channels[ANOTHERW_CHANNELS];
+    sound_stream *     m_stream;
 };
 
 // device type definition
 extern const device_type ANOTHERW_SOUND;
+
+
+/****************
+ * Music Player *
+ ****************/
+
+struct SfxInstrument {
+    uint8_t *data;
+    uint16_t volume;
+};
+
+struct SfxModule {
+    const uint8_t *data;
+    uint16_t curPos;
+    uint8_t curOrder;
+    uint8_t numOrder;
+    uint8_t orderTable[0x80];
+    SfxInstrument samples[15];
+};
+
+struct SfxPattern {
+    uint16_t note_1;
+    uint16_t note_2;
+    uint16_t sampleStart;
+    uint8_t *sampleBuffer;
+    uint16_t sampleLen;
+    uint16_t loopPos;
+    uint8_t *loopData;
+    uint16_t loopLen;
+    uint16_t sampleVolume;
+};
+
+struct SfxPlayer {
+    anotherw_sound_device *m_mixer;
+    const uint8_t * m_base_ptr;
+    uint16_t m_delay;
+    uint16_t m_resNum;
+    SfxModule m_sfxMod;
+    int16_t *m_markVar;
+    void *m_timerId;
+
+    SfxPlayer(anotherw_sound_device *mixer, const uint8_t * resources_base_ptr);
+    void initPlayer();
+    void freePlayer();
+
+    void setEventsDelay(uint16_t delay);
+    void loadSfxModule(uint16_t resNum, uint16_t delay, uint8_t pos);
+    void prepareInstruments(const uint8_t *p);
+    void start();
+    void stop();
+    void handleEvents();
+    void handlePattern(uint8_t channel, const uint8_t *patternData);
+};
+
 
 /******************************
  * Video-related declarations *
