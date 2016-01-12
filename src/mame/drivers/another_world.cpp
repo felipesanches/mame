@@ -473,35 +473,8 @@ READ16_MEMBER(another_world_state::action_pos_mask_r)
     return ioport("keyboard")->read();
 }
 
-/* Graphics Layouts */
-
-static const gfx_layout charlayout =
-{
-    8,8,    /* 8*8 characters */
-    96,     /* 96 characters */
-    4,      /* 4 bits per pixel */
-    { 0 },
-    { 0, 1, 2, 3, 4, 5, 6, 7},
-    { 0*8, 1*8, 2*8, 3*8, 4*8, 5*8, 6*8, 7*8 },
-    8*8    /* every char takes 8 consecutive bytes */
-};
-
-/* Graphics Decode Info */
-static GFXDECODE_START( anotherw )
-    GFXDECODE_ENTRY( "chargen", 0, charlayout, 0, 16)
-GFXDECODE_END
-
-TILE_GET_INFO_MEMBER(another_world_state::get_char_tile_info)
-{
-    int code = m_videoram[tile_index];
-    int color = 15;
-    tileinfo.group = color;
-    SET_TILE_INFO_MEMBER(0, code, color, 0);
-}
-
 static ADDRESS_MAP_START( aw_prog_map, AS_PROGRAM, 8, another_world_state )
-    AM_RANGE(0x00000, 0x0fbff) AM_ROMBANK("bytecode_bank")
-    AM_RANGE(0x0fc00, 0x0ffff) AM_RAM AM_SHARE("videoram")
+    AM_RANGE(0x00000, 0x0ffff) AM_ROMBANK("bytecode_bank")
     AM_RANGE(0x10000, 0x1ffff) AM_ROMBANK("video1_bank") /* FIX-ME: This is just a hack for setting up a video1 bank */
     AM_RANGE(0x20000, 0x207ff) AM_ROMBANK("palette_bank") /* FIX-ME: This is just a hack for setting up a palette bank */
 ADDRESS_MAP_END
@@ -531,12 +504,11 @@ static MACHINE_CONFIG_START( another_world, another_world_state )
     MCFG_SCREEN_ADD("screen", RASTER)
     MCFG_SCREEN_REFRESH_RATE(60)
     MCFG_SCREEN_VBLANK_TIME(ATTOSECONDS_IN_USEC(0))
-    MCFG_SCREEN_SIZE(40*8, 25*8)
-    MCFG_SCREEN_VISIBLE_AREA(0*8, 40*8-1, 0*8, 25*8-1)
+    MCFG_SCREEN_SIZE(320, 200)
+    MCFG_SCREEN_VISIBLE_AREA(0, 319, 0, 199)
     MCFG_SCREEN_UPDATE_DRIVER(another_world_state, screen_update_aw)
 
     MCFG_SCREEN_PALETTE("palette")
-    MCFG_GFXDECODE_ADD("gfxdecode", "palette", anotherw)
     MCFG_PALETTE_ADD("palette", 16)
     MCFG_PALETTE_INDIRECT_ENTRIES(16) /*I am not sure yet what does it mean...*/
 

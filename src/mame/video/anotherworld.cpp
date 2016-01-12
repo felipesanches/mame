@@ -8,9 +8,6 @@
 
 void another_world_state::video_start()
 {
-    m_char_tilemap = &machine().tilemap().create(m_gfxdecode, tilemap_get_info_delegate(FUNC(another_world_state::get_char_tile_info),this), TILEMAP_SCAN_ROWS,  8, 8, 40, 25);
-    m_char_tilemap->configure_groups(*m_gfxdecode->gfx(0), 0x4f);
-
     for (int i=0; i<4; i++){
         m_screen->register_screen_bitmap(m_page_bitmaps[i]);
     }
@@ -19,10 +16,6 @@ void another_world_state::video_start()
     m_curPagePtr2 = &m_page_bitmaps[2];
     m_curPagePtr3 = &m_page_bitmaps[1];
     m_curPagePtr1 = getPagePtr(0xFE);
-
-    for (int c = 0; c < 40*25; c++){
-        m_videoram[c] = 0x00;
-    }
 
     m_interpTable[0] = 0x4000;
     for (int i = 1; i < 0x400; ++i) {
@@ -355,7 +348,6 @@ void another_world_state::draw_charactere(uint8_t character, uint16_t x, uint16_
 
 UINT32 another_world_state::screen_update_aw(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect)
 {
-    //m_char_tilemap->draw(screen, bitmap, cliprect, 0, 0);
     copybitmap(bitmap, m_screen_bitmap, 0, 0, 0, 0, cliprect);    
     return 0;
 }

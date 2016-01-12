@@ -159,8 +159,6 @@ class another_world_state : public driver_device
 public:
     another_world_state(const machine_config &mconfig, device_type type, const char *tag)
         : driver_device(mconfig, type, tag),
-        m_videoram(*this, "videoram"),
-        m_gfxdecode(*this, "gfxdecode"),
         m_maincpu(*this, "maincpu"),
         m_screen(*this, "screen"),
         m_palette(*this, "palette"),
@@ -179,8 +177,6 @@ public:
     DECLARE_READ16_MEMBER(pos_mask_r);
     DECLARE_READ16_MEMBER(action_pos_mask_r);
 
-    TILE_GET_INFO_MEMBER(get_char_tile_info);
-
     bitmap_ind16* m_curPagePtr1;
     bitmap_ind16* m_curPagePtr2;
     bitmap_ind16* m_curPagePtr3;
@@ -188,7 +184,6 @@ public:
     bitmap_ind16 m_screen_bitmap;
     bitmap_ind16 m_page_bitmaps[4];
     
-    tilemap_t *m_char_tilemap;
     uint8_t* m_polygonData;
     uint16_t m_data_offset;
     Polygon m_polygon;
@@ -197,8 +192,6 @@ public:
     //Division precomputing lookup table
     uint16_t m_interpTable[0x400];
 
-    required_shared_ptr<UINT8> m_videoram;
-    required_device<gfxdecode_device> m_gfxdecode;
     required_device<another_world_cpu_device> m_maincpu;
     required_device<screen_device> m_screen;
     required_device<palette_device> m_palette;
