@@ -487,20 +487,15 @@ static const gfx_layout charlayout =
 };
 
 /* Graphics Decode Info */
-
 static GFXDECODE_START( anotherw )
-    GFXDECODE_ENTRY( "chargen", 0, charlayout,            0, 16)
+    GFXDECODE_ENTRY( "chargen", 0, charlayout, 0, 16)
 GFXDECODE_END
 
 TILE_GET_INFO_MEMBER(another_world_state::get_char_tile_info)
 {
-//    int attr = m_colorram[tile_index];
-    int code = m_videoram[tile_index];// + ((attr & 0xe0) << 2);
-//    int color = attr & 0x1f;
+    int code = m_videoram[tile_index];
     int color = 15;
-
     tileinfo.group = color;
-
     SET_TILE_INFO_MEMBER(0, code, color, 0);
 }
 
@@ -542,13 +537,11 @@ static MACHINE_CONFIG_START( another_world, another_world_state )
 
     MCFG_SCREEN_PALETTE("palette")
     MCFG_GFXDECODE_ADD("gfxdecode", "palette", anotherw)
-
     MCFG_PALETTE_ADD("palette", 16)
     MCFG_PALETTE_INDIRECT_ENTRIES(16) /*I am not sure yet what does it mean...*/
 
     /* sound hardware */
     MCFG_SPEAKER_STANDARD_MONO("mono")
-
     MCFG_SOUND_ADD("samples", ANOTHERW_SOUND, 31677)
     MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
 MACHINE_CONFIG_END

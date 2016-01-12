@@ -267,14 +267,6 @@ void another_world_state::updateDisplay(uint8_t pageId) {
         }
     }
 
-#if 0
-    //Check if we need to change the palette
-    if (paletteIdRequested != NO_PALETTE_CHANGE_REQUESTED) {
-        changePal(paletteIdRequested);
-        paletteIdRequested = NO_PALETTE_CHANGE_REQUESTED;
-    }
-#endif
-
     for (int x=0; x<SCREEN_WIDTH; x++){
         for (int y=0; y<SCREEN_HEIGHT; y++){
             uint16_t color = m_curPagePtr2->pix16(y, x);
@@ -363,8 +355,6 @@ void another_world_state::draw_charactere(uint8_t character, uint16_t x, uint16_
 
 UINT32 another_world_state::screen_update_aw(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect)
 {
-//    bitmap.fill(m_palette->black_pen(), cliprect);
-    
     //m_char_tilemap->draw(screen, bitmap, cliprect, 0, 0);
     copybitmap(bitmap, m_screen_bitmap, 0, 0, 0, 0, cliprect);    
     return 0;
