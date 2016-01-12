@@ -614,6 +614,10 @@ ROM_START( aw_msdos )
     ROM_REGION( 0x0300, "chargen", 0)
     ROM_LOAD( "anotherworld_chargen.rom", 0x0000, 0x0300, CRC(e2df8c47) SHA1(b79b41835aa2d5747932f8080bb6fb2cf32837d7) )
 
+    ROM_REGION( 0x1800, "strings", 0)
+    ROM_LOAD( "str_data.rom",  0x0000, 0x1000, CRC(9fd4058d) SHA1(7c6ccef96de2cf2bc89db71bc9fba598f74fb782) )
+    ROM_LOAD( "str_index.rom", 0x1000, 0x0800, CRC(8035eeed) SHA1(12fa40e963e6f2e04c9789fe0d67fa3495dcf113) )
+
     ROM_REGION( 0x700000, "samples", ROMREGION_ERASEFF ) /* MS-DOS: Unknown resources. I guess most of these are sound samples (maybe all?!) */
     ROM_LOAD( "resource-0x01.bin", 0x000000, 0x1A3C, CRC(baa9a633) SHA1(6d76db3a050bbb6696a7a24048144aa0820c354a) )
     ROM_LOAD( "resource-0x02.bin", 0x010000, 0x2E34, CRC(117f183a) SHA1(b39c6b22df38f0f64b2e86dc0b002e39071eaf3c) )
@@ -780,6 +784,10 @@ ROM_START(aw_amipk)
     /* The chargen ROM was copied from the MSDOS version.
      * TODO: extract the font from the amiga version and confirm it is the same.
      */
+
+    ROM_REGION( 0x1800, "strings", 0)
+    ROM_LOAD( "str_data.rom",  0x0000, 0x1000, BAD_DUMP CRC(9fd4058d) SHA1(7c6ccef96de2cf2bc89db71bc9fba598f74fb782) ) /* copied from MSDOS version */
+    ROM_LOAD( "str_index.rom", 0x1000, 0x0800, BAD_DUMP CRC(8035eeed) SHA1(12fa40e963e6f2e04c9789fe0d67fa3495dcf113) ) /* copied from MSDOS version */
 
     ROM_REGION( 0x700000, "samples", ROMREGION_ERASEFF )
     /* Amiga: Unknown resources.

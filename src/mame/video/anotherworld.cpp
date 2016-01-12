@@ -329,6 +329,24 @@ void another_world_state::copyVideoPage(uint8_t srcPageId, uint8_t dstPageId, ui
     }
 }
 
+void another_world_state::draw_string(uint16_t stringId, uint16_t x, uint16_t y, uint16_t color){
+    x = 8 * (x-1);
+    uint16_t x0 = x;
+
+    uint8_t* index_ptr = memregion("strings")->base() + 0x1000 + 2*stringId;
+    uint16_t str_index = index_ptr[1] << 8 | index_ptr[0];
+    uint8_t* c = memregion("strings")->base() + str_index;
+
+    for (; *c != '\0'; c++){
+        if (*c == '\n'){
+            y+=8;
+            x=x0;
+        } else {
+            draw_charactere((uint8_t) *c, x+=8, y, (uint8_t) color);
+        }
+    }
+}
+
 void another_world_state::draw_charactere(uint8_t character, uint16_t x, uint16_t y, uint8_t color){
     const uint8_t *font = memregion("chargen")->base();
 

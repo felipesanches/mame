@@ -207,6 +207,7 @@ public:
     void setupPart(uint16_t resourceId);
 
     UINT32 screen_update_aw(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+    void draw_string(uint16_t stringId, uint16_t x, uint16_t y, uint16_t color);
     void draw_charactere(uint8_t character, uint16_t x, uint16_t y, uint8_t color);
     void selectVideoPage(uint8_t pageId);
     void fillPage(uint8_t pageId, uint8_t color);

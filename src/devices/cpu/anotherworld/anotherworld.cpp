@@ -7,7 +7,6 @@
 #include "emu.h"
 #include "debugger.h"
 #include "anotherworld.h"
-#include "anotherworld_hardcoded.h"
 #include "includes/anotherworld.h"
 
 const device_type ANOTHER_WORLD  = &device_creator<another_world_cpu_device>;
@@ -501,21 +500,11 @@ void another_world_cpu_device::execute_instruction()
         case 0x12: /* drawString */
         {
             uint16_t stringId = fetch_word();
-            uint16_t x = 8 * (fetch_byte()-1);
+            uint16_t x = fetch_byte();
             uint16_t y = fetch_byte();
             uint16_t color = fetch_byte();
 
-//            printf("drawString(0x%04X, x:%d, y:%d, color:%d) text='%s'\n", stringId, x, y, color, getString(stringId));
-
-            uint16_t x0 = x;
-            for (const char* c = getString(stringId); *c != '\0'; c++){
-                if (*c == '\n'){
-                    y+=8;
-                    x=x0;
-                } else {
-                    ((another_world_state*) owner())->draw_charactere((uint8_t) *c, x+=8, y, (uint8_t) color);
-                }
-            }
+            ((another_world_state*) owner())->draw_string(stringId, x, y, color);
             return;
         }
         case 0x13: /* sub */
