@@ -143,6 +143,7 @@ CPUS["CLIPPER"] = true
 --------------------------------------------------
 
 --SOUNDS["SAMPLES"] = true
+SOUNDS["ANOTHERWORLD"] = true
 SOUNDS["DAC"] = true
 SOUNDS["DMADAC"] = true
 SOUNDS["SPEAKER"] = true

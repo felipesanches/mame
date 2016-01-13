@@ -7,6 +7,7 @@
 #include "emu.h"
 #include "debugger.h"
 #include "anotherworld.h"
+#include "sound/anotherw.h"
 #include "includes/anotherworld.h"
 
 const device_type ANOTHER_WORLD  = &device_creator<another_world_cpu_device>;
@@ -554,7 +555,7 @@ void another_world_cpu_device::execute_instruction()
             uint8_t freq = fetch_byte();
             uint8_t vol = fetch_byte();
             uint8_t channel = fetch_byte();
-            ((another_world_state*) owner())->playSound(resourceId, freq, vol, channel);
+            ((another_world_state*) owner())->m_mixer->playSound(channel, resourceId, freq, vol);
             return;
         }
         case 0x19: /* load (a.k.a. "updateMemList") */

@@ -19,6 +19,18 @@ files {
 }
 
 ---------------------------------------------------
+-- ANOTHER WORLD audio system
+--@src/devices/sound/anotherw.h,SOUNDS["ANOTHERWORLD"] = true
+---------------------------------------------------
+
+if (SOUNDS["ANOTHERWORLD"]~=null) then
+    files {
+        MAME_DIR .. "src/devices/sound/anotherw.cpp",
+        MAME_DIR .. "src/devices/sound/anotherw.h",
+    }
+end
+
+---------------------------------------------------
 -- DACs
 --@src/devices/sound/dac.h,SOUNDS["DAC"] = true
 --@src/devices/sound/dmadac.h,SOUNDS["DMADAC"] = true
