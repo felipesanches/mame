@@ -21,13 +21,13 @@ static uint8_t resource_indexes[] = {
     0x89, 0x8a, 0x8b, 0x8c, 0x8d, 0x8e, 0x90, 0x91
 };
 
-static uint32_t resource_offset(uint16_t resNum){
+static int32_t resource_offset(uint16_t resNum){
     for (int i=0; i<sizeof(resource_indexes); i++){
         if (resNum == resource_indexes[i]) return i;
     }
 
     printf("ERROR! Resource 0x%X not found!\n", resNum);
-    return 0;
+    return -1;
 }
 
 //-------------------------------------------------
@@ -115,11 +115,15 @@ void anotherw_sound_device::sound_stream_update(sound_stream &stream, stream_sam
 }
 
 void anotherw_sound_device::playSound(uint8_t channel, uint16_t resNum, uint8_t freq, uint8_t vol){
-    const uint8_t * samples = m_samples_base_ptr + resource_offset(resNum) * 0x10000;
-
     if (vol == 0) {
         stopChannel(channel);
     } else {
+        int32_t offset = resource_offset(resNum);
+        if (offset < 0)
+            return;
+
+        const uint8_t * samples = m_samples_base_ptr + offset * 0x10000;
+
         struct MixerChunk mc;
         memset(&mc, 0, sizeof(mc));
         mc.data = samples + 8; // skip header
@@ -271,10 +275,13 @@ void SfxPlayer::setEventsDelay(uint16_t delay) {
 }
 
 void SfxPlayer::loadSfxModule(uint16_t resNum, uint16_t delay, uint8_t pos) {
-
     printf("SfxPlayer::loadSfxModule(resNum:0x%X, delay:%d, pos:%d)\n", resNum, delay, pos);
 
-    const uint8_t * resource_ptr = ((uint8_t*) m_mixer->m_samples_base_ptr) + resource_offset(resNum) * 0x10000;
+    int32_t offset = resource_offset(resNum);
+    if (offset < 0)
+        return;
+
+    const uint8_t * resource_ptr = ((uint8_t*) m_mixer->m_samples_base_ptr) + offset * 0x10000;
 
     m_resNum = resNum;
     memset(&m_sfxMod, 0, sizeof(SfxModule));
@@ -303,9 +310,14 @@ void SfxPlayer::prepareInstruments(const uint8_t *p) {
     for (int i = 0; i < 15; ++i) {
         SfxInstrument *ins = &m_sfxMod.samples[i];
         uint16_t resNum = READ_BE_UINT16(p); p += 2;
+
         if (resNum != 0) {
+            int32_t offset = resource_offset(resNum);
+            if (offset < 0)
+                return;
+
             ins->volume = READ_BE_UINT16(p);
-            ins->data = ((uint8_t*) m_mixer->m_samples_base_ptr) + resource_offset(resNum) * 0x10000;
+            ins->data = ((uint8_t*) m_mixer->m_samples_base_ptr) + offset * 0x10000;
             memset(ins->data + 8, 0, 4);
             printf("Loaded instrument 0x%X n=%d volume=%d\n", resNum, i, ins->volume);
         }
