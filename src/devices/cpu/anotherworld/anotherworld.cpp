@@ -42,11 +42,6 @@ void another_world_cpu_device::nextThread(){
     PC = vmThreads[m_currentThread];
 }
 
-void another_world_cpu_device::write_videoram(uint16_t x, uint16_t y, uint8_t c){
-    uint16_t offset = 40*y + x;
-    m_program->write_byte(0xfc00 + offset, c);
-}
-
 uint16_t another_world_cpu_device::read_vm_variable(uint8_t i){
     return m_data->read_word(2*i);
 }
