@@ -48,6 +48,7 @@ another_world_cpu_device::another_world_cpu_device(const machine_config &mconfig
       m_icount(0)
 {
     m_stack = new Stack(&m_sp);
+    m_requestedNextPart = 0;
 }
 
 another_world_cpu_device::~another_world_cpu_device() {
@@ -59,6 +60,12 @@ void another_world_cpu_device::nextThread(){
         m_currentThread = (m_currentThread+1) % NUM_THREADS;
 
         if (m_currentThread == 0){
+            //Check if a part switch has been requested.
+            if (m_requestedNextPart != 0) {
+                initForPart(m_requestedNextPart);
+                m_requestedNextPart = 0;
+            }
+
             for (int i=0; i<NUM_THREADS; i++){
                 vmThreadIsFrozen[i] = requested_state[i];
 
@@ -587,29 +594,11 @@ void another_world_cpu_device::execute_instruction()
                 return;
             }
 
-#define NUM_MEM_LIST 0x91 /* TODO: check this! */
-
+            #define NUM_MEM_LIST 0x91 /* TODO: check this! */
             if (resourceId > NUM_MEM_LIST) {
-                ((another_world_state*) owner())->m_mixer->m_player->stop();
-                ((another_world_state*) owner())->m_mixer->stopAll();
-
-                write_vm_variable(0xE4, 0x14); //why?
-
-                m_currentPartId = resourceId;
-                ((another_world_state*) owner())->setupPart(resourceId);
-#ifdef DUMP_VM_EXECUTION_LOG
-                fprintf(m_address_log, "initForPart %d\n", resourceId);
-#endif
-
-                PC = 0x0000;
-                for (int i=0; i<NUM_THREADS; i++){
-                    requested_state[i] = false;
-                    vmThreadIsFrozen[i] = false;
-                    requested_PC[i] = 0xFFFF;
-                    vmThreads[i] = 0xFFFF;
-                }
+                m_requestedNextPart = resourceId;
             }
-        return;
+            return;
         }
         case 0x1A: /* playMusic */
         {
@@ -629,6 +618,27 @@ void another_world_cpu_device::execute_instruction()
         }
     }
     printf("unimplemented opcode: 0x%02X\n", opcode);
+}
+
+void another_world_cpu_device::initForPart(uint16_t partId){
+    ((another_world_state*) owner())->m_mixer->m_player->stop();
+    ((another_world_state*) owner())->m_mixer->stopAll();
+
+    write_vm_variable(0xE4, 0x14); //why?
+
+    ((another_world_state*) owner())->setupPart(partId);
+    m_currentPartId = partId;
+
+#ifdef DUMP_VM_EXECUTION_LOG
+    fprintf(m_address_log, "initForPart %d\n", partId);
+#endif
+
+    for (int i=0; i<NUM_THREADS; i++){
+        vmThreads[i] = 0xFFFF;
+        vmThreadIsFrozen[i] = false;
+    }
+
+    vmThreads[0] = 0x0000;
 }
 
 offs_t another_world_cpu_device::disasm_disassemble(char *buffer, offs_t pc, const UINT8 *oprom, const UINT8 *opram, UINT32 options)

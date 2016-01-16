@@ -110,6 +110,7 @@ protected:
     Stack* m_stack;
     int m_currentThread;
     uint16_t m_currentPartId;
+    uint16_t m_requestedNextPart;
 
     //video-related:
     bool m_useVideo2;
@@ -121,6 +122,7 @@ protected:
 private:
     void nextThread();
     void execute_instruction();
+    void initForPart(uint16_t partId);
     uint8_t fetch_byte();
     uint16_t fetch_word();
     uint16_t read_vm_variable(uint8_t i);
