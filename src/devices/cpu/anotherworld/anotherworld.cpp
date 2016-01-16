@@ -10,6 +10,35 @@
 #include "sound/anotherw.h"
 #include "includes/anotherworld.h"
 
+Stack::Stack(uint8_t* sp)
+    : m_sp(sp),
+      m_overflow(false) { }
+
+void Stack::push(uint16_t value){
+    if (*m_sp == 0xFF){
+        m_overflow = true;
+    } else if (*m_sp == 0x00 && m_overflow){
+        printf("ERROR: stack overflow\n");
+        //TODO: reset();
+    }
+    m_stacked_values[(*m_sp)++] = value;
+}
+
+uint16_t Stack::pop(){
+    if (*m_sp == 0x00 && !m_overflow){
+        printf("ERROR: stack underflow\n");
+        //TODO: reset();
+    } else {
+        m_overflow = false;
+    }
+    return m_stacked_values[--(*m_sp)];
+}
+
+void Stack::clean(){
+    *m_sp = 0;
+    m_overflow = false;
+}
+
 const device_type ANOTHER_WORLD  = &device_creator<another_world_cpu_device>;
 
 another_world_cpu_device::another_world_cpu_device(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock)
@@ -18,6 +47,11 @@ another_world_cpu_device::another_world_cpu_device(const machine_config &mconfig
       m_data_config("data", ENDIANNESS_LITTLE, 16, 9, 0),
       m_icount(0)
 {
+    m_stack = new Stack(&m_sp);
+}
+
+another_world_cpu_device::~another_world_cpu_device() {
+    delete m_stack;
 }
 
 void another_world_cpu_device::nextThread(){
@@ -82,7 +116,7 @@ void another_world_cpu_device::device_start()
 
 void another_world_cpu_device::device_reset()
 {
-    vmStackCalls[0] = 0x0000;
+    m_stack->clean();
     m_currentThread = 0;
     m_currentPartId = GAME_PART(0);
     m_pc = 0;
@@ -95,9 +129,7 @@ void another_world_cpu_device::device_reset()
 
     //TODO: declare the stack as a RAM block so that
     //      we can inspect it in the Memory View Window.
-    for (int i=0; i<256; i++){
-        vmStackCalls[i] = 0x0000;
-    }
+    m_stack->clean();
 
     for (int i=0; i<NUM_THREADS; i++){
         vmThreads[i] = 0xFFFF;
@@ -268,23 +300,13 @@ void another_world_cpu_device::execute_instruction()
         case 0x04: /* CALL subroutine instruction */
         {
             UINT16 addr = fetch_word();
-
-            //TODO: Implement the stack memory as another block of RAM.
-            vmStackCalls[SP] = PC;
-            if (SP == 0xFF)
-                printf("ERROR: stack overflow\n");
-
-            SP++;
+            m_stack->push(PC);
             PC = addr;
             return;
         }
         case 0x05: /* ret: return from subroutine */
         {
-            if (SP == 0) {
-                printf("ERROR: stack underflow\n");
-            }   
-            SP--;
-            PC = vmStackCalls[SP];
+            PC = m_stack->pop();
             return;
         }
         case 0x06: /* pauseThread instruction (a.k.a. "break") */

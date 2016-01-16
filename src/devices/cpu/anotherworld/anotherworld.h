@@ -44,11 +44,28 @@ enum
     ANOTHER_WORLD_PC=1, ANOTHER_WORLD_SP, ANOTHER_WORLD_CUR_THREAD
 };
 
+//TODO: Implement the stack memory as another block of RAM.
+class Stack
+{
+public:
+    Stack(uint8_t* sp);
+
+    void push(uint16_t value);
+    uint16_t pop();
+    void clean();
+private:
+    uint16_t m_stacked_values[256];
+    uint8_t* m_sp;
+    bool m_overflow;
+};
+
 class another_world_cpu_device : public cpu_device
 {
 public:
     // construction/destruction
     another_world_cpu_device(const machine_config &mconfig, const char *_tag, device_t *_owner, UINT32 _clock);
+    ~another_world_cpu_device();
+
     void write_vm_variable(uint8_t i, uint16_t value);
 
 protected:
@@ -89,7 +106,8 @@ protected:
     uint16_t requested_PC[NUM_THREADS];
     bool vmThreadIsFrozen[NUM_THREADS];
     bool requested_state[NUM_THREADS];
-    uint16_t vmStackCalls[256];
+
+    Stack* m_stack;
     int m_currentThread;
     uint16_t m_currentPartId;
 
