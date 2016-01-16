@@ -25,10 +25,10 @@ void another_world_state::machine_start(){
 
 static INPUT_PORTS_START( another_world )
       PORT_START("keyboard")
-      PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Arrow up") PORT_CODE(KEYCODE_RIGHT)
-      PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Arrow down") PORT_CODE(KEYCODE_LEFT)
-      PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Arrow left") PORT_CODE(KEYCODE_DOWN)
-      PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Arrow right") PORT_CODE(KEYCODE_UP)
+      PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Arrow down") PORT_CODE(KEYCODE_DOWN)
+      PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Arrow up") PORT_CODE(KEYCODE_UP)
+      PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Arrow right") PORT_CODE(KEYCODE_RIGHT)
+      PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Arrow left") PORT_CODE(KEYCODE_LEFT)
       PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Action") PORT_CODE(KEYCODE_LCONTROL)
 
       PORT_START("keyboard_letters")
@@ -64,13 +64,13 @@ INPUT_PORTS_END
 READ16_MEMBER(another_world_state::up_down_r)
 {
     int value = ioport("keyboard")->read();
-    return (value & 0x08) ? 0xFFFF : (value & 0x04) ? 1 : 0;
+    return (value & 0x02) ? 0xFFFF : (value & 0x01) ? 1 : 0;
 }
 
 READ16_MEMBER(another_world_state::left_right_r)
 {
     int value = ioport("keyboard")->read();
-    return (value & 0x02) ? 0xFFFF : (value & 0x01) ? 1 : 0;
+    return (value & 0x08) ? 0xFFFF : (value & 0x04) ? 1 : 0;
 }
 
 READ16_MEMBER(another_world_state::action_r)
