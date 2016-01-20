@@ -3,9 +3,6 @@
 #include "emu.h"
 #include "includes/anotherworld.h"
 
-#define SCREEN_WIDTH 320
-#define SCREEN_HEIGHT 200
-
 void another_world_state::video_start()
 {
     for (int i=0; i<4; i++){
@@ -186,7 +183,7 @@ void another_world_state::fillPolygon(uint16_t color, uint16_t zoom, const Point
     int16_t y1 = pt.y - m_polygon.bbox_h / 2;
     int16_t y2 = pt.y + m_polygon.bbox_h / 2;
 
-    if (x1 > (SCREEN_WIDTH-1) || x2 < 0 || y1 > (SCREEN_HEIGHT-1) || y2 < 0)
+    if (x1 > (m_screen->width()-1) || x2 < 0 || y1 > (m_screen->height()-1) || y2 < 0)
         return;
 
     m_hliney = y1;
@@ -234,16 +231,17 @@ void another_world_state::fillPolygon(uint16_t color, uint16_t zoom, const Point
                 if (m_hliney >= 0) {
                     x1 = cpt1 >> 16;
                     x2 = cpt2 >> 16;
-                    if (x1 <= (SCREEN_WIDTH-1) && x2 >= 0) {
+                    if (x1 <= (m_screen->width()-1) && x2 >= 0) {
                         if (x1 < 0) x1 = 0;
-                        if (x2 > (SCREEN_WIDTH-1)) x2 = (SCREEN_WIDTH-1);
+                        if (x2 > (m_screen->width()-1))
+                            x2 = m_screen->width()-1;
                         (this->*drawFct)(x1, x2, color);
                     }
                 }
                 cpt1 += step1;
                 cpt2 += step2;
                 m_hliney++;
-                if (m_hliney > (SCREEN_HEIGHT-1)) return;
+                if (m_hliney > (m_screen->height()-1)) return;
             }
         }
     }
@@ -260,8 +258,8 @@ void another_world_state::updateDisplay(uint8_t pageId) {
         }
     }
 
-    for (int x=0; x<SCREEN_WIDTH; x++){
-        for (int y=0; y<SCREEN_HEIGHT; y++){
+    for (int x=0; x < m_screen->width(); x++){
+        for (int y=0; y < m_screen->height(); y++){
             uint16_t color = m_curPagePtr2->pix16(y, x);
             m_screen_bitmap.pix16(y, x) = color;
         }
@@ -269,6 +267,8 @@ void another_world_state::updateDisplay(uint8_t pageId) {
 }
 
 void another_world_state::drawPoint(uint8_t color, int16_t x, int16_t y) {
+    x = (int16_t) (x * (m_screen->width()/320.0));
+    y = (int16_t) (y * (m_screen->height()/200.0));
     m_curPagePtr1->pix16(y, x) = color;
 }
 
@@ -295,8 +295,8 @@ void another_world_state::selectVideoPage(uint8_t pageId){
 void another_world_state::fillPage(uint8_t pageId, uint8_t color){
     bitmap_ind16* page = getPagePtr(pageId);
 
-    for (int x=0; x<SCREEN_WIDTH; x++){
-        for (int y=0; y<SCREEN_HEIGHT; y++){
+    for (int x=0; x < m_screen->width(); x++){
+        for (int y=0; y < m_screen->height(); y++){
             page->pix16(y, x) = color;
         }
     }
@@ -307,8 +307,8 @@ void another_world_state::copyVideoPage(uint8_t srcPageId, uint8_t dstPageId, ui
     bitmap_ind16* src = getPagePtr(srcPageId);
     bitmap_ind16* dest = getPagePtr(dstPageId);
     
-    for (int x=0; x<SCREEN_WIDTH; x++){
-        for (int y=0; y<SCREEN_HEIGHT; y++){
+    for (int x=0; x < m_screen->width(); x++){
+        for (int y=0; y < m_screen->height(); y++){
             dest->pix16(y, x) = src->pix16(y, x);
         }
     }
@@ -339,7 +339,9 @@ void another_world_state::draw_charactere(uint8_t character, uint16_t x, uint16_
         uint8_t row = font[(character - ' ') * 8 + j];
         for (int i = 0; i < 8; i++) {
             if (row & 0x80) {
-                m_curPagePtr1->pix16(y+j, x+i) = color;
+                int16_t px = (int16_t) ((x+i) * (m_screen->width()/320.0));
+                //int16_t py = (int16_t) ((y+j) * (m_screen->height()/200.0));
+                m_curPagePtr1->pix16(y+j, px) = color;
             }
             row <<= 1;
         }

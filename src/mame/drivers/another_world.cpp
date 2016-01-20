@@ -9,6 +9,12 @@
     https://github.com/fabiensanglard/Another-World-Bytecode-Interpreter
 */
 
+#define SCREEN_WIDTH 320
+#define SCREEN_HEIGHT 200
+
+//#define SCREEN_WIDTH 256
+//#define SCREEN_HEIGHT 224
+
 #include "emu.h"
 #include "includes/anotherworld.h"
 #include "cpu/anotherworld/anotherworld.h"
@@ -138,8 +144,8 @@ static MACHINE_CONFIG_START( another_world, another_world_state )
     MCFG_SCREEN_ADD("screen", RASTER)
     MCFG_SCREEN_REFRESH_RATE(60)
     MCFG_SCREEN_VBLANK_TIME(ATTOSECONDS_IN_USEC(0))
-    MCFG_SCREEN_SIZE(320, 200)
-    MCFG_SCREEN_VISIBLE_AREA(0, 319, 0, 199)
+    MCFG_SCREEN_SIZE(SCREEN_WIDTH, SCREEN_HEIGHT)
+    MCFG_SCREEN_VISIBLE_AREA(0, SCREEN_WIDTH-1, 0, SCREEN_HEIGHT-1)
     MCFG_SCREEN_UPDATE_DRIVER(another_world_state, screen_update_aw)
 
     MCFG_SCREEN_PALETTE("palette")
