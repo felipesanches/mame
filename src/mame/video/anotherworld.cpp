@@ -13,11 +13,6 @@ void another_world_state::video_start()
     m_curPagePtr2 = &m_page_bitmaps[2];
     m_curPagePtr3 = &m_page_bitmaps[1];
     m_curPagePtr1 = getPagePtr(0xFE);
-
-    m_interpTable[0] = 0x4000;
-    for (int i = 1; i < 0x400; ++i) {
-        m_interpTable[i] = 0x4000 / i;
-    }
 }
 
 bitmap_ind16* another_world_state::getPagePtr(uint8_t pageId){
@@ -52,9 +47,13 @@ void another_world_state::setDataBuffer(uint8_t type, uint16_t offset){
     m_data_offset = offset;
 }
 
-void Polygon::readVertices(const uint8_t *p, uint16_t zoom) {
+void Polygon::readVertices(const uint8_t *p, uint16_t zoom, uint16_t screen_width, uint16_t screen_height) {
     bbox_w = (*p++) * zoom / DEFAULT_ZOOM;
     bbox_h = (*p++) * zoom / DEFAULT_ZOOM;
+
+//    bbox_w = (int16_t) (bbox_w * (screen_width/320.0));
+//    bbox_h = (int16_t) (bbox_h * (screen_height/200.0));
+    
     numPoints = *p++;
     assert((numPoints & 1) == 0 && numPoints < MAX_POINTS);
 
@@ -63,6 +62,9 @@ void Polygon::readVertices(const uint8_t *p, uint16_t zoom) {
         Point *pt = &points[i];
         pt->x = (*p++) * zoom / DEFAULT_ZOOM;
         pt->y = (*p++) * zoom / DEFAULT_ZOOM;
+        
+//        pt->x = (int16_t) (pt->x * (screen_width/320.0));
+//        pt->y = (int16_t) (pt->y * (screen_height/200.0));
     }
 }
 
@@ -85,7 +87,7 @@ void another_world_state::readAndDrawPolygon(uint8_t color, uint16_t zoom, const
             color = value & 0x3F; //why?
         }
 
-        m_polygon.readVertices(&m_polygonData[m_data_offset], zoom);
+        m_polygon.readVertices(&m_polygonData[m_data_offset], zoom, m_screen->width(), m_screen->height());
         fillPolygon(color, zoom, pt);
     } else {
         value &= 0x3F;
@@ -110,6 +112,12 @@ void another_world_state::readAndDrawPolygonHierarchy(uint16_t zoom, const Point
     pt.x -= m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
     pt.y -= m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
 
+//    int16_t offs_x = m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
+//    int16_t offs_y = m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
+//
+//    pt.x -= (int16_t) (offs_x * (m_screen->width()/320.0));
+//    pt.y -= (int16_t) (offs_y * (m_screen->height()/200.0));
+
     int16_t children = m_polygonData[m_data_offset++];
 
     for ( ; children >= 0; --children) {
@@ -119,6 +127,12 @@ void another_world_state::readAndDrawPolygonHierarchy(uint16_t zoom, const Point
         Point po(pt);
         po.x += m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
         po.y += m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
+
+//        offs_x = m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
+//        offs_y = m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
+//
+//        po.x += (int16_t) (offs_x * (m_screen->width()/320.0));
+//        po.y += (int16_t) (offs_y * (m_screen->height()/200.0));
 
         uint16_t color = 0xFF;
         if (offset & 0x8000) {
@@ -133,11 +147,6 @@ void another_world_state::readAndDrawPolygonHierarchy(uint16_t zoom, const Point
 
         m_data_offset = backup;
     }
-}
-
-int32_t another_world_state::calcStep(const Point &p1, const Point &p2, uint16_t &dy) {
-    dy = p2.y - p1.y;
-    return (p2.x - p1.x) * m_interpTable[dy] * 4;
 }
 
 /* Blend a line in the current framebuffer
@@ -178,22 +187,27 @@ void another_world_state::fillPolygon(uint16_t color, uint16_t zoom, const Point
         return;
     }
 
-    int16_t x1 = pt.x - m_polygon.bbox_w / 2;
-    int16_t x2 = pt.x + m_polygon.bbox_w / 2;
-    int16_t y1 = pt.y - m_polygon.bbox_h / 2;
-    int16_t y2 = pt.y + m_polygon.bbox_h / 2;
+    int16_t xmin = pt.x - m_polygon.bbox_w / 2;
+    int16_t xmax = pt.x + m_polygon.bbox_w / 2;
+    int16_t ymin = pt.y - m_polygon.bbox_h / 2;
+    int16_t ymax = pt.y + m_polygon.bbox_h / 2;
 
-    if (x1 > (m_screen->width()-1) || x2 < 0 || y1 > (m_screen->height()-1) || y2 < 0)
+    if (xmin > (320-1) || xmax < 0 || ymin > (200-1) || ymax < 0)
         return;
 
-    m_hliney = y1;
+//    if (x1 > (m_screen->width()-1) || x2 < 0 || y1 > (m_screen->height()-1) || y2 < 0)
+//        return;
+
+    m_hliney = ymin;
     
     uint16_t i, j;
+    int16_t x1, x2;
+
     i = 0;
     j = m_polygon.numPoints - 1;
     
-    x2 = m_polygon.points[i].x + x1;
-    x1 = m_polygon.points[j].x + x1;
+    x2 = m_polygon.points[i].x + xmin;
+    x1 = m_polygon.points[j].x + xmin;
 
     i++;
     j--;
@@ -226,7 +240,17 @@ void another_world_state::fillPolygon(uint16_t color, uint16_t zoom, const Point
         if (h == 0) {
             cpt1 += step1;
             cpt2 += step2;
+
+            h = p2.y - p1.y;
+            dx = p2.x - p1.x;
+            return (dy==0) ? (dx * 0x4000 * 4) : (dx * (0x4000/dy) * 4);
+
         } else {
+
+            dy = p2.y - p1.y;
+            dx = p2.x - p1.x;
+            return (dy==0) ? (dx * 0x4000 * 4) : (dx * (0x4000/dy) * 4);
+
             for (; h != 0; --h) {
                 if (m_hliney >= 0) {
                     x1 = cpt1 >> 16;

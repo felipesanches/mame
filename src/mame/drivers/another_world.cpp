@@ -9,11 +9,11 @@
     https://github.com/fabiensanglard/Another-World-Bytecode-Interpreter
 */
 
-#define SCREEN_WIDTH 320
-#define SCREEN_HEIGHT 200
+//#define SCREEN_WIDTH 320
+//#define SCREEN_HEIGHT 200
 
-//#define SCREEN_WIDTH 256
-//#define SCREEN_HEIGHT 224
+#define SCREEN_WIDTH 256
+#define SCREEN_HEIGHT 224
 
 #include "emu.h"
 #include "includes/anotherworld.h"
