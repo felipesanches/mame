@@ -180,6 +180,13 @@ void another_world_state::drawLineP(int16_t x1, int16_t x2, uint8_t color) {
     }
 }
 
+int32_t another_world_state::calcStep(const Point &p1, const Point &p2, uint16_t &dy) {
+    uint16_t dx;
+    dy = p2.y - p1.y;
+    dx = p2.x - p1.x;
+    return (dy==0) ? (dx * 0x4000 * 4) : (dx * (0x4000/dy) * 4);
+}
+
 void another_world_state::fillPolygon(uint16_t color, uint16_t zoom, const Point &pt) {
     
     if (m_polygon.bbox_w == 0 && m_polygon.bbox_h == 1 && m_polygon.numPoints == 4) {
@@ -240,17 +247,7 @@ void another_world_state::fillPolygon(uint16_t color, uint16_t zoom, const Point
         if (h == 0) {
             cpt1 += step1;
             cpt2 += step2;
-
-            h = p2.y - p1.y;
-            dx = p2.x - p1.x;
-            return (dy==0) ? (dx * 0x4000 * 4) : (dx * (0x4000/dy) * 4);
-
         } else {
-
-            dy = p2.y - p1.y;
-            dx = p2.x - p1.x;
-            return (dy==0) ? (dx * 0x4000 * 4) : (dx * (0x4000/dy) * 4);
-
             for (; h != 0; --h) {
                 if (m_hliney >= 0) {
                     x1 = cpt1 >> 16;

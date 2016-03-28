@@ -1189,6 +1189,10 @@ amust                           //
 angelkds                        // 833-6599 (c) 1988 Sega / Nasco?
 spcpostn                        // (c) 1986 Sega / Nasco"
 
+@source:another_world.cpp
+aw_msdos                        //
+aw_amipk                        //
+
 @source:anzterm.cpp
 anzterm                         // Burroughs EF315-I220
 
