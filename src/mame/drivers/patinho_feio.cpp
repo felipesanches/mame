@@ -39,7 +39,7 @@ public:
 
 	required_device<patinho_feio_cpu_device> m_maincpu;
 	required_device<teleprinter_device> m_decwriter;
-	required_device<teleprinter_device> m_tty;
+	optional_device<teleprinter_device> m_tty;
 private:
         UINT8* paper_tape_data;
         UINT32 paper_tape_length;
@@ -239,8 +239,8 @@ static MACHINE_CONFIG_START( patinho_feio, patinho_feio_state )
 	MCFG_GENERIC_TELEPRINTER_KEYBOARD_CB(WRITE8(patinho_feio_state, decwriter_kbd_input))
 
         /* Teletype */
-	MCFG_DEVICE_ADD("teletype", TELEPRINTER, 1)
-	MCFG_GENERIC_TELEPRINTER_KEYBOARD_CB(WRITE8(patinho_feio_state, teletype_kbd_input))
+	//MCFG_DEVICE_ADD("teletype", TELEPRINTER, 1)
+	//MCFG_GENERIC_TELEPRINTER_KEYBOARD_CB(WRITE8(patinho_feio_state, teletype_kbd_input))
 
 	/* punched tape */
 	MCFG_GENERIC_CARTSLOT_ADD("cartslot", generic_plain_slot, "patinho_tape")

@@ -6,8 +6,8 @@
 #include "machine/terminal.h"
 #include "sound/samples.h"
 
-#define TELEPRINTER_WIDTH 80
-#define TELEPRINTER_HEIGHT 50
+#define TELEPRINTER_WIDTH 16
+#define TELEPRINTER_HEIGHT 3
 
 
 /***************************************************************************
