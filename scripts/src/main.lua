@@ -130,6 +130,9 @@ end
 			emccopts = emccopts .. " --embed-file " .. _MAKE.esc(MAME_DIR) .. "bgfx/effects@bgfx/effects"
 			emccopts = emccopts .. " --embed-file " .. _MAKE.esc(MAME_DIR) .. "bgfx/shaders/gles@bgfx/shaders/gles"
 			emccopts = emccopts .. " --embed-file " .. _MAKE.esc(MAME_DIR) .. "artwork/slot-mask.png@artwork/slot-mask.png"
+			emccopts = emccopts .. " --embed-file " .. _MAKE.esc(MAME_DIR) .. "samples/teleprinter/keypress.wav@samples/teleprinter/keypress.wav"
+			emccopts = emccopts .. " --embed-file " .. _MAKE.esc(MAME_DIR) .. "samples/teleprinter/linefeed.wav@samples/teleprinter/linefeed.wav"
+			emccopts = emccopts .. " --embed-file " .. _MAKE.esc(MAME_DIR) .. "samples/teleprinter/carriagereturn.wav@samples/teleprinter/carriagereturn.wav"
 			postbuildcommands {
 				os.getenv("EMSCRIPTEN") .. "/emcc " .. emccopts .. " $(TARGET) -o " .. _MAKE.esc(MAME_DIR) .. _OPTIONS["target"] .. _OPTIONS["subtarget"] .. ".js",
 			}
