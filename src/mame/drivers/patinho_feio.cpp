@@ -182,7 +182,7 @@ void patinho_feio_state::machine_start(){
 	load_raw_data("hexam", 0xE00, 0x0D5);
 
 	load_raw_data("loader", 0xF80, 0x080);
-	load_raw_data("micro_pre_loader", 0x000, 0x02A);
+	//load_raw_data("micro_pre_loader", 0x000, 0x02A);
 }
 
 static INPUT_PORTS_START( patinho_feio )
@@ -264,8 +264,8 @@ ROM_START( patinho )
 	/* Micro pre-loader:
 	   This was re-created by professor Joao Jose Neto based on his vague
            recollection of sequences of opcode values from almost 40 years ago :-) */
-	ROM_REGION( 0x02a, "micro_pre_loader", 0 ) 
-	ROM_LOAD( "micro-pre-loader.bin", 0x000, 0x02a, CRC(1921feab) SHA1(bb063102e44e9ab963f95b45710141dc2c5046b0) )
+	//ROM_REGION( 0x02a, "micro_pre_loader", 0 ) 
+	//ROM_LOAD( "micro-pre-loader.bin", 0x000, 0x02a, CRC(1921feab) SHA1(bb063102e44e9ab963f95b45710141dc2c5046b0) )
 ROM_END
 
 /*    YEAR  NAME      PARENT    COMPAT  MACHINE        INPUT         INIT                              COMPANY                                           FULLNAME */
