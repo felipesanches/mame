@@ -38,81 +38,46 @@ READ16_MEMBER(patinho_feio_state::buttons_r)
 }
 
 void patinho_feio_state::update_panel(UINT8 ACC, UINT8 opcode, UINT8 mem_data, UINT16 mem_addr, UINT16 PC, UINT8 FLAGS, UINT16 RC){
-	if ((m_prev_ACC ^ ACC) & (1 << 0)) m_out->set_value("acc0", (ACC >> 0) & 1);
-	if ((m_prev_ACC ^ ACC) & (1 << 1)) m_out->set_value("acc1", (ACC >> 1) & 1);
-	if ((m_prev_ACC ^ ACC) & (1 << 2)) m_out->set_value("acc2", (ACC >> 2) & 1);
-	if ((m_prev_ACC ^ ACC) & (1 << 3)) m_out->set_value("acc3", (ACC >> 3) & 1);
-	if ((m_prev_ACC ^ ACC) & (1 << 4)) m_out->set_value("acc4", (ACC >> 4) & 1);
-	if ((m_prev_ACC ^ ACC) & (1 << 5)) m_out->set_value("acc5", (ACC >> 5) & 1);
-	if ((m_prev_ACC ^ ACC) & (1 << 6)) m_out->set_value("acc6", (ACC >> 6) & 1);
-	if ((m_prev_ACC ^ ACC) & (1 << 7)) m_out->set_value("acc7", (ACC >> 7) & 1);
+	char lamp_id[11];
+	for (int i=0; i<8; i++){
+		if ((m_prev_ACC ^ ACC) & (1 << i)){
+			sprintf(lamp_id, "acc%d", i);
+			m_out->set_value(lamp_id, (ACC >> i) & 1);
+		}
+		if ((m_prev_opcode ^ opcode) & (1 << i)){
+			sprintf(lamp_id, "opcode%d", i);
+			m_out->set_value(lamp_id, (opcode >> i) & 1);
+		}
+		if ((m_prev_mem_data ^ mem_data) & (1 << i)){
+			sprintf(lamp_id, "mem_data%d", i);
+			m_out->set_value(lamp_id, (mem_data >> i) & 1);
+		}
+	}
         m_prev_ACC = ACC;
-
-	if ((m_prev_opcode ^ opcode) & (1 << 0)) m_out->set_value("opcode0", (opcode >> 0) & 1);
-	if ((m_prev_opcode ^ opcode) & (1 << 1)) m_out->set_value("opcode1", (opcode >> 1) & 1);
-	if ((m_prev_opcode ^ opcode) & (1 << 2)) m_out->set_value("opcode2", (opcode >> 2) & 1);
-	if ((m_prev_opcode ^ opcode) & (1 << 3)) m_out->set_value("opcode3", (opcode >> 3) & 1);
-	if ((m_prev_opcode ^ opcode) & (1 << 4)) m_out->set_value("opcode4", (opcode >> 4) & 1);
-	if ((m_prev_opcode ^ opcode) & (1 << 5)) m_out->set_value("opcode5", (opcode >> 5) & 1);
-	if ((m_prev_opcode ^ opcode) & (1 << 6)) m_out->set_value("opcode6", (opcode >> 6) & 1);
-	if ((m_prev_opcode ^ opcode) & (1 << 7)) m_out->set_value("opcode7", (opcode >> 7) & 1);
 	m_prev_opcode = opcode;
-
-	if ((m_prev_mem_data ^ mem_data) & (1 << 0)) m_out->set_value("mem_data0", (mem_data >> 0) & 1);
-	if ((m_prev_mem_data ^ mem_data) & (1 << 1)) m_out->set_value("mem_data1", (mem_data >> 1) & 1);
-	if ((m_prev_mem_data ^ mem_data) & (1 << 2)) m_out->set_value("mem_data2", (mem_data >> 2) & 1);
-	if ((m_prev_mem_data ^ mem_data) & (1 << 3)) m_out->set_value("mem_data3", (mem_data >> 3) & 1);
-	if ((m_prev_mem_data ^ mem_data) & (1 << 4)) m_out->set_value("mem_data4", (mem_data >> 4) & 1);
-	if ((m_prev_mem_data ^ mem_data) & (1 << 5)) m_out->set_value("mem_data5", (mem_data >> 5) & 1);
-	if ((m_prev_mem_data ^ mem_data) & (1 << 6)) m_out->set_value("mem_data6", (mem_data >> 6) & 1);
-	if ((m_prev_mem_data ^ mem_data) & (1 << 7)) m_out->set_value("mem_data7", (mem_data >> 7) & 1);
 	m_prev_mem_data = mem_data;
 
-	if ((m_prev_mem_addr ^ mem_addr) & (1 << 0)) m_out->set_value("mem_addr0", (mem_addr >> 0) & 1);
-	if ((m_prev_mem_addr ^ mem_addr) & (1 << 1)) m_out->set_value("mem_addr1", (mem_addr >> 1) & 1);
-	if ((m_prev_mem_addr ^ mem_addr) & (1 << 2)) m_out->set_value("mem_addr2", (mem_addr >> 2) & 1);
-	if ((m_prev_mem_addr ^ mem_addr) & (1 << 3)) m_out->set_value("mem_addr3", (mem_addr >> 3) & 1);
-	if ((m_prev_mem_addr ^ mem_addr) & (1 << 4)) m_out->set_value("mem_addr4", (mem_addr >> 4) & 1);
-	if ((m_prev_mem_addr ^ mem_addr) & (1 << 5)) m_out->set_value("mem_addr5", (mem_addr >> 5) & 1);
-	if ((m_prev_mem_addr ^ mem_addr) & (1 << 6)) m_out->set_value("mem_addr6", (mem_addr >> 6) & 1);
-	if ((m_prev_mem_addr ^ mem_addr) & (1 << 7)) m_out->set_value("mem_addr7", (mem_addr >> 7) & 1);
-	if ((m_prev_mem_addr ^ mem_addr) & (1 << 8)) m_out->set_value("mem_addr8", (mem_addr >> 8) & 1);
-	if ((m_prev_mem_addr ^ mem_addr) & (1 << 9)) m_out->set_value("mem_addr9", (mem_addr >> 9) & 1);
-	if ((m_prev_mem_addr ^ mem_addr) & (1 << 10)) m_out->set_value("mem_addr10", (mem_addr >> 10) & 1);
-	if ((m_prev_mem_addr ^ mem_addr) & (1 << 11)) m_out->set_value("mem_addr11", (mem_addr >> 11) & 1);
+	for (int i=0; i<12; i++){
+		if ((m_prev_mem_addr ^ mem_addr) & (1 << i)){
+			sprintf(lamp_id, "mem_addr%d", i);
+			m_out->set_value(lamp_id, (mem_addr >> i) & 1);
+		}
+		if ((m_prev_PC ^ PC) & (1 << i)){
+			sprintf(lamp_id, "pc%d", i);
+			m_out->set_value(lamp_id, (ACC >> i) & 1);
+		}
+		if ((m_prev_RC ^ RC) & (1 << i)){
+			sprintf(lamp_id, "rc%d", i);
+			m_out->set_value(lamp_id, (RC >> i) & 1);
+		}
+	}
 	m_prev_mem_addr = mem_addr;
-
-	if ((m_prev_PC ^ PC) & (1 << 0)) m_out->set_value("pc0", (PC >> 0) & 1);
-	if ((m_prev_PC ^ PC) & (1 << 1)) m_out->set_value("pc1", (PC >> 1) & 1);
-	if ((m_prev_PC ^ PC) & (1 << 2)) m_out->set_value("pc2", (PC >> 2) & 1);
-	if ((m_prev_PC ^ PC) & (1 << 3)) m_out->set_value("pc3", (PC >> 3) & 1);
-	if ((m_prev_PC ^ PC) & (1 << 4)) m_out->set_value("pc4", (PC >> 4) & 1);
-	if ((m_prev_PC ^ PC) & (1 << 5)) m_out->set_value("pc5", (PC >> 5) & 1);
-	if ((m_prev_PC ^ PC) & (1 << 6)) m_out->set_value("pc6", (PC >> 6) & 1);
-	if ((m_prev_PC ^ PC) & (1 << 7)) m_out->set_value("pc7", (PC >> 7) & 1);
-	if ((m_prev_PC ^ PC) & (1 << 8)) m_out->set_value("pc8", (PC >> 8) & 1);
-	if ((m_prev_PC ^ PC) & (1 << 9)) m_out->set_value("pc9", (PC >> 9) & 1);
-	if ((m_prev_PC ^ PC) & (1 << 10)) m_out->set_value("pc10", (PC >> 10) & 1);
-	if ((m_prev_PC ^ PC) & (1 << 11)) m_out->set_value("pc11", (PC >> 11) & 1);
 	m_prev_PC = PC;
+	m_prev_RC = RC;
 
 	if ((m_prev_FLAGS ^ FLAGS) & (1 << 0)) m_out->set_value("flags0", (FLAGS >> 0) & 1);
 	if ((m_prev_FLAGS ^ FLAGS) & (1 << 1)) m_out->set_value("flags1", (FLAGS >> 1) & 1);
 	m_prev_FLAGS = FLAGS;
-
-	if ((m_prev_RC ^ RC) & (1 << 0)) m_out->set_value("rc0", (RC >> 0) & 1);
-	if ((m_prev_RC ^ RC) & (1 << 1)) m_out->set_value("rc1", (RC >> 1) & 1);
-	if ((m_prev_RC ^ RC) & (1 << 2)) m_out->set_value("rc2", (RC >> 2) & 1);
-	if ((m_prev_RC ^ RC) & (1 << 3)) m_out->set_value("rc3", (RC >> 3) & 1);
-	if ((m_prev_RC ^ RC) & (1 << 4)) m_out->set_value("rc4", (RC >> 4) & 1);
-	if ((m_prev_RC ^ RC) & (1 << 5)) m_out->set_value("rc5", (RC >> 5) & 1);
-	if ((m_prev_RC ^ RC) & (1 << 6)) m_out->set_value("rc6", (RC >> 6) & 1);
-	if ((m_prev_RC ^ RC) & (1 << 7)) m_out->set_value("rc7", (RC >> 7) & 1);
-	if ((m_prev_RC ^ RC) & (1 << 8)) m_out->set_value("rc8", (RC >> 8) & 1);
-	if ((m_prev_RC ^ RC) & (1 << 9)) m_out->set_value("rc9", (RC >> 9) & 1);
-	if ((m_prev_RC ^ RC) & (1 << 10)) m_out->set_value("rc10", (RC >> 10) & 1);
-	if ((m_prev_RC ^ RC) & (1 << 11)) m_out->set_value("rc11", (RC >> 11) & 1);
-	m_prev_RC = RC;
 }
 
 WRITE8_MEMBER(patinho_feio_state::decwriter_data_w)
