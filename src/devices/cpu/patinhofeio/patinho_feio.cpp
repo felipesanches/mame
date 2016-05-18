@@ -157,7 +157,7 @@ void patinho_feio_cpu_device::device_reset()
 	m_addr = 0;
 	m_opcode = 0;
 	m_mode = ADDRESSING_MODE;
-	((patinho_feio_state*) owner())->update_panel(ACC, m_opcode, READ_BYTE_PATINHO(m_addr), m_addr, PC, FLAGS, RC);
+	((patinho_feio_state*) owner())->update_panel(ACC, m_opcode, READ_BYTE_PATINHO(m_addr), m_addr, PC, FLAGS, RC, m_mode);
 }
 
 /* execute instructions on this CPU until icount expires */
@@ -168,7 +168,7 @@ void patinho_feio_cpu_device::execute_run()
 		read_panel_keys_register();
 		m_ext = READ_ACC_EXTENSION_REG();
 		m_idx = READ_INDEX_REG();
-		((patinho_feio_state*) owner())->update_panel(ACC, READ_BYTE_PATINHO(PC), READ_BYTE_PATINHO(m_addr), m_addr, PC, FLAGS, RC);
+		((patinho_feio_state*) owner())->update_panel(ACC, READ_BYTE_PATINHO(PC), READ_BYTE_PATINHO(m_addr), m_addr, PC, FLAGS, RC, m_mode);
 		debugger_instruction_hook(this, PC);
 
 		if (!m_run){

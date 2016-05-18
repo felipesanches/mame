@@ -27,7 +27,7 @@ public:
         DECLARE_DEVICE_IMAGE_LOAD_MEMBER( patinho_tape );
         void load_tape(const char* name);
         void load_raw_data(const char* name, unsigned int start_address, unsigned int data_length);
-        void update_panel(UINT8 ACC, UINT8 opcode, UINT8 mem_data, UINT16 mem_addr, UINT16 PC, UINT8 FLAGS, UINT16 RC);
+        void update_panel(UINT8 ACC, UINT8 opcode, UINT8 mem_data, UINT16 mem_addr, UINT16 PC, UINT8 FLAGS, UINT16 RC, UINT8 mode);
         virtual void machine_start() override;
 
         required_device<patinho_feio_cpu_device> m_maincpu;

@@ -37,8 +37,21 @@ READ16_MEMBER(patinho_feio_state::buttons_r)
 	return ioport("BUTTONS")->read();
 }
 
-void patinho_feio_state::update_panel(UINT8 ACC, UINT8 opcode, UINT8 mem_data, UINT16 mem_addr, UINT16 PC, UINT8 FLAGS, UINT16 RC){
+void patinho_feio_state::update_panel(UINT8 ACC, UINT8 opcode, UINT8 mem_data, UINT16 mem_addr, UINT16 PC, UINT8 FLAGS, UINT16 RC, UINT8 mode){
 	char lamp_id[11];
+	const char* button_names[] = {
+		"NORMAL",
+		"CICLOUNICO",
+		"INSTRUCAOUNICA",
+		"ENDERECAMENTO",
+		"ARMAZENAMENTO",
+		"EXPOSICAO"
+	};
+
+	for (int i=0; i<6; i++){
+		m_out->set_value(button_names[i], (mode == i) ? 1 : 0);
+	}
+
 	for (int i=0; i<8; i++){
 		if ((m_prev_ACC ^ ACC) & (1 << i)){
 			sprintf(lamp_id, "acc%d", i);
