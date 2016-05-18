@@ -151,35 +151,35 @@
                         <bounds x="150" y="100" width="625" height="450" />
 		</bezel>
 
-		<bezel name="mem_data7" element="bit_lamp" inputtag="mem_data" inputmask="0x001">
+		<bezel name="mem_data7" element="bit_lamp" inputtag="mem_data" inputmask="0x080">
 			<bounds x="190" y="440" width="20" height="20" />
 		</bezel>
 
-		<bezel name="mem_data6" element="bit_lamp" inputtag="mem_data" inputmask="0x002">
+		<bezel name="mem_data6" element="bit_lamp" inputtag="mem_data" inputmask="0x040">
 			<bounds x="215" y="440" width="20" height="20" />
 		</bezel>
 
-		<bezel name="mem_data5" element="bit_lamp" inputtag="mem_data" inputmask="0x004">
+		<bezel name="mem_data5" element="bit_lamp" inputtag="mem_data" inputmask="0x020">
 			<bounds x="240" y="440" width="20" height="20" />
 		</bezel>
 
-		<bezel name="mem_data4" element="bit_lamp" inputtag="mem_data" inputmask="0x008">
+		<bezel name="mem_data4" element="bit_lamp" inputtag="mem_data" inputmask="0x010">
 			<bounds x="265" y="440" width="20" height="20" />
 		</bezel>
 
-		<bezel name="mem_data3" element="bit_lamp" inputtag="mem_data" inputmask="0x010">
+		<bezel name="mem_data3" element="bit_lamp" inputtag="mem_data" inputmask="0x008">
 			<bounds x="290" y="440" width="20" height="20" />
 		</bezel>
 
-		<bezel name="mem_data2" element="bit_lamp" inputtag="mem_data" inputmask="0x020">
+		<bezel name="mem_data2" element="bit_lamp" inputtag="mem_data" inputmask="0x004">
 			<bounds x="315" y="440" width="20" height="20" />
 		</bezel>
 
-		<bezel name="mem_data1" element="bit_lamp" inputtag="mem_data" inputmask="0x040">
+		<bezel name="mem_data1" element="bit_lamp" inputtag="mem_data" inputmask="0x002">
 			<bounds x="340" y="440" width="20" height="20" />
 		</bezel>
 
-		<bezel name="mem_data0" element="bit_lamp" inputtag="mem_data" inputmask="0x080">
+		<bezel name="mem_data0" element="bit_lamp" inputtag="mem_data" inputmask="0x001">
 			<bounds x="365" y="440" width="20" height="20" />
 		</bezel>
 
@@ -187,35 +187,35 @@
                         <bounds x="200" y="470" width="200" height="20" />
 		</bezel>
 
-		<bezel name="opcode7" element="bit_lamp" inputtag="opcode" inputmask="0x001">
+		<bezel name="opcode7" element="bit_lamp" inputtag="opcode" inputmask="0x080">
 			<bounds x="190" y="340" width="20" height="20" />
 		</bezel>
 
-		<bezel name="opcode6" element="bit_lamp" inputtag="opcode" inputmask="0x002">
+		<bezel name="opcode6" element="bit_lamp" inputtag="opcode" inputmask="0x040">
 			<bounds x="215" y="340" width="20" height="20" />
 		</bezel>
 
-		<bezel name="opcode5" element="bit_lamp" inputtag="opcode" inputmask="0x004">
+		<bezel name="opcode5" element="bit_lamp" inputtag="opcode" inputmask="0x020">
 			<bounds x="240" y="340" width="20" height="20" />
 		</bezel>
 
-		<bezel name="opcode4" element="bit_lamp" inputtag="opcode" inputmask="0x008">
+		<bezel name="opcode4" element="bit_lamp" inputtag="opcode" inputmask="0x010">
 			<bounds x="265" y="340" width="20" height="20" />
 		</bezel>
 
-		<bezel name="opcode3" element="bit_lamp" inputtag="opcode" inputmask="0x010">
+		<bezel name="opcode3" element="bit_lamp" inputtag="opcode" inputmask="0x008">
 			<bounds x="290" y="340" width="20" height="20" />
 		</bezel>
 
-		<bezel name="opcode2" element="bit_lamp" inputtag="opcode" inputmask="0x020">
+		<bezel name="opcode2" element="bit_lamp" inputtag="opcode" inputmask="0x004">
 			<bounds x="315" y="340" width="20" height="20" />
 		</bezel>
 
-		<bezel name="opcode1" element="bit_lamp" inputtag="opcode" inputmask="0x040">
+		<bezel name="opcode1" element="bit_lamp" inputtag="opcode" inputmask="0x002">
 			<bounds x="340" y="340" width="20" height="20" />
 		</bezel>
 
-		<bezel name="opcode0" element="bit_lamp" inputtag="opcode" inputmask="0x080">
+		<bezel name="opcode0" element="bit_lamp" inputtag="opcode" inputmask="0x001">
 			<bounds x="365" y="340" width="20" height="20" />
 		</bezel>
 
@@ -223,35 +223,35 @@
                         <bounds x="200" y="370" width="200" height="20" />
 		</bezel>
 
-		<bezel name="acc7" element="bit_lamp" inputtag="ACC" inputmask="0x001">
+		<bezel name="acc7" element="bit_lamp" inputtag="ACC" inputmask="0x080">
 			<bounds x="190" y="240" width="20" height="20" />
 		</bezel>
 
-		<bezel name="acc6" element="bit_lamp" inputtag="ACC" inputmask="0x002">
+		<bezel name="acc6" element="bit_lamp" inputtag="ACC" inputmask="0x040">
 			<bounds x="215" y="240" width="20" height="20" />
 		</bezel>
 
-		<bezel name="acc5" element="bit_lamp" inputtag="ACC" inputmask="0x004">
+		<bezel name="acc5" element="bit_lamp" inputtag="ACC" inputmask="0x020">
 			<bounds x="240" y="240" width="20" height="20" />
 		</bezel>
 
-		<bezel name="acc4" element="bit_lamp" inputtag="ACC" inputmask="0x008">
+		<bezel name="acc4" element="bit_lamp" inputtag="ACC" inputmask="0x010">
 			<bounds x="265" y="240" width="20" height="20" />
 		</bezel>
 
-		<bezel name="acc3" element="bit_lamp" inputtag="ACC" inputmask="0x010">
+		<bezel name="acc3" element="bit_lamp" inputtag="ACC" inputmask="0x008">
 			<bounds x="290" y="240" width="20" height="20" />
 		</bezel>
 
-		<bezel name="acc2" element="bit_lamp" inputtag="ACC" inputmask="0x020">
+		<bezel name="acc2" element="bit_lamp" inputtag="ACC" inputmask="0x004">
 			<bounds x="315" y="240" width="20" height="20" />
 		</bezel>
 
-		<bezel name="acc1" element="bit_lamp" inputtag="ACC" inputmask="0x040">
+		<bezel name="acc1" element="bit_lamp" inputtag="ACC" inputmask="0x002">
 			<bounds x="340" y="240" width="20" height="20" />
 		</bezel>
 
-		<bezel name="acc0" element="bit_lamp" inputtag="ACC" inputmask="0x080">
+		<bezel name="acc0" element="bit_lamp" inputtag="ACC" inputmask="0x001">
 			<bounds x="365" y="240" width="20" height="20" />
 		</bezel>
 
@@ -259,51 +259,51 @@
                         <bounds x="200" y="270" width="200" height="20" />
 		</bezel>
 
-		<bezel name="rc11" element="bit_lamp" inputtag="RC" inputmask="0x001">
+		<bezel name="rc11" element="bit_lamp" inputtag="RC" inputmask="0x800">
 			<bounds x="440" y="490" width="20" height="20" />
 		</bezel>
 
-		<bezel name="rc10" element="bit_lamp" inputtag="RC" inputmask="0x002">
+		<bezel name="rc10" element="bit_lamp" inputtag="RC" inputmask="0x400">
 			<bounds x="465" y="490" width="20" height="20" />
 		</bezel>
 
-		<bezel name="rc9" element="bit_lamp" inputtag="RC" inputmask="0x004">
+		<bezel name="rc9" element="bit_lamp" inputtag="RC" inputmask="0x200">
 			<bounds x="490" y="490" width="20" height="20" />
 		</bezel>
 
-		<bezel name="rc8" element="bit_lamp" inputtag="RC" inputmask="0x008">
+		<bezel name="rc8" element="bit_lamp" inputtag="RC" inputmask="0x100">
 			<bounds x="515" y="490" width="20" height="20" />
 		</bezel>
 
-		<bezel name="rc7" element="bit_lamp" inputtag="RC" inputmask="0x010">
+		<bezel name="rc7" element="bit_lamp" inputtag="RC" inputmask="0x080">
 			<bounds x="540" y="490" width="20" height="20" />
 		</bezel>
 
-		<bezel name="rc6" element="bit_lamp" inputtag="RC" inputmask="0x020">
+		<bezel name="rc6" element="bit_lamp" inputtag="RC" inputmask="0x040">
 			<bounds x="565" y="490" width="20" height="20" />
 		</bezel>
 
-		<bezel name="rc5" element="bit_lamp" inputtag="RC" inputmask="0x040">
+		<bezel name="rc5" element="bit_lamp" inputtag="RC" inputmask="0x020">
 			<bounds x="590" y="490" width="20" height="20" />
 		</bezel>
 
-		<bezel name="rc4" element="bit_lamp" inputtag="RC" inputmask="0x080">
+		<bezel name="rc4" element="bit_lamp" inputtag="RC" inputmask="0x010">
 			<bounds x="615" y="490" width="20" height="20" />
 		</bezel>
 
-		<bezel name="rc3" element="bit_lamp" inputtag="RC" inputmask="0x100">
+		<bezel name="rc3" element="bit_lamp" inputtag="RC" inputmask="0x008">
 			<bounds x="640" y="490" width="20" height="20" />
 		</bezel>
 
-		<bezel name="rc2" element="bit_lamp" inputtag="RC" inputmask="0x200">
+		<bezel name="rc2" element="bit_lamp" inputtag="RC" inputmask="0x004">
 			<bounds x="665" y="490" width="20" height="20" />
 		</bezel>
 
-		<bezel name="rc1" element="bit_lamp" inputtag="RC" inputmask="0x400">
+		<bezel name="rc1" element="bit_lamp" inputtag="RC" inputmask="0x002">
 			<bounds x="690" y="490" width="20" height="20" />
 		</bezel>
 
-		<bezel name="rc0" element="bit_lamp" inputtag="RC" inputmask="0x800">
+		<bezel name="rc0" element="bit_lamp" inputtag="RC" inputmask="0x001">
 			<bounds x="715" y="490" width="20" height="20" />
 		</bezel>
 
@@ -311,11 +311,11 @@
                         <bounds x="450" y="520" width="299" height="20" />
 		</bezel>
 
-		<bezel name="flags1" element="bit_lamp" inputtag="FLAGS" inputmask="0x001">
+		<bezel name="flags1" element="bit_lamp" inputtag="FLAGS" inputmask="0x002">
 			<bounds x="465" y="310" width="20" height="20" />
 		</bezel>
 
-		<bezel name="flags0" element="bit_lamp" inputtag="FLAGS" inputmask="0x002">
+		<bezel name="flags0" element="bit_lamp" inputtag="FLAGS" inputmask="0x001">
 			<bounds x="690" y="310" width="20" height="20" />
 		</bezel>
 
@@ -327,51 +327,51 @@
                         <bounds x="650" y="350" width="99" height="20" />
 		</bezel>
 
-		<bezel name="pc11" element="bit_lamp" inputtag="PC" inputmask="0x001">
+		<bezel name="pc11" element="bit_lamp" inputtag="PC" inputmask="0x800">
 			<bounds x="440" y="240" width="20" height="20" />
 		</bezel>
 
-		<bezel name="pc10" element="bit_lamp" inputtag="PC" inputmask="0x002">
+		<bezel name="pc10" element="bit_lamp" inputtag="PC" inputmask="0x400">
 			<bounds x="465" y="240" width="20" height="20" />
 		</bezel>
 
-		<bezel name="pc9" element="bit_lamp" inputtag="PC" inputmask="0x004">
+		<bezel name="pc9" element="bit_lamp" inputtag="PC" inputmask="0x200">
 			<bounds x="490" y="240" width="20" height="20" />
 		</bezel>
 
-		<bezel name="pc8" element="bit_lamp" inputtag="PC" inputmask="0x008">
+		<bezel name="pc8" element="bit_lamp" inputtag="PC" inputmask="0x100">
 			<bounds x="515" y="240" width="20" height="20" />
 		</bezel>
 
-		<bezel name="pc7" element="bit_lamp" inputtag="PC" inputmask="0x010">
+		<bezel name="pc7" element="bit_lamp" inputtag="PC" inputmask="0x080">
 			<bounds x="540" y="240" width="20" height="20" />
 		</bezel>
 
-		<bezel name="pc6" element="bit_lamp" inputtag="PC" inputmask="0x020">
+		<bezel name="pc6" element="bit_lamp" inputtag="PC" inputmask="0x040">
 			<bounds x="565" y="240" width="20" height="20" />
 		</bezel>
 
-		<bezel name="pc5" element="bit_lamp" inputtag="PC" inputmask="0x040">
+		<bezel name="pc5" element="bit_lamp" inputtag="PC" inputmask="0x020">
 			<bounds x="590" y="240" width="20" height="20" />
 		</bezel>
 
-		<bezel name="pc4" element="bit_lamp" inputtag="PC" inputmask="0x080">
+		<bezel name="pc4" element="bit_lamp" inputtag="PC" inputmask="0x010">
 			<bounds x="615" y="240" width="20" height="20" />
 		</bezel>
 
-		<bezel name="pc3" element="bit_lamp" inputtag="PC" inputmask="0x100">
+		<bezel name="pc3" element="bit_lamp" inputtag="PC" inputmask="0x008">
 			<bounds x="640" y="240" width="20" height="20" />
 		</bezel>
 
-		<bezel name="pc2" element="bit_lamp" inputtag="PC" inputmask="0x200">
+		<bezel name="pc2" element="bit_lamp" inputtag="PC" inputmask="0x004">
 			<bounds x="665" y="240" width="20" height="20" />
 		</bezel>
 
-		<bezel name="pc1" element="bit_lamp" inputtag="PC" inputmask="0x400">
+		<bezel name="pc1" element="bit_lamp" inputtag="PC" inputmask="0x002">
 			<bounds x="690" y="240" width="20" height="20" />
 		</bezel>
 
-		<bezel name="pc0" element="bit_lamp" inputtag="PC" inputmask="0x800">
+		<bezel name="pc0" element="bit_lamp" inputtag="PC" inputmask="0x001">
 			<bounds x="715" y="240" width="20" height="20" />
 		</bezel>
 
@@ -379,51 +379,51 @@
                         <bounds x="450" y="270" width="299" height="20" />
 		</bezel>
 
-		<bezel name="mem_addr11" element="bit_lamp" inputtag="mem_addr" inputmask="0x001">
+		<bezel name="mem_addr11" element="bit_lamp" inputtag="mem_addr" inputmask="0x800">
 			<bounds x="440" y="140" width="20" height="20" />
 		</bezel>
 
-		<bezel name="mem_addr10" element="bit_lamp" inputtag="mem_addr" inputmask="0x002">
+		<bezel name="mem_addr10" element="bit_lamp" inputtag="mem_addr" inputmask="0x400">
 			<bounds x="465" y="140" width="20" height="20" />
 		</bezel>
 
-		<bezel name="mem_addr9" element="bit_lamp" inputtag="mem_addr" inputmask="0x004">
+		<bezel name="mem_addr9" element="bit_lamp" inputtag="mem_addr" inputmask="0x200">
 			<bounds x="490" y="140" width="20" height="20" />
 		</bezel>
 
-		<bezel name="mem_addr8" element="bit_lamp" inputtag="mem_addr" inputmask="0x008">
+		<bezel name="mem_addr8" element="bit_lamp" inputtag="mem_addr" inputmask="0x100">
 			<bounds x="515" y="140" width="20" height="20" />
 		</bezel>
 
-		<bezel name="mem_addr7" element="bit_lamp" inputtag="mem_addr" inputmask="0x010">
+		<bezel name="mem_addr7" element="bit_lamp" inputtag="mem_addr" inputmask="0x080">
 			<bounds x="540" y="140" width="20" height="20" />
 		</bezel>
 
-		<bezel name="mem_addr6" element="bit_lamp" inputtag="mem_addr" inputmask="0x020">
+		<bezel name="mem_addr6" element="bit_lamp" inputtag="mem_addr" inputmask="0x040">
 			<bounds x="565" y="140" width="20" height="20" />
 		</bezel>
 
-		<bezel name="mem_addr5" element="bit_lamp" inputtag="mem_addr" inputmask="0x040">
+		<bezel name="mem_addr5" element="bit_lamp" inputtag="mem_addr" inputmask="0x020">
 			<bounds x="590" y="140" width="20" height="20" />
 		</bezel>
 
-		<bezel name="mem_addr4" element="bit_lamp" inputtag="mem_addr" inputmask="0x080">
+		<bezel name="mem_addr4" element="bit_lamp" inputtag="mem_addr" inputmask="0x010">
 			<bounds x="615" y="140" width="20" height="20" />
 		</bezel>
 
-		<bezel name="mem_addr3" element="bit_lamp" inputtag="mem_addr" inputmask="0x100">
+		<bezel name="mem_addr3" element="bit_lamp" inputtag="mem_addr" inputmask="0x008">
 			<bounds x="640" y="140" width="20" height="20" />
 		</bezel>
 
-		<bezel name="mem_addr2" element="bit_lamp" inputtag="mem_addr" inputmask="0x200">
+		<bezel name="mem_addr2" element="bit_lamp" inputtag="mem_addr" inputmask="0x004">
 			<bounds x="665" y="140" width="20" height="20" />
 		</bezel>
 
-		<bezel name="mem_addr1" element="bit_lamp" inputtag="mem_addr" inputmask="0x400">
+		<bezel name="mem_addr1" element="bit_lamp" inputtag="mem_addr" inputmask="0x002">
 			<bounds x="690" y="140" width="20" height="20" />
 		</bezel>
 
-		<bezel name="mem_addr0" element="bit_lamp" inputtag="mem_addr" inputmask="0x800">
+		<bezel name="mem_addr0" element="bit_lamp" inputtag="mem_addr" inputmask="0x001">
 			<bounds x="715" y="140" width="20" height="20" />
 		</bezel>
 

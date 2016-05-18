@@ -206,7 +206,7 @@ def lamp_group(name, inputtag, N, x0, y, xspace, w=R, h=R):
   global data
   for i in range(N):
     x = x0 + i * xspace
-    data += lamp % (name, N-1-i, inputtag, (1<<i), x-R/2, height - y - R/2, w, h)
+    data += lamp % (name, N-1-i, inputtag, (1<<(N-i-1)), x-R/2, height - y - R/2, w, h)
 
 def button_group(names, x0, y, width, w=2*R, h=2*R, bit_offset=0):
   global data
