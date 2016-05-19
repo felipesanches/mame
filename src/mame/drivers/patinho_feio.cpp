@@ -77,7 +77,7 @@ void patinho_feio_state::update_panel(UINT8 ACC, UINT8 opcode, UINT8 mem_data, U
 		}
 		if ((m_prev_PC ^ PC) & (1 << i)){
 			sprintf(lamp_id, "pc%d", i);
-			m_out->set_value(lamp_id, (ACC >> i) & 1);
+			m_out->set_value(lamp_id, (PC >> i) & 1);
 		}
 		if ((m_prev_RC ^ RC) & (1 << i)){
 			sprintf(lamp_id, "rc%d", i);
