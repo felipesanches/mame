@@ -114,6 +114,7 @@ void anotherw_sound_device::sound_stream_update(sound_stream &stream, stream_sam
         elem.mix(outputs[0], samples);
 }
 
+#define MIN(a, b) (a<b ? a : b)
 void anotherw_sound_device::playSound(uint8_t channel, uint16_t resNum, uint8_t freq, uint8_t vol){
     if (vol == 0) {
         stopChannel(channel);

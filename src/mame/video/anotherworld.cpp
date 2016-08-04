@@ -149,6 +149,9 @@ void another_world_state::readAndDrawPolygonHierarchy(uint16_t zoom, const Point
     }
 }
 
+#define MIN(a, b) (a < b ? a : b)
+#define MAX(a, b) (a > b ? a : b)
+
 /* Blend a line in the current framebuffer
 */
 void another_world_state::drawLineBlend(int16_t x1, int16_t x2, uint8_t color) {

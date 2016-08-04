@@ -235,27 +235,13 @@ void another_world_cpu_device::execute_instruction()
             }
         }
 
-        uint16_t zoom = fetch_byte();
-
-        if (!(opcode & 2))
+        uint16_t zoom = 0x40;
+        if (opcode & 1)
         {
-            if (!(opcode & 1))
-            {
-                DECREMENT_PC_64K;
-                zoom = 0x40;
-            } 
-            else 
-            {
-                zoom = read_vm_variable(zoom);
-            }
-        }
-        else 
-        {
-            if (opcode & 1) {
+            if (opcode & 2)
                 m_useVideo2 = true;
-                DECREMENT_PC_64K;
-                zoom = 0x40;
-            }
+            else
+                zoom = read_vm_variable(fetch_byte());
         }
 //        printf("vid_opcd_0x40 : off=0x%X x=%d y=%d\n", offset, x, y);
 
