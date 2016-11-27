@@ -19,12 +19,15 @@ sega315_5313_device::sega315_5313_device(const machine_config &mconfig, const ch
 	m_render_line(nullptr), m_render_line_raw(nullptr), m_megadriv_scanline_timer(nullptr),
 	m_sndirqline_callback(*this),
 	m_lv6irqline_callback(*this),
-	m_lv4irqline_callback(*this), m_command_pending(0), m_command_part1(0), m_command_part2(0), m_vdp_code(0), m_vdp_address(0), m_vram_fill_pending(0), m_vram_fill_length(0), m_irq4counter(0),
-	m_imode_odd_frame(0), m_sprite_collision(0), m_irq6_pending(0), m_irq4_pending(0), m_scanline_counter(0), m_vblank_flag(0), m_imode(0), m_visible_scanlines(0), m_irq6_scanline(0),
+	m_lv4irqline_callback(*this),
+	m_regs(nullptr), m_vram(nullptr), m_cram(nullptr), m_video_renderline(nullptr), m_palette_lookup(nullptr),
+	m_irq6_on_timer(nullptr), m_irq4_on_timer(nullptr), m_render_timer(nullptr),
+	m_visible_scanlines(0), m_vdp_address(0),
+	m_space68k(nullptr), m_cpu68k(nullptr),
+	m_command_pending(0), m_command_part1(0), m_command_part2(0), m_vdp_code(0), m_vram_fill_pending(0), m_vram_fill_length(0), m_irq4counter(0),
+	m_imode_odd_frame(0), m_sprite_collision(0), m_irq6_pending(0), m_irq4_pending(0), m_scanline_counter(0), m_vblank_flag(0), m_imode(0), m_irq6_scanline(0),
 	m_z80irq_scanline(0), m_total_scanlines(0), m_base_total_scanlines(0), m_framerate(0), m_vdp_pal(0), m_use_cram(0),
-	m_dma_delay(0), m_regs(nullptr), m_vram(nullptr), m_cram(nullptr), m_vsram(nullptr), m_internal_sprite_attribute_table(nullptr), m_irq6_on_timer(nullptr), m_irq4_on_timer(nullptr),
-	m_render_timer(nullptr), m_sprite_renderline(nullptr), m_highpri_renderline(nullptr), m_video_renderline(nullptr), m_palette_lookup(nullptr), m_palette_lookup_sprite(nullptr),
-	m_palette_lookup_shadow(nullptr), m_palette_lookup_highlight(nullptr), m_space68k(nullptr), m_cpu68k(nullptr)
+	m_dma_delay(0), m_vsram(nullptr), m_internal_sprite_attribute_table(nullptr), m_sprite_renderline(nullptr), m_highpri_renderline(nullptr), m_palette_lookup_sprite(nullptr), m_palette_lookup_shadow(nullptr), m_palette_lookup_highlight(nullptr)
 {
 	m_use_alt_timing = 0;
 	m_palwrite_base = -1;
@@ -79,7 +82,6 @@ void sega315_5313_device::set_palwrite_base(device_t &device, int palwrite_base)
 	sega315_5313_device &dev = downcast<sega315_5313_device &>(device);
 	dev.m_palwrite_base = palwrite_base;
 }
-
 
 
 
@@ -264,14 +266,20 @@ void sega315_5313_device::write_cram_value(int offset, int data)
 		b = ((data >> 9)&0x07);
 		if (m_palwrite_base != -1)
 		{
-			m_palette->set_pen_color(offset + m_palwrite_base ,pal3bit(r),pal3bit(g),pal3bit(b));
-			m_palette->set_pen_color(offset + m_palwrite_base + 0x40 ,pal3bit(r>>1),pal3bit(g>>1),pal3bit(b>>1));
-			m_palette->set_pen_color(offset + m_palwrite_base + 0x80 ,pal3bit((r>>1)|0x4),pal3bit((g>>1)|0x4),pal3bit((b>>1)|0x4));
-		}
-		m_palette_lookup[offset] = (b<<2) | (g<<7) | (r<<12);
-		m_palette_lookup_sprite[offset] = (b<<2) | (g<<7) | (r<<12);
-		m_palette_lookup_shadow[offset] = (b<<1) | (g<<6) | (r<<11);
-		m_palette_lookup_highlight[offset] = ((b|0x08)<<1) | ((g|0x08)<<6) | ((r|0x08)<<11);
+                       m_palette->set_pen_color(offset + m_palwrite_base, pal3bit(r), pal3bit(g), pal3bit(b));
+                       m_palette->set_pen_color(offset + m_palwrite_base + 0x40,
+                                                pal3bit(r>>1),
+                                                pal3bit(g>>1),
+                                                pal3bit(b>>1));
+                       m_palette->set_pen_color(offset + m_palwrite_base + 0x80,
+                                                pal3bit((r>>1)|0x4),
+                                                pal3bit((g>>1)|0x4),
+                                                pal3bit((b>>1)|0x4));
+               }
+               m_palette_lookup[offset] = (b<<2) | (g<<7) | (r<<12);
+               m_palette_lookup_sprite[offset] = (b<<2) | (g<<7) | (r<<12);
+               m_palette_lookup_shadow[offset] = (b<<1) | (g<<6) | (r<<11);
+               m_palette_lookup_highlight[offset] = ((b|0x08)<<1) | ((g|0x08)<<6) | ((r|0x08)<<11);
 	}
 }
 
@@ -286,7 +294,6 @@ void sega315_5313_device::vdp_cram_write(uint16_t data)
 
 	m_vdp_address &=0xffff;
 }
-
 
 void sega315_5313_device::data_port_w(int data)
 {
@@ -542,7 +549,6 @@ void sega315_5313_device::insta_68k_to_vram_dma(uint32_t source,int length)
 	m_regs[0x16] = (source>>9) & 0xff;
 	m_regs[0x17] = (source>>17) & 0xff;
 }
-
 
 void sega315_5313_device::insta_68k_to_cram_dma(uint32_t source,uint16_t length)
 {
@@ -1527,10 +1533,22 @@ void sega315_5313_device::render_videoline_to_videobuffer(int scanline)
 
 	switch (screenwidth)
 	{
-		case 0: numcolumns = 32; window_hsize = 32; window_vsize = 32; base_w = (MEGADRIVE_REG03_PATTERN_ADDR_W&0x1f) << 11; break;
-		case 1: numcolumns = 32; window_hsize = 32; window_vsize = 32; base_w = (MEGADRIVE_REG03_PATTERN_ADDR_W&0x1f) << 11; break;
-		case 2: numcolumns = 40; window_hsize = 64; window_vsize = 32; base_w = (MEGADRIVE_REG03_PATTERN_ADDR_W&0x1e) << 11; break;
-		case 3: numcolumns = 40; window_hsize = 64; window_vsize = 32; base_w = (MEGADRIVE_REG03_PATTERN_ADDR_W&0x1e) << 11; break; // talespin cares about base mask, used for status bar
+		case 0:
+			numcolumns = 32; window_hsize = 32; window_vsize = 32;
+			base_w = (MEGADRIVE_REG03_PATTERN_ADDR_W&0x1f) << 11;
+			break;
+		case 1:
+			numcolumns = 32; window_hsize = 32; window_vsize = 32;
+			base_w = (MEGADRIVE_REG03_PATTERN_ADDR_W&0x1f) << 11;
+			break;
+		case 2:
+			numcolumns = 40; window_hsize = 64; window_vsize = 32;
+			base_w = (MEGADRIVE_REG03_PATTERN_ADDR_W&0x1e) << 11;
+			break;
+		case 3:
+			numcolumns = 40; window_hsize = 64; window_vsize = 32;
+			base_w = (MEGADRIVE_REG03_PATTERN_ADDR_W&0x1e) << 11;
+			break; // talespin cares about base mask, used for status bar
 	}
 
 	//osd_printf_debug("screenwidth %d\n",screenwidth);
@@ -2481,7 +2499,6 @@ void sega315_5313_device::render_videoline_to_videobuffer(int scanline)
 		}
 }
 
-
 /* This converts our render buffer to real screen colours */
 void sega315_5313_device::render_videobuffer_to_screenbuffer(int scanline)
 {
@@ -2755,4 +2772,159 @@ TIMER_DEVICE_CALLBACK_MEMBER( sega315_5313_device::megadriv_scanline_timer_callb
 		if (vpos > 0)
 			screen().update_partial(vpos-1);
 	}
+}
+
+/* AtGames/TecToy implementation: */
+const device_type ATGAMES315_5313 = &device_creator<atgames315_5313_device>;
+
+atgames315_5313_device::atgames315_5313_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: sega315_5313_device(mconfig, tag, owner, clock)
+{
+	m_use_alt_timing = 0;
+	m_palwrite_base = -1;
+}
+
+void atgames315_5313_device::device_start()
+{
+	sega315_5313_device::device_start();
+
+	m_vram  = std::make_unique<uint16_t[]>(0x20000/2);
+	m_cram  = std::make_unique<uint16_t[]>(0x800/2);
+	m_palette_lookup = std::make_unique<uint16_t[]>(8 * 0x40/2);
+
+	memset(m_vram.get(), 0x00, 0x20000);
+	memset(m_cram.get(), 0x00, 0x800);
+	memset(m_palette_lookup.get(), 0x00, 8 * 0x40);
+
+	save_pointer(NAME(m_vram.get()), 0x20000/2);
+	save_pointer(NAME(m_cram.get()), 0x800/2);
+	save_pointer(NAME(m_palette_lookup.get()), 8 * 0x40/2);
+
+	m_render_timer = machine().scheduler().timer_alloc(timer_expired_delegate(FUNC(atgames315_5313_device::render_scanline), this));
+}
+
+void atgames315_5313_device::write_cram_value(int offset, int data)
+{
+	m_cram[offset] = data;
+	int r, g, b;
+	int pal_index;
+	for (pal_index=0; pal_index<8*64; pal_index++){
+		g = (m_cram[2*pal_index] >> 8) & 0xFF;
+		r = m_cram[2*pal_index] & 0xFF;
+		b = m_cram[2*pal_index+1] & 0xFF;
+		r = (r >> 3) & 0x1F;
+		g = (g >> 3) & 0x1F;
+		b = (b >> 3) & 0x1F;
+		m_palette_lookup[pal_index] = (r << 10) | (g << 5) | b;
+	}
+}
+
+void atgames315_5313_device::vdp_cram_write(uint16_t data)
+{
+	int offset;
+	offset = (m_vdp_address&0xffe)>>1;
+	write_cram_value(offset,data);
+	m_vdp_address+=MEGADRIVE_REG0F_AUTO_INC;
+	m_vdp_address &=0xffff;
+}
+
+void atgames315_5313_device::insta_68k_to_vram_dma(uint32_t source,int length)
+{
+	int count;
+
+	if (length==0x00) length = 0xffff;
+
+	/* This is a hack until real DMA timings are implemented */
+	m_cpu68k->spin_until_time(attotime::from_nsec(length * 1000 / 3500));
+
+	for (count = 0;count<(length);count++)
+	{
+		vdp_vram_write(vdp_get_word_from_68k_mem(source));
+		source+=2;
+		if (source>0xffffff) source = 0xe00000;
+	}
+
+	m_vdp_address&=0xffff;
+
+	m_regs[0x13] = 0;
+	m_regs[0x14] = 0;
+
+	m_regs[0x15] = (source>>1) & 0xff;
+	m_regs[0x16] = (source>>9) & 0xff;
+	m_regs[0x17] = (source>>17) & 0xff;
+}
+
+void atgames315_5313_device::render_videoline_to_videobuffer(int scanline){
+	uint8_t byte[6];
+	uint16_t value, tile_index;
+	int i, w, x;
+	for (i=0; i<320; i++){
+		tile_index = MEGADRIV_VDP_VRAM(0x2000 + (scanline/8)*0x40 + i/8);
+		for (w=0; w<3; w++){
+			value = MEGADRIV_VDP_VRAM(tile_index*24 + (scanline%8)*3 + w);
+			byte[2*w+1] = value & 0xFF;
+			byte[2*w] = (value>>8) & 0xFF;
+		}
+		x = i%8;
+		uint8_t color=0;
+		switch(x){
+			case 0: color = (byte[1] & 0x3F); break;
+			case 1: color = (byte[0] & 0x0F) << 2 | (byte[1] & 0xC0) >> 6; break;
+			case 2: color = (byte[3] & 0x03) << 4 | (byte[0] & 0xF0) >> 4; break;
+			case 3: color = (byte[3] & 0xFC) >> 2; break;
+			case 4: color = (byte[2] & 0x3F); break;
+			case 5: color = (byte[5] & 0x0F) << 2 | (byte[2] & 0xC0) >> 6; break;
+			case 6: color = (byte[4] & 0x03) << 4 | (byte[5] & 0xF0) >> 4; break;
+			case 7: color = (byte[4] & 0xFC) >> 2; break;
+		}
+		m_video_renderline[i] = color;
+	}
+
+	for (i=0; i<320; i++){
+		tile_index = MEGADRIV_VDP_VRAM(0x1000 + (scanline/8)*0x40 + i/8);
+		for (w=0; w<3; w++){
+			value = MEGADRIV_VDP_VRAM(tile_index*24 + (scanline%8)*3 + w);
+			byte[2*w+1] = value & 0xFF;
+			byte[2*w] = (value>>8) & 0xFF;
+		}
+		x = i%8;
+		uint8_t color=0;
+		switch(x){
+			case 0: color = (byte[1] & 0x3F); break;
+			case 1: color = (byte[0] & 0x0F) << 2 | (byte[1] & 0xC0) >> 6; break;
+			case 2: color = (byte[3] & 0x03) << 4 | (byte[0] & 0xF0) >> 4; break;
+			case 3: color = (byte[3] & 0xFC) >> 2; break;
+			case 4: color = (byte[2] & 0x3F); break;
+			case 5: color = (byte[5] & 0x0F) << 2 | (byte[2] & 0xC0) >> 6; break;
+			case 6: color = (byte[4] & 0x03) << 4 | (byte[5] & 0xF0) >> 4; break;
+			case 7: color = (byte[4] & 0xFC) >> 2; break;
+		}
+		if (color > 0)
+			m_video_renderline[i] = MEGADRIVE_REG08*64 + color;
+	}
+	return;
+}
+
+/* This converts our render buffer to real screen colours */
+void atgames315_5313_device::render_videobuffer_to_screenbuffer(int scanline)
+{
+	uint16_t *lineptr;
+	if (!m_use_alt_timing)
+	{
+		if (scanline >= m_render_bitmap->height()) // safety, shouldn't happen now we allocate a fixed amount tho
+			return;
+
+		lineptr = &m_render_bitmap->pix16(scanline);
+
+	}
+	else
+		lineptr = m_render_line.get();
+
+	for (int x = 0; x < 320; x++)
+	{
+		uint32_t dat = m_video_renderline[x];
+		lineptr[x] = m_palette_lookup[(dat & 0x1ff)];
+		m_render_line_raw[x] |= (dat & 0x1ff);
+	}
+	return;
 }

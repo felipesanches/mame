@@ -98,6 +98,7 @@
 
 /* 8? */
 /* 9? */
+#define MEGADRIVE_REG08 ((m_regs[0x08]&0xffff)>>0)
 
 #define MEGADRIVE_REG0A_HINT_VALUE      ((m_regs[0x0a]&0xff)>>0)
 
@@ -255,6 +256,11 @@ protected:
 	virtual void device_reset() override;
 	virtual machine_config_constructor device_mconfig_additions() const override;
 
+	virtual void render_spriteline_to_spritebuffer(int scanline);
+	virtual void render_videoline_to_videobuffer(int scanline);
+	virtual void render_videobuffer_to_screenbuffer(int scanline);
+	virtual void vdp_vram_write(uint16_t data);
+
 	// called when we hit 240 and 241 (used to control the z80 irq line on genesis, or the main irq on c2)
 	devcb_write_line m_sndirqline_callback;
 	devcb_write_line m_lv6irqline_callback;
@@ -264,13 +270,29 @@ protected:
 	md_32x_interrupt_delegate m_32x_interrupt_func;
 	md_32x_scanline_helper_delegate m_32x_scanline_helper_func;
 
+	std::unique_ptr<uint16_t[]> m_regs;
+	std::unique_ptr<uint16_t[]> m_vram;
+	std::unique_ptr<uint16_t[]> m_cram;
+	std::unique_ptr<uint32_t[]> m_video_renderline;
+	std::unique_ptr<uint16_t[]> m_palette_lookup;
+
+	// these are used internally by the VDP to schedule when after the start of a scanline
+	// to trigger the various interrupts / rendering to our bitmap, bit of a hack really
+	emu_timer* m_irq6_on_timer;
+	emu_timer* m_irq4_on_timer;
+	emu_timer* m_render_timer;
+
+	int m_visible_scanlines;
+	uint16_t m_vdp_address;
+
+	address_space *m_space68k;
+	m68000_base_device* m_cpu68k;
 private:
 
 	int m_command_pending; // 2nd half of command pending..
 	uint16_t m_command_part1;
 	uint16_t m_command_part2;
 	uint8_t  m_vdp_code;
-	uint16_t m_vdp_address;
 	uint8_t m_vram_fill_pending;
 	uint16_t m_vram_fill_length;
 	int m_irq4counter;
@@ -283,7 +305,6 @@ private:
 
 	int m_imode;
 
-	int m_visible_scanlines;
 	int m_irq6_scanline;
 	int m_z80irq_scanline;
 	int m_total_scanlines;
@@ -295,19 +316,10 @@ private:
 	int m_use_cram; // c2 uses it's own palette ram, so it sets this to 0
 	int m_dma_delay;    // SVP and SegaCD have some 'lag' in DMA transfers
 
-	std::unique_ptr<uint16_t[]> m_regs;
-	std::unique_ptr<uint16_t[]> m_vram;
-	std::unique_ptr<uint16_t[]> m_cram;
 	std::unique_ptr<uint16_t[]> m_vsram;
 	/* The VDP keeps a 0x400 byte on-chip cache of the Sprite Attribute Table
 	   to speed up processing, Castlevania Bloodlines abuses this on the upside down level */
 	std::unique_ptr<uint16_t[]> m_internal_sprite_attribute_table;
-
-	// these are used internally by the VDP to schedule when after the start of a scanline
-	// to trigger the various interrupts / rendering to our bitmap, bit of a hack really
-	emu_timer* m_irq6_on_timer;
-	emu_timer* m_irq4_on_timer;
-	emu_timer* m_render_timer;
 
 	uint16_t vdp_vram_r(void);
 	uint16_t vdp_vsram_r(void);
@@ -315,12 +327,11 @@ private:
 
 	void insta_68k_to_cram_dma(uint32_t source,uint16_t length);
 	void insta_68k_to_vsram_dma(uint32_t source,uint16_t length);
-	void insta_68k_to_vram_dma(uint32_t source,int length);
+	virtual void insta_68k_to_vram_dma(uint32_t source,int length);
 	void insta_vram_copy(uint32_t source, uint16_t length);
 
-	void vdp_vram_write(uint16_t data);
-	void vdp_cram_write(uint16_t data);
-	void write_cram_value(int offset, int data);
+	virtual void vdp_cram_write(uint16_t data);
+	virtual void write_cram_value(int offset, int data);
 	void vdp_vsram_write(uint16_t data);
 
 	void vdp_set_register(int regnum, uint8_t value);
@@ -336,23 +347,33 @@ private:
 	void ctrl_port_w(int data);
 	void update_code_and_address(void);
 
-
-	void render_spriteline_to_spritebuffer(int scanline);
-	void render_videoline_to_videobuffer(int scanline);
-	void render_videobuffer_to_screenbuffer(int scanline);
-
 	/* variables used during emulation - not saved */
 	std::unique_ptr<uint8_t[]> m_sprite_renderline;
 	std::unique_ptr<uint8_t[]> m_highpri_renderline;
-	std::unique_ptr<uint32_t[]> m_video_renderline;
-	std::unique_ptr<uint16_t[]> m_palette_lookup;
 	std::unique_ptr<uint16_t[]> m_palette_lookup_sprite; // for C2
 	std::unique_ptr<uint16_t[]> m_palette_lookup_shadow;
 	std::unique_ptr<uint16_t[]> m_palette_lookup_highlight;
+};
 
-	address_space *m_space68k;
-	m68000_base_device* m_cpu68k;
+class atgames315_5313_device : public sega315_5313_device
+{
+public:
+	atgames315_5313_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+
+protected:
+	virtual void device_start() override;
+
+private:
+	//void render_spriteline_to_spritebuffer(int scanline) override;
+	void render_videoline_to_videobuffer(int scanline) override;
+	void render_videobuffer_to_screenbuffer(int scanline) override;
+	void write_cram_value(int offset, int data) override;
+	void vdp_cram_write(uint16_t data) override;
+	void insta_68k_to_vram_dma(uint32_t source,int length) override;
 };
 
 
+
+
 extern const device_type SEGA315_5313;
+extern const device_type ATGAMES315_5313;

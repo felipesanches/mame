@@ -380,6 +380,25 @@ WRITE_LINE_MEMBER(md_cons_state::screen_vblank_console)
 	}
 }
 
+static MACHINE_CONFIG_START( md_atgames, md_cons_state )
+	MCFG_FRAGMENT_ADD( md_ntsc )
+
+	MCFG_MACHINE_START_OVERRIDE(md_cons_state, ms_megadriv)
+	MCFG_MACHINE_RESET_OVERRIDE(md_cons_state, ms_megadriv)
+
+	MCFG_SCREEN_MODIFY("megadriv")
+	MCFG_SCREEN_VBLANK_DRIVER(md_cons_state, screen_eof_console)
+
+        MCFG_DEVICE_REPLACE("gen_vdp", ATGAMES315_5313, 0)
+	MCFG_VIDEO_SET_SCREEN("megadriv")
+        MCFG_SEGA315_5313_IS_PAL(false)
+        MCFG_SEGA315_5313_SND_IRQ_CALLBACK(WRITELINE(md_base_state, vdp_sndirqline_callback_genesis_z80));
+        MCFG_SEGA315_5313_LV6_IRQ_CALLBACK(WRITELINE(md_base_state, vdp_lv6irqline_callback_genesis_68k));
+        MCFG_SEGA315_5313_LV4_IRQ_CALLBACK(WRITELINE(md_base_state, vdp_lv4irqline_callback_genesis_68k));
+
+	MCFG_MD_CARTRIDGE_ADD("mdslot", md_cart, nullptr) //TODO: MCFG_MD_CARTRIDGE_ADD("sdcard", atgames_sdcard, nullptr)
+MACHINE_CONFIG_END
+
 static MACHINE_CONFIG_START( ms_megadriv, md_cons_state )
 	MCFG_FRAGMENT_ADD( md_ntsc )
 
@@ -432,6 +451,16 @@ ROM_START(megadriv)
 ROM_END
 
 ROM_START(megadrij)
+	ROM_REGION(MD_CPU_REGION_SIZE, "maincpu", ROMREGION_ERASEFF)
+	ROM_REGION( 0x10000, "soundcpu", ROMREGION_ERASEFF)
+ROM_END
+
+ROM_START(dcat16)
+	ROM_REGION(MD_CPU_REGION_SIZE, "maincpu", ROMREGION_ERASEFF)
+	ROM_REGION( 0x10000, "soundcpu", ROMREGION_ERASEFF)
+ROM_END
+
+ROM_START(mdplay)
 	ROM_REGION(MD_CPU_REGION_SIZE, "maincpu", ROMREGION_ERASEFF)
 	ROM_REGION( 0x10000, "soundcpu", ROMREGION_ERASEFF)
 ROM_END
@@ -1055,10 +1084,12 @@ ROM_END
 
 ***************************************************************************/
 
-/*    YEAR  NAME        PARENT     COMPAT  MACHINE          INPUT   INIT       COMPANY   FULLNAME */
-CONS( 1989, genesis,    0,         0,      ms_megadriv,     md, md_cons_state,     genesis,   "Sega",   "Genesis (USA, NTSC)",  MACHINE_SUPPORTS_SAVE )
-CONS( 1990, megadriv,   genesis,   0,      ms_megadpal,     md, md_cons_state,     md_eur,    "Sega",   "Mega Drive (Europe, PAL)", MACHINE_SUPPORTS_SAVE )
-CONS( 1988, megadrij,   genesis,   0,      ms_megadriv,     md, md_cons_state,     md_jpn,    "Sega",   "Mega Drive (Japan, NTSC)", MACHINE_SUPPORTS_SAVE )
+/*    YEAR  NAME        PARENT   COMPAT  MACHINE          INPUT                  INIT       COMPANY   FULLNAME */
+CONS( 1989, genesis,    0,       0,      ms_megadriv,     md, md_cons_state,     genesis,   "Sega",   "Genesis (USA, NTSC)",  MACHINE_SUPPORTS_SAVE )
+CONS( 1990, megadriv,   genesis, 0,      ms_megadpal,     md, md_cons_state,     md_eur,    "Sega",   "Mega Drive (Europe, PAL)", MACHINE_SUPPORTS_SAVE )
+CONS( 1988, megadrij,   genesis, 0,      ms_megadriv,     md, md_cons_state,     md_jpn,    "Sega",   "Mega Drive (Japan, NTSC)", MACHINE_SUPPORTS_SAVE )
+CONS( 200?, dcat16,     genesis, 0,      md_atgames,      md, md_cons_state,     md_jpn,    "AtGames",   "Gopher", MACHINE_SUPPORTS_SAVE )
+CONS( 200?, mdplay,     genesis, 0,      md_atgames,      md, md_cons_state,     md_jpn,    "TecToy",   "MDPLAY", MACHINE_SUPPORTS_SAVE )
 
 // 1990+ models had the TMSS security chip, leave this as a clone, it reduces compatibility and nothing more.
 CONS( 1990, genesis_tmss, genesis, 0,      genesis_tmss,    md, md_cons_state,     genesis,   "Sega",   "Genesis (USA, NTSC, with TMSS chip)",  MACHINE_SUPPORTS_SAVE )

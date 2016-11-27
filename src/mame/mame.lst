@@ -20031,6 +20031,8 @@ segacd2                         // 1993 Sega Sega CD 2 (USA)
 wmega                           // 1992 Sega Wondermega (Japan)
 wmegam2                         // 1993 Victor Wondermega M2 (Japan)
 xeye                            // 1993 JVC X'eye (USA)
+dcat16                          // 200? AtGames handheld MegaDrive Clone
+mdplay                          // 200? TecToy MDPLAY handheld MegaDrive Clone
 
 @source:megadrvb.cpp
 aladmdb                         // MegaDrive-based hack
