@@ -739,11 +739,12 @@ READ8_MEMBER(md_base_state::megadriv_z80_unmapped_read )
 static ADDRESS_MAP_START( megadriv_z80_map, AS_PROGRAM, 8, md_base_state )
 	AM_RANGE(0x0000, 0x1fff) AM_RAMBANK("bank1") AM_MIRROR(0x2000) // RAM can be accessed by the 68k
 	AM_RANGE(0x4000, 0x4003) AM_DEVREADWRITE("ymsnd", ym2612_device, read, write)
-
+	AM_RANGE(0x4004, 0x5fff) AM_RAM //fsanches
 	AM_RANGE(0x6000, 0x6000) AM_WRITE(megadriv_z80_z80_bank_w)
 	AM_RANGE(0x6001, 0x6001) AM_WRITE(megadriv_z80_z80_bank_w) // wacky races uses this address
-
+	AM_RANGE(0x6002, 0x60ff) AM_RAM //fsanches
 	AM_RANGE(0x6100, 0x7eff) AM_READ(megadriv_z80_unmapped_read)
+
 
 	AM_RANGE(0x7f00, 0x7fff) AM_READWRITE(megadriv_z80_vdp_read,megadriv_z80_vdp_write)
 

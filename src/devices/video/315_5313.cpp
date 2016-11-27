@@ -94,20 +94,20 @@ void sega315_5313_device::device_start()
 	m_32x_scanline_helper_func.bind_relative_to(*owner());
 
 	m_vram  = std::make_unique<uint16_t[]>(0x10000/2);
-	m_cram  = std::make_unique<uint16_t[]>(0x80/2);
+	m_cram  = std::make_unique<uint16_t[]>(0x80);
 	m_vsram = std::make_unique<uint16_t[]>(0x80/2);
 	m_regs = std::make_unique<uint16_t[]>(0x40/2);
 	m_internal_sprite_attribute_table = std::make_unique<uint16_t[]>(0x400/2);
 
 	memset(m_vram.get(), 0x00, 0x10000);
-	memset(m_cram.get(), 0x00, 0x80);
+	memset(m_cram.get(), 0x00, 0x80*2);
 	memset(m_vsram.get(), 0x00, 0x80);
 	memset(m_regs.get(), 0x00, 0x40);
 	memset(m_internal_sprite_attribute_table.get(), 0x00, 0x400);
 
 
 	save_pointer(NAME(m_vram.get()), 0x10000/2);
-	save_pointer(NAME(m_cram.get()), 0x80/2);
+	save_pointer(NAME(m_cram.get()), 0x80);
 	save_pointer(NAME(m_vsram.get()), 0x80/2);
 	save_pointer(NAME(m_regs.get()), 0x40/2);
 	save_pointer(NAME(m_internal_sprite_attribute_table.get()), 0x400/2);
@@ -232,7 +232,7 @@ void sega315_5313_device::vdp_vram_write(uint16_t data)
 	   for some funky effects, as used by Castlevania Bloodlines Stage 6-3 */
 	if (m_vdp_address>=lowlimit && m_vdp_address<highlimit)
 	{
-//      osd_printf_debug("spritebase is %04x-%04x vram address is %04x, write %04x\n",lowlimit, highlimit-1, m_vdp_address, data);
+//      printf_debug("spritebase is %04x-%04x vram address is %04x, write %04x\n",lowlimit, highlimit-1, m_vdp_address, data);
 		m_internal_sprite_attribute_table[(m_vdp_address&(spritetable_size-1))>>1] = data;
 	}
 
@@ -254,32 +254,31 @@ void sega315_5313_device::vdp_vsram_write(uint16_t data)
 void sega315_5313_device::write_cram_value(int offset, int data)
 {
 	m_cram[offset] = data;
+        logerror("offset: %X cram data: %X\n", offset, data);
 
 	//logerror("Wrote to CRAM addr %04x data %04x\n",m_vdp_address&0xfffe,m_cram[m_vdp_address>>1]);
 	if (m_use_cram)
 	{
-		int r,g,b;
-		r = ((data >> 1)&0x07);
-		g = ((data >> 5)&0x07);
-		b = ((data >> 9)&0x07);
-		if (m_palwrite_base != -1)
-		{
-			m_palette->set_pen_color(offset + m_palwrite_base ,pal3bit(r),pal3bit(g),pal3bit(b));
-			m_palette->set_pen_color(offset + m_palwrite_base + 0x40 ,pal3bit(r>>1),pal3bit(g>>1),pal3bit(b>>1));
-			m_palette->set_pen_color(offset + m_palwrite_base + 0x80 ,pal3bit((r>>1)|0x4),pal3bit((g>>1)|0x4),pal3bit((b>>1)|0x4));
-		}
-		m_palette_lookup[offset] = (b<<2) | (g<<7) | (r<<12);
-		m_palette_lookup_sprite[offset] = (b<<2) | (g<<7) | (r<<12);
-		m_palette_lookup_shadow[offset] = (b<<1) | (g<<6) | (r<<11);
-		m_palette_lookup_highlight[offset] = ((b|0x08)<<1) | ((g|0x08)<<6) | ((r|0x08)<<11);
+		int r, g, b;
+                int pal_index;
+                for (pal_index=0; pal_index<64; pal_index++){
+			g = (m_cram[2*pal_index] >> 8) & 0xFF;
+			r = m_cram[2*pal_index] & 0xFF;
+			b = m_cram[2*pal_index+1] & 0xFF;
+			r = (r >> 3) & 0x1F;
+			g = (g >> 3) & 0x1F;
+			b = (b >> 3) & 0x1F;
+			m_palette_lookup[pal_index] = (r << 10) | (g << 5) | b;
+                }
 	}
 }
 
 void sega315_5313_device::vdp_cram_write(uint16_t data)
 {
 	int offset;
-	offset = (m_vdp_address&0x7e)>>1;
+	offset = (m_vdp_address&0xffe)>>1;
 
+//        if (m_vdp_address < 256)
 	write_cram_value(offset,data);
 
 	m_vdp_address+=MEGADRIVE_REG0F_AUTO_INC;
@@ -526,7 +525,7 @@ void sega315_5313_device::insta_68k_to_vram_dma(uint32_t source,int length)
 	/* This is a hack until real DMA timings are implemented */
 	m_cpu68k->spin_until_time(attotime::from_nsec(length * 1000 / 3500));
 
-	for (count = 0;count<(length>>1);count++)
+	for (count = 0;count<(length);count++)
 	{
 		vdp_vram_write(vdp_get_word_from_68k_mem(source));
 		source+=2;
@@ -626,13 +625,20 @@ void sega315_5313_device::handle_dma_bits()
 			length = (MEGADRIVE_REG13_DMALENGTH1 | (MEGADRIVE_REG14_DMALENGTH2<<8))<<1;
 
 			/* The 68k is frozen during this transfer, it should be safe to throw a few cycles away and do 'instant' DMA because the 68k can't detect it being in progress (can the z80?) */
-			//osd_printf_debug("68k->VRAM DMA transfer source %06x length %04x dest %04x enabled %01x\n", source, length, m_vdp_address,MEGADRIVE_REG01_DMA_ENABLE);
+			logerror("68k->VRAM DMA transfer source: %06x length: %04x dest: %04x enabled: %01x\n", source, length, m_vdp_address,MEGADRIVE_REG01_DMA_ENABLE);
 			if (MEGADRIVE_REG01_DMA_ENABLE) insta_68k_to_vram_dma(source,length);
 
 		}
 		else if (MEGADRIVE_REG17_DMATYPE==0x2)
 		{
-			//osd_printf_debug("vram fill length %02x %02x other regs! %02x %02x %02x(Mode Bits %02x) Enable %02x\n", MEGADRIVE_REG13_DMALENGTH1, MEGADRIVE_REG14_DMALENGTH2, MEGADRIVE_REG15_DMASOURCE1, MEGADRIVE_REG16_DMASOURCE2, MEGADRIVE_REG17_DMASOURCE3, MEGADRIVE_REG17_DMATYPE, MEGADRIVE_REG01_DMA_ENABLE);
+			logerror("VRAM FILL. Length: %02x%02x DMA source: %02x%02x%02x DMAType: %02x Enable: %02x\n",
+                                                 MEGADRIVE_REG13_DMALENGTH1,
+                                                 MEGADRIVE_REG14_DMALENGTH2,
+                                                                       MEGADRIVE_REG15_DMASOURCE1,
+                                                                       MEGADRIVE_REG16_DMASOURCE2,
+                                                                       MEGADRIVE_REG17_DMASOURCE3,
+                                                                                      MEGADRIVE_REG17_DMATYPE,
+                                                                                                      MEGADRIVE_REG01_DMA_ENABLE);
 			if (MEGADRIVE_REG01_DMA_ENABLE)
 			{
 				m_vram_fill_pending = 1;
@@ -645,7 +651,7 @@ void sega315_5313_device::handle_dma_bits()
 			uint16_t length;
 			source = (MEGADRIVE_REG15_DMASOURCE1 | (MEGADRIVE_REG16_DMASOURCE2<<8)); // source (byte offset)
 			length = (MEGADRIVE_REG13_DMALENGTH1 | (MEGADRIVE_REG14_DMALENGTH2<<8)); // length in bytes
-			//osd_printf_debug("setting vram copy mode length registers are %02x %02x other regs! %02x %02x %02x(Mode Bits %02x) Enable %02x\n", MEGADRIVE_REG13_DMALENGTH1, MEGADRIVE_REG14_DMALENGTH2, MEGADRIVE_REG15_DMASOURCE1, MEGADRIVE_REG16_DMASOURCE2, MEGADRIVE_REG17_DMASOURCE3, MEGADRIVE_REG17_DMATYPE, MEGADRIVE_REG01_DMA_ENABLE);
+			logerror("Setting VRAM copy mode. Length: 0x%02X%02X DMA source: 0x%02X%02X%02X DMA type: 0x%02X Enable: 0x%02x\n", MEGADRIVE_REG13_DMALENGTH1, MEGADRIVE_REG14_DMALENGTH2, MEGADRIVE_REG15_DMASOURCE1, MEGADRIVE_REG16_DMASOURCE2, MEGADRIVE_REG17_DMASOURCE3, MEGADRIVE_REG17_DMATYPE, MEGADRIVE_REG01_DMA_ENABLE);
 
 			if (MEGADRIVE_REG01_DMA_ENABLE) insta_vram_copy(source, length);
 		}
@@ -660,12 +666,12 @@ void sega315_5313_device::handle_dma_bits()
 			length = (MEGADRIVE_REG13_DMALENGTH1 | (MEGADRIVE_REG14_DMALENGTH2<<8))<<1;
 
 			/* The 68k is frozen during this transfer, it should be safe to throw a few cycles away and do 'instant' DMA because the 68k can't detect it being in progress (can the z80?) */
-			//osd_printf_debug("68k->CRAM DMA transfer source %06x length %04x dest %04x enabled %01x\n", source, length, m_vdp_address,MEGADRIVE_REG01_DMA_ENABLE);
+			logerror("68k->CRAM DMA transfer. Source: 0x%06X Length: 0x%04X Dest: 0x%04X Enabled: %01x\n", source, length, m_vdp_address,MEGADRIVE_REG01_DMA_ENABLE);
 			if (MEGADRIVE_REG01_DMA_ENABLE) insta_68k_to_cram_dma(source,length);
 		}
 		else if (MEGADRIVE_REG17_DMATYPE==0x2)
 		{
-			//osd_printf_debug("vram fill length %02x %02x other regs! %02x %02x %02x(Mode Bits %02x) Enable %02x\n", MEGADRIVE_REG13_DMALENGTH1, MEGADRIVE_REG14_DMALENGTH2, MEGADRIVE_REG15_DMASOURCE1, MEGADRIVE_REG16_DMASOURCE2, MEGADRIVE_REG17_DMASOURCE3, MEGADRIVE_REG17_DMATYPE, MEGADRIVE_REG01_DMA_ENABLE);
+			logerror("VRAM Fill. Length: 0x%02X%02X DMA Source: 0x%02X%02X%02X DMA Type: 0x%02x Enable: 0x%02x\n", MEGADRIVE_REG13_DMALENGTH1, MEGADRIVE_REG14_DMALENGTH2, MEGADRIVE_REG15_DMASOURCE1, MEGADRIVE_REG16_DMASOURCE2, MEGADRIVE_REG17_DMASOURCE3, MEGADRIVE_REG17_DMATYPE, MEGADRIVE_REG01_DMA_ENABLE);
 			if (MEGADRIVE_REG01_DMA_ENABLE)
 			{
 				m_vram_fill_pending = 1;
@@ -674,7 +680,7 @@ void sega315_5313_device::handle_dma_bits()
 		}
 		else if (MEGADRIVE_REG17_DMATYPE==0x3)
 		{
-			osd_printf_debug("setting vram copy (INVALID?) mode length registers are %02x %02x other regs! %02x %02x %02x(Mode Bits %02x) Enable %02x\n", MEGADRIVE_REG13_DMALENGTH1, MEGADRIVE_REG14_DMALENGTH2, MEGADRIVE_REG15_DMASOURCE1, MEGADRIVE_REG16_DMASOURCE2, MEGADRIVE_REG17_DMASOURCE3, MEGADRIVE_REG17_DMATYPE, MEGADRIVE_REG01_DMA_ENABLE);
+			logerror("Setting VRAM copy. (INVALID?) Length: 0x%02X%02X DMA Source: 0x%02X%02X%02X Type: 0x%02x Enable 0x%02x\n", MEGADRIVE_REG13_DMALENGTH1, MEGADRIVE_REG14_DMALENGTH2, MEGADRIVE_REG15_DMASOURCE1, MEGADRIVE_REG16_DMASOURCE2, MEGADRIVE_REG17_DMASOURCE3, MEGADRIVE_REG17_DMATYPE, MEGADRIVE_REG01_DMA_ENABLE);
 		}
 	}
 	else if (m_vdp_code==0x25)
@@ -687,12 +693,12 @@ void sega315_5313_device::handle_dma_bits()
 			length = (MEGADRIVE_REG13_DMALENGTH1 | (MEGADRIVE_REG14_DMALENGTH2<<8))<<1;
 
 			/* The 68k is frozen during this transfer, it should be safe to throw a few cycles away and do 'instant' DMA because the 68k can't detect it being in progress (can the z80?) */
-			//osd_printf_debug("68k->VSRAM DMA transfer source %06x length %04x dest %04x enabled %01x\n", source, length, m_vdp_address,MEGADRIVE_REG01_DMA_ENABLE);
+			logerror("68k->VSRAM DMA transfer source %06x length %04x dest %04x enabled %01x\n", source, length, m_vdp_address,MEGADRIVE_REG01_DMA_ENABLE);
 			if (MEGADRIVE_REG01_DMA_ENABLE) insta_68k_to_vsram_dma(source,length);
 		}
 		else if (MEGADRIVE_REG17_DMATYPE==0x2)
 		{
-			//osd_printf_debug("vram fill length %02x %02x other regs! %02x %02x %02x(Mode Bits %02x) Enable %02x\n", MEGADRIVE_REG13_DMALENGTH1, MEGADRIVE_REG14_DMALENGTH2, MEGADRIVE_REG15_DMASOURCE1, MEGADRIVE_REG16_DMASOURCE2, MEGADRIVE_REG17_DMASOURCE3, MEGADRIVE_REG17_DMATYPE, MEGADRIVE_REG01_DMA_ENABLE);
+			logerror("vram fill length %02x %02x other regs! %02x %02x %02x(Mode Bits %02x) Enable %02x\n", MEGADRIVE_REG13_DMALENGTH1, MEGADRIVE_REG14_DMALENGTH2, MEGADRIVE_REG15_DMASOURCE1, MEGADRIVE_REG16_DMASOURCE2, MEGADRIVE_REG17_DMASOURCE3, MEGADRIVE_REG17_DMATYPE, MEGADRIVE_REG01_DMA_ENABLE);
 			if (MEGADRIVE_REG01_DMA_ENABLE)
 			{
 				m_vram_fill_pending = 1;
@@ -701,22 +707,22 @@ void sega315_5313_device::handle_dma_bits()
 		}
 		else if (MEGADRIVE_REG17_DMATYPE==0x3)
 		{
-			osd_printf_debug("setting vram copy (INVALID?) mode length registers are %02x %02x other regs! %02x %02x %02x(Mode Bits %02x) Enable %02x\n", MEGADRIVE_REG13_DMALENGTH1, MEGADRIVE_REG14_DMALENGTH2, MEGADRIVE_REG15_DMASOURCE1, MEGADRIVE_REG16_DMASOURCE2, MEGADRIVE_REG17_DMASOURCE3, MEGADRIVE_REG17_DMATYPE, MEGADRIVE_REG01_DMA_ENABLE);
+			logerror("setting vram copy (INVALID?) mode length registers are %02x %02x other regs! %02x %02x %02x(Mode Bits %02x) Enable %02x\n", MEGADRIVE_REG13_DMALENGTH1, MEGADRIVE_REG14_DMALENGTH2, MEGADRIVE_REG15_DMASOURCE1, MEGADRIVE_REG16_DMASOURCE2, MEGADRIVE_REG17_DMASOURCE3, MEGADRIVE_REG17_DMATYPE, MEGADRIVE_REG01_DMA_ENABLE);
 		}
 	}
 	else if (m_vdp_code==0x30)
 	{
 		if (MEGADRIVE_REG17_DMATYPE==0x0)
 		{
-			osd_printf_debug("setting vram 68k->vram (INVALID?) mode length registers are %02x %02x other regs! %02x %02x %02x(Mode Bits %02x) Enable %02x\n", MEGADRIVE_REG13_DMALENGTH1, MEGADRIVE_REG14_DMALENGTH2, MEGADRIVE_REG15_DMASOURCE1, MEGADRIVE_REG16_DMASOURCE2, MEGADRIVE_REG17_DMASOURCE3, MEGADRIVE_REG17_DMATYPE, MEGADRIVE_REG01_DMA_ENABLE);
+			logerror("setting vram 68k->vram (INVALID?) mode length registers are %02x %02x other regs! %02x %02x %02x(Mode Bits %02x) Enable %02x\n", MEGADRIVE_REG13_DMALENGTH1, MEGADRIVE_REG14_DMALENGTH2, MEGADRIVE_REG15_DMASOURCE1, MEGADRIVE_REG16_DMASOURCE2, MEGADRIVE_REG17_DMASOURCE3, MEGADRIVE_REG17_DMATYPE, MEGADRIVE_REG01_DMA_ENABLE);
 		}
 		else if (MEGADRIVE_REG17_DMATYPE==0x1)
 		{
-			osd_printf_debug("setting vram 68k->vram (INVALID?) mode length registers are %02x %02x other regs! %02x %02x %02x(Mode Bits %02x) Enable %02x\n", MEGADRIVE_REG13_DMALENGTH1, MEGADRIVE_REG14_DMALENGTH2, MEGADRIVE_REG15_DMASOURCE1, MEGADRIVE_REG16_DMASOURCE2, MEGADRIVE_REG17_DMASOURCE3, MEGADRIVE_REG17_DMATYPE, MEGADRIVE_REG01_DMA_ENABLE);
+			logerror("setting vram 68k->vram (INVALID?) mode length registers are %02x %02x other regs! %02x %02x %02x(Mode Bits %02x) Enable %02x\n", MEGADRIVE_REG13_DMALENGTH1, MEGADRIVE_REG14_DMALENGTH2, MEGADRIVE_REG15_DMASOURCE1, MEGADRIVE_REG16_DMASOURCE2, MEGADRIVE_REG17_DMASOURCE3, MEGADRIVE_REG17_DMATYPE, MEGADRIVE_REG01_DMA_ENABLE);
 		}
 		else if (MEGADRIVE_REG17_DMATYPE==0x2)
 		{
-			osd_printf_debug("setting vram fill (INVALID?) mode length registers are %02x %02x other regs! %02x %02x %02x(Mode Bits %02x) Enable %02x\n", MEGADRIVE_REG13_DMALENGTH1, MEGADRIVE_REG14_DMALENGTH2, MEGADRIVE_REG15_DMASOURCE1, MEGADRIVE_REG16_DMASOURCE2, MEGADRIVE_REG17_DMASOURCE3, MEGADRIVE_REG17_DMATYPE, MEGADRIVE_REG01_DMA_ENABLE);
+			logerror("setting vram fill (INVALID?) mode length registers are %02x %02x other regs! %02x %02x %02x(Mode Bits %02x) Enable %02x\n", MEGADRIVE_REG13_DMALENGTH1, MEGADRIVE_REG14_DMALENGTH2, MEGADRIVE_REG15_DMASOURCE1, MEGADRIVE_REG16_DMASOURCE2, MEGADRIVE_REG17_DMASOURCE3, MEGADRIVE_REG17_DMATYPE, MEGADRIVE_REG01_DMA_ENABLE);
 		}
 		else if (MEGADRIVE_REG17_DMATYPE==0x3)
 		{
@@ -724,7 +730,7 @@ void sega315_5313_device::handle_dma_bits()
 			uint16_t length;
 			source = (MEGADRIVE_REG15_DMASOURCE1 | (MEGADRIVE_REG16_DMASOURCE2<<8)); // source (byte offset)
 			length = (MEGADRIVE_REG13_DMALENGTH1 | (MEGADRIVE_REG14_DMALENGTH2<<8)); // length in bytes
-			//osd_printf_debug("setting vram copy mode length registers are %02x %02x other regs! %02x %02x %02x(Mode Bits %02x) Enable %02x\n", MEGADRIVE_REG13_DMALENGTH1, MEGADRIVE_REG14_DMALENGTH2, MEGADRIVE_REG15_DMASOURCE1, MEGADRIVE_REG16_DMASOURCE2, MEGADRIVE_REG17_DMASOURCE3, MEGADRIVE_REG17_DMATYPE, MEGADRIVE_REG01_DMA_ENABLE);
+			logerror("setting vram copy mode length registers are %02x %02x other regs! %02x %02x %02x(Mode Bits %02x) Enable %02x\n", MEGADRIVE_REG13_DMALENGTH1, MEGADRIVE_REG14_DMALENGTH2, MEGADRIVE_REG15_DMASOURCE1, MEGADRIVE_REG16_DMASOURCE2, MEGADRIVE_REG17_DMASOURCE3, MEGADRIVE_REG17_DMATYPE, MEGADRIVE_REG01_DMA_ENABLE);
 
 			if (MEGADRIVE_REG01_DMA_ENABLE) insta_vram_copy(source, length);
 		}
@@ -1494,7 +1500,7 @@ void sega315_5313_device::render_videoline_to_videobuffer(int scanline)
 	/* Clear our Render Buffer */
 	for (x=0;x<320;x++)
 	{
-		m_video_renderline[x]=MEGADRIVE_REG07_BGCOLOUR | 0x20000; // mark as BG
+		//m_video_renderline[x]=MEGADRIVE_REG07_BGCOLOUR | 0x20000; // mark as BG
 	}
 
 	memset(m_highpri_renderline.get(), 0, 320);
@@ -1514,9 +1520,11 @@ void sega315_5313_device::render_videoline_to_videobuffer(int scanline)
 
 
 
-	base_a = MEGADRIVE_REG02_PATTERN_ADDR_A << 13;
+	base_a = MEGADRIVE_REG02_PATTERN_ADDR_A << 13; base_a = 2*0x4000;
 
 	base_b = MEGADRIVE_REG04_PATTERN_ADDR_B << 13;
+//        logerror("base_b seria 0x%X\n", base_b);
+//        base_b = 2*0x4000;
 	size  = MEGADRIVE_REG10_HSCROLL_SIZE | (MEGADRIVE_REG10_VSCROLL_SIZE<<4);
 	window_right = MEGADRIVE_REG11_WINDOW_RIGHT;
 //  window_hpos = MEGADRIVE_REG11_WINDOW_HPOS;
@@ -1527,13 +1535,25 @@ void sega315_5313_device::render_videoline_to_videobuffer(int scanline)
 
 	switch (screenwidth)
 	{
-		case 0: numcolumns = 32; window_hsize = 32; window_vsize = 32; base_w = (MEGADRIVE_REG03_PATTERN_ADDR_W&0x1f) << 11; break;
-		case 1: numcolumns = 32; window_hsize = 32; window_vsize = 32; base_w = (MEGADRIVE_REG03_PATTERN_ADDR_W&0x1f) << 11; break;
-		case 2: numcolumns = 40; window_hsize = 64; window_vsize = 32; base_w = (MEGADRIVE_REG03_PATTERN_ADDR_W&0x1e) << 11; break;
-		case 3: numcolumns = 40; window_hsize = 64; window_vsize = 32; base_w = (MEGADRIVE_REG03_PATTERN_ADDR_W&0x1e) << 11; break; // talespin cares about base mask, used for status bar
+		case 0:
+			numcolumns = 32; window_hsize = 32; window_vsize = 32;
+			base_w = (MEGADRIVE_REG03_PATTERN_ADDR_W&0x1f) << 11;
+			break;
+		case 1:
+			numcolumns = 32; window_hsize = 32; window_vsize = 32;
+			base_w = (MEGADRIVE_REG03_PATTERN_ADDR_W&0x1f) << 11;
+			break;
+		case 2:
+			numcolumns = 40; window_hsize = 64; window_vsize = 32;
+			base_w = (MEGADRIVE_REG03_PATTERN_ADDR_W&0x1e) << 11;
+			break;
+		case 3:
+			numcolumns = 40; window_hsize = 64; window_vsize = 32;
+			base_w = (MEGADRIVE_REG03_PATTERN_ADDR_W&0x1e) << 11;
+			break; // talespin cares about base mask, used for status bar
 	}
 
-	//osd_printf_debug("screenwidth %d\n",screenwidth);
+	osd_printf_debug("screenwidth %d\n",screenwidth);
 
 	//base_w = machine().rand()&0xff;
 
@@ -1654,8 +1674,35 @@ void sega315_5313_device::render_videoline_to_videobuffer(int scanline)
 			}
 			break;
 	}
+	{
+		/* Low Priority B Tiles */
+		uint8_t byte[6];
+		uint16_t value, tile_index;
+		int i, w, x;
+		for (i=0; i<320; i++){
+		  tile_index = MEGADRIV_VDP_VRAM(0x2000 + (scanline/8)*0x40 + i/8);
+		  for (w=0; w<3; w++){
+		    value = MEGADRIV_VDP_VRAM(tile_index*24 + (scanline%8)*3 + w);
+		    byte[2*w+1] = value & 0xFF;
+		    byte[2*w] = (value>>8) & 0xFF;
+		  }
+		  x = i%8;
+		  uint8_t color=0;
+		  switch(x){
+		    case 0: color = (byte[1] & 0x3F); break;
+		    case 1: color = (byte[0] & 0x0F) << 2 | (byte[1] & 0xC0) >> 6; break;
+		    case 2: color = (byte[3] & 0x03) << 4 | (byte[0] & 0xF0) >> 4; break;
+		    case 3: color = (byte[3] & 0xFC) >> 2; break;
+		    case 4: color = (byte[2] & 0x3F); break;
+		    case 5: color = (byte[5] & 0x0F) << 2 | (byte[2] & 0xC0) >> 6; break;
+		    case 6: color = (byte[4] & 0x03) << 4 | (byte[5] & 0xF0) >> 4; break;
+		    case 7: color = (byte[4] & 0xFC) >> 2; break;
+		  }
+		  m_video_renderline[i] = color;
+		}
+		return;
+	}
 
-	/* Low Priority B Tiles */
 	{
 		int column;
 		int vscroll;
@@ -1692,6 +1739,7 @@ void sega315_5313_device::render_videoline_to_videobuffer(int scanline)
 					vscroll = m_vsram[1];
 				}
 
+                                hscroll_b = 0;//fsanches
 				hcolumn = ((column*2-1)-(hscroll_b>>3))&(hsize-1);
 
 				if(m_imode == 3)
@@ -1709,12 +1757,13 @@ void sega315_5313_device::render_videoline_to_videobuffer(int scanline)
 
 				tile_base &=0x7fff;
 				tile_dat = MEGADRIV_VDP_VRAM(tile_base);
-				tile_xflip = (tile_dat&0x0800);
-				tile_yflip = (tile_dat&0x1000);
+				tile_xflip = false;// (tile_dat&0x0800);
+				tile_yflip = false;// (tile_dat&0x1000);
 				tile_colour =(tile_dat&0x6000)>>13;
 				tile_pri = (tile_dat&0x8000)>>15;
-				tile_addr = ((tile_dat&0x07ff)<<4);
+				tile_addr = (tile_dat<<1)&0xffff;//((tile_dat&0x07ff)<<4);
 
+#if 0
 				if(m_imode == 3)
 				{
 					tile_addr <<=1;
@@ -1727,6 +1776,7 @@ void sega315_5313_device::render_videoline_to_videobuffer(int scanline)
 					if (!tile_yflip) tile_addr+=(vcolumn&7)*2;
 					else tile_addr+=((7-vcolumn)&7)*2;
 				}
+#endif
 
 				if (!tile_xflip)
 				{
@@ -1739,6 +1789,8 @@ void sega315_5313_device::render_videoline_to_videobuffer(int scanline)
 						dat = (gfxdata>>(28-(shift*4)))&0x000f;  if (!tile_pri) { if(dat) m_video_renderline[dpos] = dat | (tile_colour<<4); }  else m_highpri_renderline[dpos]  = dat | (tile_colour<<4) | 0x80;
 						dpos++;
 					}
+
+
 				}
 				else
 				{
