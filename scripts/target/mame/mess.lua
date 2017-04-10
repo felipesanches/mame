@@ -2578,6 +2578,11 @@ files {
 	MAME_DIR .. "src/mame/machine/psion_pack.h",
 }
 
+createMESSProjects(_target, _subtarget, "qmusica")
+files {
+	MAME_DIR .. "src/mame/drivers/qualeamusica.cpp",
+}
+
 createMESSProjects(_target, _subtarget, "radio")
 files {
 	MAME_DIR .. "src/mame/drivers/apogee.cpp",
