@@ -13,8 +13,57 @@ public:
 		: driver_device(mconfig, type, tag)
 	{
 	}
+	DECLARE_WRITE8_MEMBER(keyboard_row_w);
+	DECLARE_READ8_MEMBER(p1_r);
+	DECLARE_WRITE8_MEMBER(p1_w);
+	DECLARE_WRITE8_MEMBER(p3_w);
+
+protected:
+	uint8_t row_select;
+	uint8_t p1_data;
 };
 
+
+WRITE8_MEMBER(qualeamusica_state::keyboard_row_w)
+{
+	row_select = data;
+}
+
+WRITE8_MEMBER(qualeamusica_state::p1_w)
+{
+	p1_data = data;
+}
+
+READ8_MEMBER(qualeamusica_state::p1_r)
+{
+
+	if (!BIT(row_select, 0)) return ioport("ROW0")->read();
+	if (!BIT(row_select, 1)) return ioport("ROW1")->read();
+	if (!BIT(row_select, 2)) return ioport("ROW2")->read();
+	if (!BIT(row_select, 3)) return ioport("ROW3")->read();
+
+	return 0xFF;
+}
+
+/*
+rotina 2238 lê teclado:
+
+P1 bits:   0   4   6
+FE>       37h (?) 23h     7 (?) #
+FD>       61h (?) 40h     a (?) @
+FB>       41h (?) 21h     A (?) !
+F7>       60h (?) 53h     ` (?) S
+EF>       58h 37h 5Ah     X  7  Z
+DF>       20h 55h 58h    ' ' U  X
+BF>       50h 4Ah 30h     P  J  0
+7F>       0Dh 4Dh 39h    CR  M  9
+
+*/
+
+WRITE8_MEMBER(qualeamusica_state::p3_w)
+{
+	//p3_data = data;
+}
 
 /*************************
 * Memory map information *
@@ -25,12 +74,18 @@ static ADDRESS_MAP_START( prog_map, AS_PROGRAM, 8, qualeamusica_state )
 ADDRESS_MAP_END
 
 static ADDRESS_MAP_START( io_map, AS_IO, 8, qualeamusica_state )
-        AM_RANGE(0x98, 0x98) AM_DEVREADWRITE("tms9128", tms9128_device, vram_read, vram_write)
-        AM_RANGE(0x99, 0x99) AM_DEVREADWRITE("tms9128", tms9128_device, register_read, register_write)
-	AM_RANGE(0x8000, 0xffff) AM_RAM
+	AM_RANGE(0x0000, 0x7fff) AM_RAM
+        AM_RANGE(0xff0d, 0xff0d) AM_WRITE(keyboard_row_w)
+        //AM_RANGE(0xff0e, 0xff0e) AM_DEVREADWRITE("tms9128", tms9128_device, vram_read, vram_write)
+        AM_RANGE(0xff0e, 0xff0e) AM_DEVWRITE("tms9128", tms9128_device, vram_write)
+        //AM_RANGE(0xff0f, 0xff0f) AM_DEVREADWRITE("tms9128", tms9128_device, register_read, register_write)
+        AM_RANGE(0xff0f, 0xff0f) AM_DEVWRITE("tms9128", tms9128_device, register_write)
 
 	/* Ports start here */
-	AM_RANGE(MCS51_PORT_P0, MCS51_PORT_P3) AM_RAM
+//	AM_RANGE(MCS51_PORT_P0, MCS51_PORT_P0) AM_NOP
+	AM_RANGE(MCS51_PORT_P1, MCS51_PORT_P1) AM_READWRITE(p1_r, p1_w)
+//	AM_RANGE(MCS51_PORT_P2, MCS51_PORT_P2) AM_NOP
+	AM_RANGE(MCS51_PORT_P3, MCS51_PORT_P3) AM_WRITE(p3_w)
 ADDRESS_MAP_END
 
 
@@ -38,8 +93,47 @@ ADDRESS_MAP_END
 *      Input ports       *
 *************************/
 
-//static INPUT_PORTS_START( qualeamusica )
-//INPUT_PORTS_END
+static INPUT_PORTS_START( qualeamusica )
+        PORT_START("ROW0")
+        PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("1") PORT_CODE(KEYCODE_1)
+        PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("2") PORT_CODE(KEYCODE_2)
+        PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("3") PORT_CODE(KEYCODE_3)
+        PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("4") PORT_CODE(KEYCODE_4)
+        PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("5") PORT_CODE(KEYCODE_5)
+        PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("6") PORT_CODE(KEYCODE_6)
+        PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("7") PORT_CODE(KEYCODE_7)
+        PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("8") PORT_CODE(KEYCODE_8)
+
+        PORT_START("ROW1")
+        PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("Q") PORT_CODE(KEYCODE_Q)
+        PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("W") PORT_CODE(KEYCODE_W)
+        PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("E") PORT_CODE(KEYCODE_E)
+        PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("R") PORT_CODE(KEYCODE_R)
+        PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("T") PORT_CODE(KEYCODE_T)
+        PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("Y") PORT_CODE(KEYCODE_Y)
+        PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("U") PORT_CODE(KEYCODE_U)
+        PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("I") PORT_CODE(KEYCODE_I)
+
+        PORT_START("ROW2")
+        PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("A") PORT_CODE(KEYCODE_A)
+        PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("S") PORT_CODE(KEYCODE_S)
+        PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("D") PORT_CODE(KEYCODE_D)
+        PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("F") PORT_CODE(KEYCODE_F)
+        PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("G") PORT_CODE(KEYCODE_G)
+        PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("H") PORT_CODE(KEYCODE_H)
+        PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("J") PORT_CODE(KEYCODE_J)
+        PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("K") PORT_CODE(KEYCODE_K)
+
+        PORT_START("ROW3")
+        PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("Z") PORT_CODE(KEYCODE_Z)
+        PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("X") PORT_CODE(KEYCODE_X)
+        PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("C") PORT_CODE(KEYCODE_C)
+        PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("V") PORT_CODE(KEYCODE_V)
+        PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("B") PORT_CODE(KEYCODE_B)
+        PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("N") PORT_CODE(KEYCODE_N)
+        PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("M") PORT_CODE(KEYCODE_M)
+        PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("O") PORT_CODE(KEYCODE_O)
+INPUT_PORTS_END
 
 
 /*************************
@@ -70,4 +164,4 @@ ROM_START( qmusica )
 	ROM_LOAD( "2400.ci4",   0x00000, 0x10000, CRC(4535f6b5) SHA1(e0db7653157a6b92e805f76207a999b7bcbc3d80) )
 ROM_END
 
-COMP(199?, qmusica, 0, 0, qualeamusica, 0, driver_device, 0, "Kortas/Bit9", "Qual e a Musica", MACHINE_NOT_WORKING|MACHINE_NO_SOUND)
+COMP(199?, qmusica, 0, 0, qualeamusica, qualeamusica, driver_device, 0, "Kortas/Bit9", "Qual e a Musica", MACHINE_NOT_WORKING|MACHINE_NO_SOUND)
