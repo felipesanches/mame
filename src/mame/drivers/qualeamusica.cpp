@@ -1,5 +1,33 @@
-// license:BSD-3-Clause
+// license:GPLv2+
 // copyright-holder:FelipeSanches
+/****************************************************************************
+
+Monitor CRT monocromático d efósforo verde.
+Possui placa embutida identificada como "CPU1 Kortas v1.0"
+
+Foi usada para automação de palco no programa "Qual é a Música ?" do SBT.
+
+Tem interface serial (apenas TX - no conector CN4) usada para enviar comandos
+ para o palco para acender e apagar lâmpadas. Era pra ter um conector para
+ teclado DIN5, mas não consegui achar. Suspeito que possa ser o conector CN2
+ que não está populado.
+
+- EPROM UV de 64k x 8bits (AM27C512) etiquetada "2400" soquetada em CI4.
+- Microcontrolador da família 8031 (modelo Dallas DS80C320) soquetado em CI3.
+- Memória SRAM 32k x 8bits (modelo HYNIX HY62256A) soquetada em CI5.
+- Cristal de 11.0592 MHz em X1 (perto do microcontrolador).
+- Chip de vídeo TMS9128NL soquetado em CI8.
+- Cristal de 10.726835 MHz em X2 (perto do chip de vídeo)
+- TTL 74373 em CI1
+- TTL 74138 em CI10.
+- TTL 7400 em CI11.
+- Chip ICL232CPE em CI14 (+5V Powered, Dual RS-232 Transmitter/Receiver).
+- DRAM 64k x 4bits soquetada em CI2.
+- DRAM 64k x 4bits soquetada em CI9.
+- LED1 5mm verde.
+- LED2 5mm vermelho.
+
+*****************************************************************************/
 
 #include "emu.h"
 #include "cpu/mcs51/mcs51.h"
@@ -80,14 +108,12 @@ ADDRESS_MAP_END
 static ADDRESS_MAP_START( io_map, AS_IO, 8, qualeamusica_state )
 	AM_RANGE(0x0000, 0x7fff) AM_RAM
         AM_RANGE(0xff0d, 0xff0d) AM_WRITE(keyboard_row_w)
-        //AM_RANGE(0xff0e, 0xff0e) AM_DEVREADWRITE("tms9128", tms9128_device, vram_read, vram_write)
-        AM_RANGE(0xff0e, 0xff0e) AM_DEVWRITE("tms9128", tms9128_device, vram_write)
-        //AM_RANGE(0xff0f, 0xff0f) AM_DEVREADWRITE("tms9128", tms9128_device, register_read, register_write)
-        AM_RANGE(0xff0f, 0xff0f) AM_DEVWRITE("tms9128", tms9128_device, register_write)
+        AM_RANGE(0xff0e, 0xff0e) AM_DEVREADWRITE("tms9128", tms9128_device, vram_read, vram_write)
+        AM_RANGE(0xff0f, 0xff0f) AM_DEVREADWRITE("tms9128", tms9128_device, register_read, register_write)
 
 	/* Ports start here */
 //	AM_RANGE(MCS51_PORT_P0, MCS51_PORT_P0) AM_NOP
-	AM_RANGE(MCS51_PORT_P1, MCS51_PORT_P1) AM_READWRITE(p1_r, p1_w)
+	AM_RANGE(MCS51_PORT_P1, MCS51_PORT_P1) AM_READ(p1_r)
 //	AM_RANGE(MCS51_PORT_P2, MCS51_PORT_P2) AM_NOP
 //	AM_RANGE(MCS51_PORT_P3, MCS51_PORT_P3) AM_WRITE(p3_w)
 ADDRESS_MAP_END
