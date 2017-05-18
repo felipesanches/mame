@@ -1,7 +1,7 @@
 #include "anotherw.h"
 
 // device type definition
-const device_type ANOTHERW_SOUND = &device_creator<anotherw_sound_device>;
+DEFINE_DEVICE_TYPE(ANOTHERW_SOUND, anotherw_sound_device, "anotherw", "Another World Sound Hardware")
 
 //TODO: Maybe this shuld be stored in a ROM asset as well?
 static uint8_t resource_indexes[] = {
@@ -34,8 +34,8 @@ static int32_t resource_offset(uint16_t resNum){
 //  anotherw_sound_device - constructor
 //-------------------------------------------------
 
-anotherw_sound_device::anotherw_sound_device(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock)
-    : device_t(mconfig, ANOTHERW_SOUND, "ANOTHERW_SOUND", tag, owner, clock, "anotherw_sound", __FILE__),
+anotherw_sound_device::anotherw_sound_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+    : device_t(mconfig, ANOTHERW_SOUND, tag, owner, clock),
         device_sound_interface(mconfig, *this),
         m_stream(nullptr),
         m_write_mus_mark(*this)

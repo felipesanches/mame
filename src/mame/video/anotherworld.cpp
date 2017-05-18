@@ -2,6 +2,7 @@
 // copyright-holders:FelipeSanches
 #include "emu.h"
 #include "includes/anotherworld.h"
+#include "screen.h"
 
 void another_world_state::video_start()
 {
@@ -372,7 +373,7 @@ void another_world_state::draw_charactere(uint8_t character, uint16_t x, uint16_
     }
 }
 
-UINT32 another_world_state::screen_update_aw(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect)
+uint32_t another_world_state::screen_update_aw(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect)
 {
     copybitmap(bitmap, m_screen_bitmap, 0, 0, 0, 0, cliprect);    
     return 0;

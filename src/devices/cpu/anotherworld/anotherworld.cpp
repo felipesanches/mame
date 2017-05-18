@@ -39,10 +39,8 @@ void Stack::clean(){
     m_overflow = false;
 }
 
-const device_type ANOTHER_WORLD  = &device_creator<another_world_cpu_device>;
-
-another_world_cpu_device::another_world_cpu_device(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock)
-    : cpu_device(mconfig, ANOTHER_WORLD, "ANOTHER WORLD", tag, owner, clock, "another_world_cpu", __FILE__),
+another_world_cpu_device::another_world_cpu_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+    : cpu_device(mconfig, ANOTHER_WORLD, tag, owner, clock),
       m_program_config("program", ENDIANNESS_LITTLE, 8, 16, 0),
       m_data_config("data", ENDIANNESS_LITTLE, 16, 9, 0),
       m_icount(0)
@@ -50,6 +48,8 @@ another_world_cpu_device::another_world_cpu_device(const machine_config &mconfig
     m_stack = new Stack(&m_sp);
     m_requestedNextPart = 0;
 }
+
+DEFINE_DEVICE_TYPE(ANOTHER_WORLD, another_world_cpu_device, "AnotherWorld", "Another World CPU")
 
 another_world_cpu_device::~another_world_cpu_device() {
     delete m_stack;
@@ -297,7 +297,7 @@ void another_world_cpu_device::execute_instruction()
         }
         case 0x04: /* CALL subroutine instruction */
         {
-            UINT16 addr = fetch_word();
+            uint16_t addr = fetch_word();
             m_stack->push(PC);
             PC = addr;
             return;
@@ -632,9 +632,8 @@ void another_world_cpu_device::initForPart(uint16_t partId){
     m_thread_PC[0] = 0x0000;
 }
 
-offs_t another_world_cpu_device::disasm_disassemble(char *buffer, offs_t pc, const UINT8 *oprom, const UINT8 *opram, UINT32 options)
+offs_t another_world_cpu_device::disasm_disassemble(std::ostream &stream, offs_t pc, const uint8_t *oprom, const uint8_t *opram, uint32_t options)
 {
     extern CPU_DISASSEMBLE( another_world );
-    return CPU_DISASSEMBLE_NAME(another_world)(this, buffer, pc, oprom, opram, options);
+    return CPU_DISASSEMBLE_NAME(another_world)(this, stream, pc, oprom, opram, options);
 }
-

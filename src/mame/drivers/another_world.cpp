@@ -18,6 +18,8 @@
 #include "emu.h"
 #include "includes/anotherworld.h"
 #include "cpu/anotherworld/anotherworld.h"
+#include "screen.h"
+#include "speaker.h"
 
 /*
     driver init function
@@ -128,7 +130,7 @@ static ADDRESS_MAP_START( aw_data_map, AS_DATA, 16, another_world_state )
     AM_RANGE(0x0000, 0x01ff) AM_RAM //VM Variables
 ADDRESS_MAP_END
 
-static MACHINE_CONFIG_START( another_world, another_world_state )
+static MACHINE_CONFIG_START( another_world )
     /* basic machine hardware */
     MCFG_CPU_ADD("maincpu", ANOTHER_WORLD, 50) /* This clock is based on the finest
                                                 * pause interval resolution

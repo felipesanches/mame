@@ -15,7 +15,7 @@ class anotherw_sound_device : public device_t,
 {
 public:
     // construction/destruction
-    anotherw_sound_device(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock);
+    anotherw_sound_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
     template<class _Object> static devcb_base &set_music_mark_callback(device_t &device, _Object object) { return downcast<anotherw_sound_device &>(device).m_write_mus_mark.set_callback(object); }
 

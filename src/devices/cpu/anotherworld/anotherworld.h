@@ -67,7 +67,7 @@ class another_world_cpu_device : public cpu_device
 {
 public:
     // construction/destruction
-    another_world_cpu_device(const machine_config &mconfig, const char *_tag, device_t *_owner, UINT32 _clock);
+    another_world_cpu_device(const machine_config &mconfig, const char *_tag, device_t *_owner, uint32_t _clock);
     ~another_world_cpu_device();
 
     void write_vm_variable(uint8_t i, uint16_t value);
@@ -75,7 +75,7 @@ public:
 protected:
     
     virtual void execute_run() override;
-    virtual offs_t disasm_disassemble(char *buffer, offs_t pc, const UINT8 *oprom, const UINT8 *opram, UINT32 options) override;
+    virtual offs_t disasm_disassemble(std::ostream &stream, offs_t pc, const uint8_t *oprom, const uint8_t *opram, uint32_t options) override;
 
     address_space_config m_program_config;
     address_space_config m_data_config;
@@ -93,8 +93,8 @@ protected:
     virtual void device_reset() override;
 
     // device_execute_interface overrides
-    virtual UINT32 execute_min_cycles() const override { return 1; }
-    virtual UINT32 execute_max_cycles() const override { return 2; }
+    virtual uint32_t execute_min_cycles() const override { return 1; }
+    virtual uint32_t execute_max_cycles() const override { return 2; }
 
     // device_memory_interface overrides
     virtual const address_space_config *memory_space_config(address_spacenum spacenum = AS_0) const override {
@@ -103,8 +103,8 @@ protected:
     }
 
     // device_disasm_interface overrides
-    virtual UINT32 disasm_min_opcode_bytes() const override { return 1; }
-    virtual UINT32 disasm_max_opcode_bytes() const override { return 8; }
+    virtual uint32_t disasm_min_opcode_bytes() const override { return 1; }
+    virtual uint32_t disasm_max_opcode_bytes() const override { return 8; }
 
     uint16_t m_thread_PC[NUM_THREADS];
     uint16_t m_requested_PC[NUM_THREADS];
@@ -132,7 +132,7 @@ private:
     uint16_t read_vm_variable(uint8_t i);
 };
 
-
-extern const device_type ANOTHER_WORLD;
+// device type definition
+DECLARE_DEVICE_TYPE(ANOTHER_WORLD, another_world_cpu_device)
 
 #endif /* __ANOTHERWORLD_H__ */
