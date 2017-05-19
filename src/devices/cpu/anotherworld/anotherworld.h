@@ -15,8 +15,17 @@
 #define INCREMENT_PC_64K    (PC = (PC+1) & ADDRESS_MASK_64K)
 #define DECREMENT_PC_64K    (PC = (PC-1) & ADDRESS_MASK_64K)
 
-#define FROZEN true
-#define UNFROZEN false
+enum {
+  RESET_TYPE__FREEZE_CHANNELS=0,
+  RESET_TYPE__UNFREEZE_CHANNELS=1,
+  RESET_TYPE__DELETE_CHANNELS=2,
+};
+
+enum {
+  FROZEN=0,
+  UNFROZEN=1,
+};
+
 #define INACTIVE_THREAD 0xFFFF
 #define DELETE_THIS_THREAD 0xFFFE
 #define NO_REQUEST 0xFFFF
@@ -136,6 +145,7 @@ protected:
 
 private:
     void nextThread();
+    void checkThreadRequests();
     void execute_instruction();
     void initForPart(uint16_t partId);
     uint8_t fetch_byte();

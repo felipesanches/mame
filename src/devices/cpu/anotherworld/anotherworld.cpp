@@ -57,35 +57,38 @@ another_world_cpu_device::~another_world_cpu_device() {
     delete m_stack;
 }
 
+void another_world_cpu_device::checkThreadRequests(){
+    //Check if a part switch has been requested.
+    if (m_requestedNextPart != 0) {
+        initForPart(m_requestedNextPart);
+        m_requestedNextPart = 0;
+    }
+
+    for (int i=0; i<NUM_THREADS; i++){
+        m_thread_state[i] = m_requested_state[i];
+
+        uint16_t req = m_requested_PC[i];
+        if (req != NO_REQUEST){
+            if (req == DELETE_THIS_THREAD){
+                m_thread_PC[i] = INACTIVE_THREAD;
+            } else {
+                m_thread_PC[i] = req;
+            }
+            m_requested_PC[i] = NO_REQUEST;
+        }
+    }
+}
+
 void another_world_cpu_device::nextThread(){
     do {
         m_currentThread = (m_currentThread+1) % NUM_THREADS;
-
-        if (m_currentThread == 0){
-            //Check if a part switch has been requested.
-            if (m_requestedNextPart != 0) {
-                initForPart(m_requestedNextPart);
-                m_requestedNextPart = 0;
-            }
-
-            for (int i=0; i<NUM_THREADS; i++){
-                m_thread_state[i] = m_requested_state[i];
-
-                uint16_t req = m_requested_PC[i];
-                if (req != NO_REQUEST){
-                    m_requested_PC[i] = NO_REQUEST;
-                    if (req == DELETE_THIS_THREAD){
-                        m_thread_PC[i] = INACTIVE_THREAD;
-                    } else {
-                        m_thread_PC[i] = req;
-                    }
-                }
-            }
+        if (m_currentThread == 0) {
+            /* End of Frame */
+            checkThreadRequests();
             ((another_world_state*) owner())->updateDisplay(0xFE);
         }
     } while(m_thread_state[m_currentThread] == FROZEN ||
-            m_thread_PC[m_currentThread] == INACTIVE_THREAD ||
-            m_thread_PC[m_currentThread] == DELETE_THIS_THREAD);
+            m_thread_PC[m_currentThread] == INACTIVE_THREAD);
 
     PC = m_thread_PC[m_currentThread];
 }
@@ -148,7 +151,7 @@ void another_world_cpu_device::device_reset()
     //all threads are initially disabled and not frozen
     for (int i=0; i<NUM_THREADS; i++){
         m_thread_PC[i] = INACTIVE_THREAD;
-        m_requested_PC[i] = INACTIVE_THREAD;
+        m_requested_PC[i] = NO_REQUEST;
         m_thread_state[i] = UNFROZEN;
         m_requested_state[i] = UNFROZEN;
     }
@@ -434,27 +437,18 @@ void another_world_cpu_device::execute_instruction()
                 return;
             }
 
-            enum {
-                RESET_TYPE__FREEZE_CHANNELS=0,
-                RESET_TYPE__UNFREEZE_CHANNELS,
-                RESET_TYPE__DELETE_CHANNELS,
-            };
-
             switch(type){
                 case RESET_TYPE__FREEZE_CHANNELS:
-                    //printf("freezeChannels (first:%d, last:%d)\n", first, last);
                     for (int i=first; i<=last; i++){
                         m_requested_state[i] = FROZEN;
                     }
                     break;
                 case RESET_TYPE__UNFREEZE_CHANNELS:
-                    //printf("unfreezeChannels (first:%d, last:%d)\n", first, last);
                     for (int i=first; i<=last; i++){
                         m_requested_state[i] = UNFROZEN;
                     }
                     break;
                 case RESET_TYPE__DELETE_CHANNELS:
-                    //printf("deleteChannels (first:%d, last:%d)\n", first, last);
                     for (int i=first; i<=last; i++){
                         m_requested_PC[i] = DELETE_THIS_THREAD;
                     }
