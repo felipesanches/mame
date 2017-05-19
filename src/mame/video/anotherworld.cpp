@@ -185,10 +185,12 @@ void another_world_state::drawLineP(int16_t x1, int16_t x2, uint8_t color) {
 }
 
 int32_t another_world_state::calcStep(const Point &p1, const Point &p2, uint16_t &dy) {
-    uint16_t dx;
+    uint16_t v = 0x4000;
+    int dx = p2.x - p1.x;
     dy = p2.y - p1.y;
-    dx = p2.x - p1.x;
-    return (dy==0) ? (dx * 0x4000 * 4) : (dx * (0x4000/dy) * 4);
+    if (dy>0)
+	v = 0x4000/dy;
+    return dx * v * 4;
 }
 
 void another_world_state::fillPolygon(uint16_t color, uint16_t zoom, const Point &pt) {
@@ -205,9 +207,6 @@ void another_world_state::fillPolygon(uint16_t color, uint16_t zoom, const Point
 
     if (xmin > (320-1) || xmax < 0 || ymin > (200-1) || ymax < 0)
         return;
-
-//    if (x1 > (m_screen->width()-1) || x2 < 0 || y1 > (m_screen->height()-1) || y2 < 0)
-//        return;
 
     m_hliney = ymin;
     
