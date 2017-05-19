@@ -28,6 +28,11 @@
 //#define DUMP_VM_EXECUTION_LOG
 //#define SPEEDUP_VM_EXECUTION
 
+// AS_PROGRAM is already defined as: AS_0
+// AS_DATA is already defined as: AS_1
+#define AS_PALETTE AS_2
+#define AS_VIDEO AS_3
+
 enum ScriptVars {
     VM_VARIABLE_RANDOM_SEED          = 0x3C,
     VM_VARIABLE_LAST_KEYCHAR         = 0xDA,
@@ -79,6 +84,8 @@ protected:
 
     address_space_config m_program_config;
     address_space_config m_data_config;
+    address_space_config m_palette_config;
+    address_space_config m_video_config;
 
     /* processor registers */
     unsigned int m_pc;
@@ -87,6 +94,8 @@ protected:
 
     address_space *m_program;
     address_space *m_data;
+    address_space *m_palette;
+    address_space *m_video;
 
     // device-level overrides
     virtual void device_start() override;
@@ -99,7 +108,9 @@ protected:
     // device_memory_interface overrides
     virtual const address_space_config *memory_space_config(address_spacenum spacenum = AS_0) const override {
         return (spacenum == AS_PROGRAM) ? &m_program_config :
-               (spacenum == AS_DATA) ? &m_data_config : NULL;
+               (spacenum == AS_DATA) ? &m_data_config :
+               (spacenum == AS_PALETTE) ? &m_palette_config :
+               (spacenum == AS_VIDEO) ? &m_video_config : NULL;
     }
 
     // device_disasm_interface overrides

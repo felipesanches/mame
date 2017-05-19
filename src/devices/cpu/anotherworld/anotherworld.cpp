@@ -43,6 +43,8 @@ another_world_cpu_device::another_world_cpu_device(const machine_config &mconfig
     : cpu_device(mconfig, ANOTHER_WORLD, tag, owner, clock),
       m_program_config("program", ENDIANNESS_LITTLE, 8, 16, 0),
       m_data_config("data", ENDIANNESS_LITTLE, 16, 9, 0),
+      m_palette_config("palette", ENDIANNESS_LITTLE, 8, 11, 0),
+      m_video_config("video", ENDIANNESS_LITTLE, 8, 16, 0),
       m_icount(0)
 {
     m_stack = new Stack(&m_sp);

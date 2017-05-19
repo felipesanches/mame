@@ -116,8 +116,14 @@ READ16_MEMBER(another_world_state::letters_r)
 
 static ADDRESS_MAP_START( aw_prog_map, AS_PROGRAM, 8, another_world_state )
     AM_RANGE(0x00000, 0x0ffff) AM_ROMBANK("bytecode_bank")
-    AM_RANGE(0x10000, 0x1ffff) AM_ROMBANK("video1_bank") /* FIX-ME: This is just a hack for setting up a video1 bank */
-    AM_RANGE(0x20000, 0x207ff) AM_ROMBANK("palette_bank") /* FIX-ME: This is just a hack for setting up a palette bank */
+ADDRESS_MAP_END
+
+static ADDRESS_MAP_START( aw_video_map, AS_VIDEO, 8, another_world_state )
+    AM_RANGE(0x0000, 0xffff) AM_ROMBANK("video1_bank")
+ADDRESS_MAP_END
+
+static ADDRESS_MAP_START( aw_palette_map, AS_PALETTE, 8, another_world_state )
+    AM_RANGE(0x0000, 0x07ff) AM_ROMBANK("palette_bank")
 ADDRESS_MAP_END
 
 static ADDRESS_MAP_START( aw_data_map, AS_DATA, 16, another_world_state )
@@ -139,6 +145,8 @@ static MACHINE_CONFIG_START( another_world )
                                                 */
     MCFG_CPU_PROGRAM_MAP(aw_prog_map)
     MCFG_CPU_DATA_MAP(aw_data_map)
+    MCFG_DEVICE_ADDRESS_MAP(AS_PALETTE, aw_palette_map)
+    MCFG_DEVICE_ADDRESS_MAP(AS_VIDEO, aw_video_map)
 
     MCFG_MACHINE_START_OVERRIDE(another_world_state, anotherw)
 
