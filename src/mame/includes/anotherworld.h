@@ -34,7 +34,7 @@ struct Polygon {
     uint8_t numPoints;
     Point points[MAX_POINTS];
 
-    void readVertices(const uint8_t *p, uint16_t zoom, uint16_t screen_width, uint16_t screen_height);
+    void readVertices(const uint8_t *p, uint16_t zoom);
 };
 
 /*******************************

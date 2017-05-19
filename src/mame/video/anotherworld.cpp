@@ -48,12 +48,9 @@ void another_world_state::setDataBuffer(uint8_t type, uint16_t offset){
     m_data_offset = offset;
 }
 
-void Polygon::readVertices(const uint8_t *p, uint16_t zoom, uint16_t screen_width, uint16_t screen_height) {
+void Polygon::readVertices(const uint8_t *p, uint16_t zoom) {
     bbox_w = (*p++) * zoom / DEFAULT_ZOOM;
     bbox_h = (*p++) * zoom / DEFAULT_ZOOM;
-
-//    bbox_w = (int16_t) (bbox_w * (screen_width/320.0));
-//    bbox_h = (int16_t) (bbox_h * (screen_height/200.0));
     
     numPoints = *p++;
     assert((numPoints & 1) == 0 && numPoints < MAX_POINTS);
@@ -63,9 +60,6 @@ void Polygon::readVertices(const uint8_t *p, uint16_t zoom, uint16_t screen_widt
         Point *pt = &points[i];
         pt->x = (*p++) * zoom / DEFAULT_ZOOM;
         pt->y = (*p++) * zoom / DEFAULT_ZOOM;
-        
-//        pt->x = (int16_t) (pt->x * (screen_width/320.0));
-//        pt->y = (int16_t) (pt->y * (screen_height/200.0));
     }
 }
 
@@ -88,7 +82,7 @@ void another_world_state::readAndDrawPolygon(uint8_t color, uint16_t zoom, const
             color = value & 0x3F; //why?
         }
 
-        m_polygon.readVertices(&m_polygonData[m_data_offset], zoom, m_screen->width(), m_screen->height());
+        m_polygon.readVertices(&m_polygonData[m_data_offset], zoom);
         fillPolygon(color, zoom, pt);
     } else {
         value &= 0x3F;
@@ -113,12 +107,6 @@ void another_world_state::readAndDrawPolygonHierarchy(uint16_t zoom, const Point
     pt.x -= m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
     pt.y -= m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
 
-//    int16_t offs_x = m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
-//    int16_t offs_y = m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
-//
-//    pt.x -= (int16_t) (offs_x * (m_screen->width()/320.0));
-//    pt.y -= (int16_t) (offs_y * (m_screen->height()/200.0));
-
     int16_t children = m_polygonData[m_data_offset++];
 
     for ( ; children >= 0; --children) {
@@ -129,15 +117,9 @@ void another_world_state::readAndDrawPolygonHierarchy(uint16_t zoom, const Point
         po.x += m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
         po.y += m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
 
-//        offs_x = m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
-//        offs_y = m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
-//
-//        po.x += (int16_t) (offs_x * (m_screen->width()/320.0));
-//        po.y += (int16_t) (offs_y * (m_screen->height()/200.0));
-
         uint16_t color = 0xFF;
         if (offset & 0x8000) {
-            color = m_polygonData[m_data_offset /* +1 here? */] & 0x7F;
+            color = m_polygonData[m_data_offset] & 0x7F;
             m_data_offset+=2;
         }
 
@@ -205,8 +187,13 @@ void another_world_state::fillPolygon(uint16_t color, uint16_t zoom, const Point
     int16_t ymin = pt.y - m_polygon.bbox_h / 2;
     int16_t ymax = pt.y + m_polygon.bbox_h / 2;
 
-    if (xmin > (320-1) || xmax < 0 || ymin > (200-1) || ymax < 0)
+    if (xmin >= 320 || xmax < 0 || ymin >= 200 || ymax < 0)
         return;
+
+    xmin *= (m_screen->width()/320);
+    xmax *= (m_screen->width()/320);
+    ymin *= (m_screen->height()/200);
+    ymax *= (m_screen->height()/200);
 
     m_hliney = ymin;
     
@@ -216,8 +203,8 @@ void another_world_state::fillPolygon(uint16_t color, uint16_t zoom, const Point
     i = 0;
     j = m_polygon.numPoints - 1;
     
-    x2 = m_polygon.points[i].x + xmin;
-    x1 = m_polygon.points[j].x + xmin;
+    x2 = m_polygon.points[i].x * (m_screen->width()/320) + xmin;
+    x1 = m_polygon.points[j].x * (m_screen->width()/320) + xmin;
 
     i++;
     j--;
@@ -240,6 +227,7 @@ void another_world_state::fillPolygon(uint16_t color, uint16_t zoom, const Point
         uint16_t h;
         int32_t step1 = calcStep(m_polygon.points[j + 1], m_polygon.points[j], h);
         int32_t step2 = calcStep(m_polygon.points[i - 1], m_polygon.points[i], h);
+        h *= (m_screen->height()/200);
 
         i++;
         j--;
@@ -293,7 +281,11 @@ void another_world_state::updateDisplay(uint8_t pageId) {
 void another_world_state::drawPoint(uint8_t color, int16_t x, int16_t y) {
     x = (int16_t) (x * (m_screen->width()/320.0));
     y = (int16_t) (y * (m_screen->height()/200.0));
-    m_curPagePtr1->pix16(y, x) = color;
+    for (int i=0; i<(m_screen->width()/320.0); i++){
+      for (int j=0; j<(m_screen->height()/200.0); j++){
+        m_curPagePtr1->pix16(y+j, x+i) = color;
+      }
+    }
 }
 
 #define NUM_COLORS 16
@@ -363,9 +355,7 @@ void another_world_state::draw_charactere(uint8_t character, uint16_t x, uint16_
         uint8_t row = font[(character - ' ') * 8 + j];
         for (int i = 0; i < 8; i++) {
             if (row & 0x80) {
-                int16_t px = (int16_t) ((x+i) * (m_screen->width()/320.0));
-                //int16_t py = (int16_t) ((y+j) * (m_screen->height()/200.0));
-                m_curPagePtr1->pix16(y+j, px) = color;
+                drawPoint(color, x+i, y+j);
             }
             row <<= 1;
         }

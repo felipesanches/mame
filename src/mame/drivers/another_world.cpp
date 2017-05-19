@@ -12,6 +12,10 @@
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 200
 
+//Try this for high-res polygon rendering:
+//#define SCREEN_WIDTH (320*4)
+//#define SCREEN_HEIGHT (200*4)
+
 //#define SCREEN_WIDTH 256
 //#define SCREEN_HEIGHT 224
 //
