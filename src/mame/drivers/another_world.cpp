@@ -9,11 +9,17 @@
     https://github.com/fabiensanglard/Another-World-Bytecode-Interpreter
 */
 
-//#define SCREEN_WIDTH 320
-//#define SCREEN_HEIGHT 200
+#define SCREEN_WIDTH 320
+#define SCREEN_HEIGHT 200
 
-#define SCREEN_WIDTH 256
-#define SCREEN_HEIGHT 224
+//#define SCREEN_WIDTH 256
+//#define SCREEN_HEIGHT 224
+//
+// This other resolution (256x224) was used in some ports (I guess SEGA Genesis used it)
+// It is here for the purpose of testing a generic renderer code that would work
+// in any given resolution. But the initial port of the graphics code was based on
+// Fabien Sanglard's free-software VM re-implementation, which used
+// a screen resolution of 320x200 pixels.
 
 #include "emu.h"
 #include "includes/anotherworld.h"
@@ -180,7 +186,12 @@ MACHINE_START_MEMBER(another_world_state, anotherw)
     membank("palette_bank")->configure_entries(0, 10, memregion("palettes")->base(), 0x0800);
     membank("video1_bank")->configure_entries(0, 10, memregion("video1")->base(), 0x10000);
 
-    setupPart(0);
+    // FIX-ME!
+    // The correct emulation would have setupPart(0) here in order to start from the
+    // copy-protection initial screen here. But using the code-wheel every time is time-consuming
+    // during development. So, with setupPart(3) whe can start the game right away in the
+    // jail scene:
+    setupPart(3);
 }
 
 void another_world_state::setupPart(uint16_t resourceId){
