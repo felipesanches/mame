@@ -80,10 +80,17 @@ void another_world_cpu_device::checkThreadRequests(){
 }
 
 void another_world_cpu_device::nextThread(){
+#ifdef DUMP_VM_EXECUTION_LOG
+    std::ostream log_stream(&m_log_filebuf);
+    log_stream << "\n";
+#endif
     do {
         m_currentThread = (m_currentThread+1) % NUM_THREADS;
         if (m_currentThread == 0) {
             /* End of Frame */
+#ifdef DUMP_VM_EXECUTION_LOG
+    log_stream << "=== NEW FRAME ===\n";
+#endif
             checkThreadRequests();
             ((another_world_state*) owner())->updateDisplay(0xFE);
         }
@@ -140,8 +147,10 @@ void another_world_cpu_device::device_reset()
     m_sp = 0;
 
 #ifdef DUMP_VM_EXECUTION_LOG
-    m_address_log = fopen("address_log.txt", "w");
-    fprintf(m_address_log, "begin log\n");
+    m_log_filebuf.open("address_log.txt", std::ios::out);
+    std::ostream log_stream(&m_log_filebuf);
+
+    log_stream << "begin log\n";
 #endif
 
     //TODO: declare the stack as a RAM block so that
@@ -178,7 +187,23 @@ void another_world_cpu_device::execute_instruction()
 #ifdef DUMP_VM_EXECUTION_LOG
     int pcounter = PC;
     unsigned char opcode = fetch_byte();
-    fprintf(m_address_log, "[%X]: %X\n", pcounter, opcode);
+    uint32_t options = 0;
+    uint8_t oprom[8], opram[8];
+
+    for (int i=0; i<8; i++) {
+        oprom[i] = READ_BYTE_AW(pcounter+i);
+        opram[i] = 0;
+    }
+
+    std::ostream log_stream(&m_log_filebuf);
+
+    char tmp[256];
+    snprintf(tmp, sizeof(tmp), "[%02X - %04X]: %02X  ", m_currentThread, pcounter, opcode);
+    log_stream << tmp;
+
+    extern CPU_DISASSEMBLE( another_world );
+    CPU_DISASSEMBLE_NAME(another_world)(this, log_stream, PC, oprom, opram, options);
+    log_stream << "\n";
 #else
     unsigned char opcode = fetch_byte();
 #endif
@@ -429,11 +454,10 @@ void another_world_cpu_device::execute_instruction()
             uint8_t type = fetch_byte();
 
             //Make sure last is within [0, NUM_THREADS-1]
-            last = last % NUM_THREADS ;
-            int8_t n = last - first;
-            
-            if (n < 0) {
-                printf("ERROR: resetThread with n < 0.\n");
+            last = last % NUM_THREADS;
+
+            if (last < first) {
+                printf("ERROR: resetThread with last (%02X) < first (%02X).\n", last, first);
                 return;
             }
 
@@ -617,7 +641,8 @@ void another_world_cpu_device::initForPart(uint16_t partId){
     m_currentPartId = partId;
 
 #ifdef DUMP_VM_EXECUTION_LOG
-    fprintf(m_address_log, "initForPart %d\n", partId);
+    std::ostream log_stream(&m_log_filebuf);
+    log_stream << "initForPart " << partId << "\n";
 #endif
 
     for (int i=0; i<NUM_THREADS; i++){

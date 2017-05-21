@@ -5,6 +5,9 @@
 #ifndef __ANOTHERWORLD_H__
 #define __ANOTHERWORLD_H__
 
+#include <fstream>
+#include <iostream>
+
 #define PC       m_pc
 #define SP       m_sp
 #define READ_BYTE_AW(A) (m_program->read_byte(A))
@@ -34,8 +37,8 @@ enum {
 #define GAME_PART(n) (0x3E80 + n)
 
 //a couple optional features for easing VM debugging:
-//#define DUMP_VM_EXECUTION_LOG
-//#define SPEEDUP_VM_EXECUTION
+#define DUMP_VM_EXECUTION_LOG
+#define SPEEDUP_VM_EXECUTION
 
 // AS_PROGRAM is already defined as: AS_0
 // AS_DATA is already defined as: AS_1
@@ -140,7 +143,7 @@ protected:
     bool     m_useVideo2;
 
 #ifdef DUMP_VM_EXECUTION_LOG
-    FILE*    m_address_log;
+    std::filebuf m_log_filebuf;
 #endif
 
 private:
