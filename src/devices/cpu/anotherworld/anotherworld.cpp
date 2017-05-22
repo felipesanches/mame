@@ -65,16 +65,17 @@ void another_world_cpu_device::checkThreadRequests(){
     }
 
     for (int i=0; i<NUM_THREADS; i++){
-        m_thread_state[i] = m_requested_state[i];
+        Thread* thread = &m_threads[i];
 
-        uint16_t req = m_requested_PC[i];
-        if (req != NO_REQUEST){
-            if (req == DELETE_THIS_THREAD){
-                m_thread_PC[i] = INACTIVE_THREAD;
+        thread->state = thread->requested_state;
+
+        if (thread->requested_PC != NO_REQUEST){
+            if (thread->requested_PC == DELETE_THIS_THREAD){
+                thread->PC = INACTIVE_THREAD;
             } else {
-                m_thread_PC[i] = req;
+                thread->PC = thread->requested_PC;
             }
-            m_requested_PC[i] = NO_REQUEST;
+            thread->requested_PC = NO_REQUEST;
         }
     }
 }
@@ -84,20 +85,22 @@ void another_world_cpu_device::nextThread(){
     std::ostream log_stream(&m_log_filebuf);
     log_stream << "\n";
 #endif
+
+    Thread* current;
     do {
-        m_currentThread = (m_currentThread+1) % NUM_THREADS;
-        if (m_currentThread == 0) {
-            /* End of Frame */
+        if (m_currentThread++ == NUM_THREADS) {
 #ifdef DUMP_VM_EXECUTION_LOG
     log_stream << "=== NEW FRAME ===\n";
 #endif
+            /* End of Frame */
+            m_currentThread = 0;
             checkThreadRequests();
             ((another_world_state*) owner())->updateDisplay(0xFE);
         }
-    } while(m_thread_state[m_currentThread] == FROZEN ||
-            m_thread_PC[m_currentThread] == INACTIVE_THREAD);
+        current = &m_threads[m_currentThread];
+    } while(current->state == FROZEN || current->PC == INACTIVE_THREAD);
 
-    PC = m_thread_PC[m_currentThread];
+    PC = current->PC;
 }
 
 uint16_t another_world_cpu_device::read_vm_variable(uint8_t i){
@@ -159,10 +162,11 @@ void another_world_cpu_device::device_reset()
 
     //all threads are initially disabled and not frozen
     for (int i=0; i<NUM_THREADS; i++){
-        m_thread_PC[i] = INACTIVE_THREAD;
-        m_requested_PC[i] = NO_REQUEST;
-        m_thread_state[i] = UNFROZEN;
-        m_requested_state[i] = UNFROZEN;
+        Thread* thread = &m_threads[i];
+        thread->PC = INACTIVE_THREAD;
+        thread->requested_PC = NO_REQUEST;
+        thread->state = UNFROZEN;
+        thread->requested_state = UNFROZEN;
     }
 
     write_vm_variable(0x54, 0x0081); //TODO: figure out why this is supposedly needed.
@@ -183,30 +187,47 @@ void another_world_cpu_device::execute_run()
 void another_world_cpu_device::execute_instruction()
 {
     debugger_instruction_hook(this, PC);
+    Thread* current = &m_threads[m_currentThread];
 
 #ifdef DUMP_VM_EXECUTION_LOG
-    int pcounter = PC;
-    unsigned char opcode = fetch_byte();
     uint32_t options = 0;
-    uint8_t oprom[8], opram[8];
+    uint8_t _oprom[8], _opram[8];
 
     for (int i=0; i<8; i++) {
-        oprom[i] = READ_BYTE_AW(pcounter+i);
-        opram[i] = 0;
+        _oprom[i] = READ_BYTE_AW(PC+i);
+        _opram[i] = 0;
     }
 
     std::ostream log_stream(&m_log_filebuf);
 
     char tmp[256];
-    snprintf(tmp, sizeof(tmp), "[%02X - %04X]: %02X  ", m_currentThread, pcounter, opcode);
+    snprintf(tmp, sizeof(tmp), "[%02X - %04X]: %02X ", m_currentThread, PC, READ_BYTE_AW(PC));
     log_stream << tmp;
 
     extern CPU_DISASSEMBLE( another_world );
-    CPU_DISASSEMBLE_NAME(another_world)(this, log_stream, PC, oprom, opram, options);
+    CPU_DISASSEMBLE_NAME(another_world)(this, log_stream, PC, _oprom, _opram, options);
     log_stream << "\n";
-#else
-    unsigned char opcode = fetch_byte();
 #endif
+
+#ifdef BYPASS_PROTECTION
+            //Whoever wrote this is patching the bytecode on the fly.
+            //I did enable this but it did not work. This needs to be reviewed:
+
+            if (m_currentPartId == 0 && PC == 0xCB9) {
+                // (0x0CB8) condJmp(0x80, VAR(41), VAR(30), 0xCD3)
+                m_program->write_byte(PC + 0x00, 0x81);
+                m_program->write_byte(PC + 0x03, 0x0D);
+                m_program->write_byte(PC + 0x04, 0x24);
+
+                // (0x0D4E) condJmp(0x4, VAR(50), 6, 0xDBC) 
+                m_program->write_byte(PC + 0x99, 0x0D);
+                m_program->write_byte(PC + 0x9A, 0x5A);
+                printf("VirtualMachine::op_condJmp() bypassing protection");
+                printf("bytecode has been patched\n");
+            }
+#endif
+
+    unsigned char opcode = fetch_byte();
 
     if (opcode & 0x80) 
     {
@@ -339,8 +360,8 @@ void another_world_cpu_device::execute_instruction()
         }
         case 0x06: /* pauseThread instruction (a.k.a. "break") */
         {
-            if (m_requested_PC[m_currentThread] == NO_REQUEST)
-                m_requested_PC[m_currentThread] = PC;
+            if (current->requested_PC == NO_REQUEST)
+                current->requested_PC = PC;
 
             nextThread();
             return;
@@ -352,9 +373,10 @@ void another_world_cpu_device::execute_instruction()
         }
         case 0x08: /* setVect instruction */
         {
-            uint8_t threadId = fetch_byte();
+            uint8_t threadId = fetch_byte() & 0x3F;
             uint16_t request = fetch_word();
-            m_requested_PC[threadId] = request;
+
+            m_threads[threadId].requested_PC = request;
             return;
         }
         case 0x09: /* DJNZ instrucion:
@@ -372,27 +394,6 @@ void another_world_cpu_device::execute_instruction()
         }
         case 0x0A: /* condJmp */
         {
-
-//TODO: Check the validity of the following bytecode hack:
-#if 0 //BYPASS_PROTECTION
-            //FCS Whoever wrote this is patching the bytecode on the fly. This is ballzy !!
-                    
-            if (res->currentPartId == GAME_PART_FIRST && _scriptPtr.pc == res->segBytecode + 0xCB9) {
-                
-                // (0x0CB8) condJmp(0x80, VAR(41), VAR(30), 0xCD3)
-                *(_scriptPtr.pc + 0x00) = 0x81;
-                *(_scriptPtr.pc + 0x03) = 0x0D;
-                *(_scriptPtr.pc + 0x04) = 0x24;
-                // (0x0D4E) condJmp(0x4, VAR(50), 6, 0xDBC)     
-                *(_scriptPtr.pc + 0x99) = 0x0D;
-                *(_scriptPtr.pc + 0x9A) = 0x5A;
-                printf("VirtualMachine::op_condJmp() bypassing protection");
-                printf("bytecode has been patched/n");
-                
-                //this->bypassProtection() ;
-            }    
-#endif
-
             uint8_t subopcode = fetch_byte();
             int16_t b = read_vm_variable(fetch_byte());
             uint8_t c = fetch_byte();
@@ -464,17 +465,17 @@ void another_world_cpu_device::execute_instruction()
             switch(type){
                 case RESET_TYPE__FREEZE_CHANNELS:
                     for (int i=first; i<=last; i++){
-                        m_requested_state[i] = FROZEN;
+                        m_threads[i].requested_state = FROZEN;
                     }
                     break;
                 case RESET_TYPE__UNFREEZE_CHANNELS:
                     for (int i=first; i<=last; i++){
-                        m_requested_state[i] = UNFROZEN;
+                        m_threads[i].requested_state = UNFROZEN;
                     }
                     break;
                 case RESET_TYPE__DELETE_CHANNELS:
                     for (int i=first; i<=last; i++){
-                        m_requested_PC[i] = DELETE_THIS_THREAD;
+                        m_threads[i].requested_PC = DELETE_THIS_THREAD;
                     }
                     break;
                 default:
@@ -529,7 +530,7 @@ void another_world_cpu_device::execute_instruction()
         }
         case 0x11: /* killThread */
         {
-            m_thread_PC[m_currentThread] = INACTIVE_THREAD;
+            current->PC = INACTIVE_THREAD;
             nextThread();
             return;
         }
@@ -646,11 +647,14 @@ void another_world_cpu_device::initForPart(uint16_t partId){
 #endif
 
     for (int i=0; i<NUM_THREADS; i++){
-        m_thread_PC[i] = INACTIVE_THREAD;
-        m_thread_state[i] = UNFROZEN;
+        Thread *thread = &m_threads[i];
+        thread->requested_PC = NO_REQUEST;
+        thread->requested_state = NO_REQUEST;
+        thread->PC = INACTIVE_THREAD;
+        thread->state = UNFROZEN;
     }
 
-    m_thread_PC[0] = 0x0000;
+    m_threads[0].PC = 0x0000;
 }
 
 offs_t another_world_cpu_device::disasm_disassemble(std::ostream &stream, offs_t pc, const uint8_t *oprom, const uint8_t *opram, uint32_t options)

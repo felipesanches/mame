@@ -30,6 +30,7 @@ CPU_DISASSEMBLE( another_world )
     /* first disassm the video opcodes */
 
     uint8_t opcode = oprom[0];
+
     if (opcode & 0x80)
     {
         uint16_t off = ((opcode << 8) | oprom[1]) * 2;
@@ -42,13 +43,14 @@ CPU_DISASSEMBLE( another_world )
             x += h;
         }
 
+        
         util::stream_format(stream, "video: off=0x%X x=%d y=%d", off, x, y);
         return 4;
     }
     
     if (opcode & 0x40)
     {
-        uint8_t x, y;
+        uint16_t x, y;
         uint16_t off = ((oprom[1] << 8) | oprom[2]) * 2;
         char x_str[20];
         char y_str[20];
@@ -56,11 +58,12 @@ CPU_DISASSEMBLE( another_world )
 
         int i=3;
         x = oprom[i++];
-        if (!(opcode & 0x20))
+        if (!(oprom[0] & 0x20))
         {
-            if (!(opcode & 0x10))
+            if (!(oprom[0] & 0x10))
             {
                 x = (x << 8) | oprom[i++];
+                printf("X2: %d\n\n", x);
                 sprintf(x_str, "%d", x);
             } else {
                 sprintf(x_str, "[0x%02x]", x);
@@ -70,8 +73,8 @@ CPU_DISASSEMBLE( another_world )
         {
             if (opcode & 0x10) {
                 x += 0x100;
-                sprintf(x_str, "%d", x);
             }
+            sprintf(x_str, "%d", x);
         }
 
         if (!(opcode & 8))
@@ -88,7 +91,7 @@ CPU_DISASSEMBLE( another_world )
             /*TODO: This seems to be broken. Maybe looking at the emulation of
              *      this instruction can give us some insight.
              */
-            sprintf(y_str, "?");
+            sprintf(y_str, "? (FIXME!)");
         }
 
         uint8_t zoom;
@@ -114,6 +117,13 @@ CPU_DISASSEMBLE( another_world )
                 sprintf(zoom_str, "[0x%02x]", zoom);
             }
         }
+        /*
+        stream << "operand bytes:";
+        for (int j=1; j<i; j++) {
+          util::stream_format(stream, " 0x%02X", oprom[j]);
+        }
+        stream << " | ";
+        */
         util::stream_format(stream, "video: off=0x%X x=%s y=%s zoom:%s", off, x_str, y_str, zoom_str);
         return i;
     }

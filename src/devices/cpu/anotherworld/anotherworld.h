@@ -36,9 +36,10 @@ enum {
 #define NUM_THREADS 64
 #define GAME_PART(n) (0x3E80 + n)
 
-//a couple optional features for easing VM debugging:
+//a few optional features for easing VM debugging:
 #define DUMP_VM_EXECUTION_LOG
 #define SPEEDUP_VM_EXECUTION
+//#define BYPASS_PROTECTION
 
 // AS_PROGRAM is already defined as: AS_0
 // AS_DATA is already defined as: AS_1
@@ -78,6 +79,15 @@ private:
     uint16_t m_stacked_values[256];
     uint8_t* m_sp;
     bool m_overflow;
+};
+
+class Thread
+{
+public:
+    uint16_t PC;
+    uint16_t requested_PC;
+    bool     state;
+    bool     requested_state;
 };
 
 class another_world_cpu_device : public cpu_device
@@ -129,10 +139,7 @@ protected:
     virtual uint32_t disasm_min_opcode_bytes() const override { return 1; }
     virtual uint32_t disasm_max_opcode_bytes() const override { return 8; }
 
-    uint16_t m_thread_PC[NUM_THREADS];
-    uint16_t m_requested_PC[NUM_THREADS];
-    bool     m_thread_state[NUM_THREADS];
-    bool     m_requested_state[NUM_THREADS];
+    Thread m_threads[NUM_THREADS];
 
     Stack*   m_stack;
     int      m_currentThread;
