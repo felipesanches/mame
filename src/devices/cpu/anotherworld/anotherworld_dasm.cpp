@@ -63,7 +63,6 @@ CPU_DISASSEMBLE( another_world )
             if (!(oprom[0] & 0x10))
             {
                 x = (x << 8) | oprom[i++];
-                printf("X2: %d\n\n", x);
                 sprintf(x_str, "%d", x);
             } else {
                 sprintf(x_str, "[0x%02x]", x);

@@ -32,6 +32,7 @@ enum address_spacenum
 	AS_1,                           // second address space
 	AS_2,                           // third address space
 	AS_3,                           // fourth address space
+        AS_4,                           // fifth address space
 	ADDRESS_SPACES,                 // maximum number of address spaces
 
 	// alternate address space names for common use

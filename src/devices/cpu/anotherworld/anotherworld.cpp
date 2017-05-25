@@ -98,7 +98,9 @@ void another_world_cpu_device::nextThread(){
             ((another_world_state*) owner())->updateDisplay(0xFE);
         }
         current = &m_threads[m_currentThread];
-    } while(current->state == FROZEN || current->PC == INACTIVE_THREAD);
+    } while(current->state == FROZEN
+         || current->PC == INACTIVE_THREAD
+);
 
     PC = current->PC;
 }
@@ -131,12 +133,15 @@ void another_world_cpu_device::device_start()
 
     save_item(NAME(m_pc));
     save_item(NAME(m_sp));
+    save_item(NAME(m_currentThread));
 
     // Register state for debugger
-    state_add( ANOTHER_WORLD_PC,         "PC",          m_pc            ).mask(0xFFF);
+    state_add( ANOTHER_WORLD_PC,         "PC",          m_pc            ).mask(0xFFFF);
     state_add( ANOTHER_WORLD_SP,         "SP",          m_sp            ).mask(0xFF);
     state_add( ANOTHER_WORLD_CUR_THREAD, "CUR_THREAD",  m_currentThread ).mask(0xFF);
-    state_add( STATE_GENPC,              "GENPC",       m_pc ).formatstr("0%06O").noshow();
+
+     //Needed for updating the debugger dialog:
+    state_add( STATE_GENPCBASE,          "CURPC",       m_pc).noshow();
 
     m_icountptr = &m_icount;
 }

@@ -41,10 +41,11 @@ enum {
 #define SPEEDUP_VM_EXECUTION
 //#define BYPASS_PROTECTION
 
-// AS_PROGRAM is already defined as: AS_0
-// AS_DATA is already defined as: AS_1
+#define AS_PROGRAM AS_0
+#define AS_DATA AS_1
 #define AS_PALETTE AS_2
-#define AS_VIDEO AS_3
+// skip AS_3, which is specific to decrypted opcodes
+#define AS_VIDEO AS_4
 
 enum ScriptVars {
     VM_VARIABLE_RANDOM_SEED          = 0x3C,
@@ -110,7 +111,7 @@ protected:
     address_space_config m_video_config;
 
     /* processor registers */
-    unsigned int m_pc;
+    uint16_t m_pc;
     uint8_t m_sp;
     int m_icount;
 
