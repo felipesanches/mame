@@ -195,7 +195,7 @@ MACHINE_START_MEMBER(another_world_state, anotherw)
     // copy-protection initial screen here. But using the code-wheel every time is time-consuming
     // during development. So, with setupPart(3) whe can start the game right away in the
     // jail scene:
-    setupPart(0);
+    setupPart(1); //here I'm starting at the intro-scene.
 }
 
 void another_world_state::setupPart(uint16_t resourceId){

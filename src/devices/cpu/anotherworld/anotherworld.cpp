@@ -175,6 +175,7 @@ void another_world_cpu_device::device_reset()
     }
 
     write_vm_variable(0x54, 0x0081); //TODO: figure out why this is supposedly needed.
+    write_vm_variable(VM_VARIABLE_HERO_ACTION, 0xFFFF); //This is a hack to skip the code wheel
     write_vm_variable(VM_VARIABLE_RANDOM_SEED, time(0));
 }
 
