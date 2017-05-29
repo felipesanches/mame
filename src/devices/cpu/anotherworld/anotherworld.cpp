@@ -45,7 +45,8 @@ another_world_cpu_device::another_world_cpu_device(const machine_config &mconfig
       m_data_config("data", ENDIANNESS_LITTLE, 16, 9, 0),
       m_palette_config("palette", ENDIANNESS_LITTLE, 8, 11, 0),
       m_video_config("video", ENDIANNESS_LITTLE, 8, 16, 0),
-      m_icount(0)
+      m_icount(0),
+      m_read_input(*this)
 {
     m_stack = new Stack(&m_sp);
     m_requestedNextPart = 0;
@@ -80,12 +81,66 @@ void another_world_cpu_device::checkThreadRequests(){
     }
 }
 
+void another_world_cpu_device::input_updatePlayer() {
+
+#if 0
+        if (res->currentPartId == 0x3E89) {
+                char c = sys->input.lastChar;
+                if (c == 8 || /*c == 0xD |*/ c == 0 || (c >= 'a' && c <= 'z')) {
+                        write_vm_variable(VM_VARIABLE_LAST_KEYCHAR, = c & ~0x20);
+                        sys->input.lastChar = 0;
+                }
+        }
+#endif
+
+        int16_t lr = 0;
+        int16_t m = 0;
+        int16_t ud = 0;
+        int8_t input = m_read_input();
+        if (BIT(input, 2)) {
+            lr = 1;
+            m |= 1;
+        }
+        if (BIT(input, 3)) {
+            lr = -1;
+            m |= 2;
+        }
+        if (BIT(input, 0)) {
+            ud = 1;
+            m |= 4;
+        }
+
+        if (BIT(input, 1)) {
+            write_vm_variable(VM_VARIABLE_HERO_POS_UP_DOWN, -1);
+            ud = -1;
+            m |= 8;
+        } else {
+            write_vm_variable(VM_VARIABLE_HERO_POS_UP_DOWN, ud);
+        }
+
+        write_vm_variable(VM_VARIABLE_HERO_POS_JUMP_DOWN, ud);
+        write_vm_variable(VM_VARIABLE_HERO_POS_LEFT_RIGHT, lr);
+        write_vm_variable(VM_VARIABLE_HERO_POS_MASK, m);
+
+        int16_t button = 0;
+        if (BIT(input, 7)) {
+            button = 1;
+            m |= 0x80;
+        }
+
+        write_vm_variable(VM_VARIABLE_HERO_ACTION, button);
+        write_vm_variable(VM_VARIABLE_HERO_ACTION_POS_MASK, m);
+}
+
+
 void another_world_cpu_device::nextThread(){
+
 #ifdef DUMP_VM_EXECUTION_LOG
     std::ostream log_stream(&m_log_filebuf);
     log_stream << "\n";
 #endif
 
+    input_updatePlayer();
     Thread* current;
     do {
         if (m_currentThread++ == NUM_THREADS) {
@@ -128,6 +183,9 @@ uint16_t another_world_cpu_device::fetch_word(){
 
 void another_world_cpu_device::device_start()
 {
+    //resolve callbacks
+    m_read_input.resolve_safe(0);
+
     m_program = &space(AS_PROGRAM);
     m_data = &space(AS_DATA);
 
@@ -158,24 +216,29 @@ void another_world_cpu_device::device_reset()
     m_log_filebuf.open("address_log.txt", std::ios::out);
     std::ostream log_stream(&m_log_filebuf);
 
-    log_stream << "begin log\n";
+    log_stream << "begin log\n=== NEW FRAME ===\n";
 #endif
 
     //TODO: declare the stack as a RAM block so that
     //      we can inspect it in the Memory View Window.
     m_stack->clean();
 
-    //all threads are initially disabled and not frozen
+    //all threads are initially disabled and unfrozen
     for (int i=0; i<NUM_THREADS; i++){
         Thread* thread = &m_threads[i];
         thread->PC = INACTIVE_THREAD;
         thread->requested_PC = NO_REQUEST;
         thread->state = UNFROZEN;
-        thread->requested_state = UNFROZEN;
+        thread->requested_state = NO_REQUEST;
     }
 
     write_vm_variable(0x54, 0x0081); //TODO: figure out why this is supposedly needed.
-    write_vm_variable(VM_VARIABLE_HERO_ACTION, 0xFFFF); //This is a hack to skip the code wheel
+
+#ifdef BYPASS_PROTECTION 
+    //This is a hack to skip the code wheel
+    write_vm_variable(VM_VARIABLE_HERO_ACTION, 0xFFFF);
+#endif
+
     write_vm_variable(VM_VARIABLE_RANDOM_SEED, time(0));
 }
 
@@ -293,14 +356,22 @@ void another_world_cpu_device::execute_instruction()
         }
 
         uint16_t zoom = 0x40;
-        if (opcode & 1)
-        {
-            if (opcode & 2)
-                m_useVideo2 = true;
-            else
-                zoom = read_vm_variable(fetch_byte());
+
+        switch (opcode & 0x03){
+        case 0:
+            zoom = 0x40;
+            break;
+        case 1:
+            zoom = read_vm_variable(fetch_byte());
+            break;
+        case 2:
+            fetch_byte();
+            break;
+        case 3:
+            m_useVideo2 = true;
+            zoom = 0x40;
+        break;
         }
-//        printf("vid_opcd_0x40 : off=0x%X x=%d y=%d\n", offset, x, y);
 
         ((another_world_state*) owner())->setDataBuffer(m_useVideo2 ? VIDEO_2 : CINEMATIC, offset);
         ((another_world_state*) owner())->readAndDrawPolygon(0xFF, zoom, Point(x, y));
@@ -401,7 +472,8 @@ void another_world_cpu_device::execute_instruction()
         case 0x0A: /* condJmp */
         {
             uint8_t subopcode = fetch_byte();
-            int16_t b = read_vm_variable(fetch_byte());
+            uint8_t v = fetch_byte();
+            int16_t b = read_vm_variable(v);
             uint8_t c = fetch_byte();
             int16_t a;
 
@@ -412,6 +484,11 @@ void another_world_cpu_device::execute_instruction()
             } else {
                 a = c;
             }
+
+
+            char tmp[256];
+            snprintf(tmp, sizeof(tmp), "subop: 0x%02X v: 0x%02X c: 0x%02X\nvmVar[0x%02X] = 0x%04X\n", subopcode, v, c, v, b);
+            log_stream << tmp;
 
             // Check if the conditional value is met.
             bool expr = false;
@@ -469,12 +546,12 @@ void another_world_cpu_device::execute_instruction()
             }
 
             switch(type){
-                case RESET_TYPE__FREEZE_CHANNELS:
+                case RESET_TYPE__UNFREEZE_CHANNELS:
                     for (int i=first; i<=last; i++){
                         m_threads[i].requested_state = FROZEN;
                     }
                     break;
-                case RESET_TYPE__UNFREEZE_CHANNELS:
+                case RESET_TYPE__FREEZE_CHANNELS:
                     for (int i=first; i<=last; i++){
                         m_threads[i].requested_state = UNFROZEN;
                     }

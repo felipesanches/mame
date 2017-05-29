@@ -18,6 +18,9 @@
 #define INCREMENT_PC_64K    (PC = (PC+1) & ADDRESS_MASK_64K)
 #define DECREMENT_PC_64K    (PC = (PC-1) & ADDRESS_MASK_64K)
 
+#define MCFG_ANOTHERW_READ_INPUT_CALLBACK(_devcb) \
+    devcb = &another_world_cpu_device::set_read_input_callback(*device, DEVCB_##_devcb);
+
 enum {
   RESET_TYPE__FREEZE_CHANNELS=0,
   RESET_TYPE__UNFREEZE_CHANNELS=1,
@@ -38,7 +41,7 @@ enum {
 
 //a few optional features for easing VM debugging:
 #define DUMP_VM_EXECUTION_LOG
-#define SPEEDUP_VM_EXECUTION
+//#define SPEEDUP_VM_EXECUTION
 //#define BYPASS_PROTECTION
 
 #define AS_PROGRAM AS_0
@@ -98,6 +101,8 @@ public:
     another_world_cpu_device(const machine_config &mconfig, const char *_tag, device_t *_owner, uint32_t _clock);
     ~another_world_cpu_device();
 
+    template<class _Object> static devcb_base &set_read_input_callback(device_t &device, _Object object) { return downcast<another_world_cpu_device &>(device).m_read_input.set_callback(object); }
+
     void write_vm_variable(uint8_t i, uint16_t value);
 
 protected:
@@ -156,12 +161,14 @@ protected:
 
 private:
     void nextThread();
+    void input_updatePlayer();
     void checkThreadRequests();
     void execute_instruction();
     void initForPart(uint16_t partId);
     uint8_t fetch_byte();
     uint16_t fetch_word();
     uint16_t read_vm_variable(uint8_t i);
+    devcb_read8 m_read_input;
 };
 
 // device type definition

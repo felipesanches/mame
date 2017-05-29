@@ -49,8 +49,9 @@ static INPUT_PORTS_START( another_world )
       PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Arrow left") PORT_CODE(KEYCODE_LEFT)
       PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Action") PORT_CODE(KEYCODE_LCONTROL)
 
+/*
       PORT_START("keyboard_letters")
-      PORT_BIT(0x0000001, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("C") PORT_CODE(KEYCODE_A)
+      PORT_BIT(0x0000001, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("A") PORT_CODE(KEYCODE_A)
       PORT_BIT(0x0000002, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("B") PORT_CODE(KEYCODE_B)
       PORT_BIT(0x0000004, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("C") PORT_CODE(KEYCODE_C)
       PORT_BIT(0x0000008, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("D") PORT_CODE(KEYCODE_D)
@@ -77,36 +78,15 @@ static INPUT_PORTS_START( another_world )
       PORT_BIT(0x1000000, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Y") PORT_CODE(KEYCODE_Y)
       PORT_BIT(0x2000000, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Z") PORT_CODE(KEYCODE_Z)
       PORT_BIT(0x4000000, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("ENTER") PORT_CODE(KEYCODE_ENTER)
+*/
 INPUT_PORTS_END
 
-READ16_MEMBER(another_world_state::up_down_r)
-{
-    int value = ioport("keyboard")->read();
-    return (value & 0x02) ? 0xFFFF : (value & 0x01) ? 1 : 0;
-}
-
-READ16_MEMBER(another_world_state::left_right_r)
-{
-    int value = ioport("keyboard")->read();
-    return (value & 0x08) ? 0xFFFF : (value & 0x04) ? 1 : 0;
-}
-
-READ16_MEMBER(another_world_state::action_r)
-{
-    int value = ioport("keyboard")->read();
-    return (value & 0x80) ? 1 : 0;
-}
-
-READ16_MEMBER(another_world_state::pos_mask_r)
-{
-    return ioport("keyboard")->read() & 0xf;
-}
-
-READ16_MEMBER(another_world_state::action_pos_mask_r)
+READ8_MEMBER(another_world_state::input_r)
 {
     return ioport("keyboard")->read();
 }
 
+/*
 READ16_MEMBER(another_world_state::letters_r)
 {
     uint16_t value = ioport("keyboard_letters")->read();
@@ -122,7 +102,7 @@ READ16_MEMBER(another_world_state::letters_r)
         i = i << 1;
     }
     return 0;//0xFFFF;
-}
+}*/
 
 static ADDRESS_MAP_START( aw_prog_map, AS_PROGRAM, 8, another_world_state )
     AM_RANGE(0x00000, 0x0ffff) AM_ROMBANK("bytecode_bank")
@@ -137,12 +117,6 @@ static ADDRESS_MAP_START( aw_palette_map, AS_PALETTE, 8, another_world_state )
 ADDRESS_MAP_END
 
 static ADDRESS_MAP_START( aw_data_map, AS_DATA, 16, another_world_state )
-    AM_RANGE(0x01b4, 0x01b5) AM_READ(letters_r)
-    AM_RANGE(0x01f4, 0x01f5) AM_READ(action_r)
-    AM_RANGE(0x01f6, 0x01f7) AM_READ(up_down_r)
-    AM_RANGE(0x01f8, 0x01f9) AM_READ(left_right_r)
-    AM_RANGE(0x01fa, 0x01fb) AM_READ(pos_mask_r)
-    AM_RANGE(0x01fc, 0x01fd) AM_READ(action_pos_mask_r)
     AM_RANGE(0x0000, 0x01ff) AM_RAM //VM Variables
 ADDRESS_MAP_END
 
@@ -155,6 +129,7 @@ static MACHINE_CONFIG_START( another_world )
                                                 */
     MCFG_CPU_PROGRAM_MAP(aw_prog_map)
     MCFG_CPU_DATA_MAP(aw_data_map)
+    MCFG_ANOTHERW_READ_INPUT_CALLBACK(READ8(another_world_state, input_r))
     MCFG_DEVICE_ADDRESS_MAP(AS_PALETTE, aw_palette_map)
     MCFG_DEVICE_ADDRESS_MAP(AS_VIDEO, aw_video_map)
 
@@ -195,7 +170,11 @@ MACHINE_START_MEMBER(another_world_state, anotherw)
     // copy-protection initial screen here. But using the code-wheel every time is time-consuming
     // during development. So, with setupPart(3) whe can start the game right away in the
     // jail scene:
+#ifdef BYPASS_PROTECTION
     setupPart(1); //here I'm starting at the intro-scene.
+#else
+    setupPart(0); //start from the codewheel secret screen
+#endif
 }
 
 void another_world_state::setupPart(uint16_t resourceId){
