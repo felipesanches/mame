@@ -281,10 +281,12 @@ void another_world_state::updateDisplay(uint8_t pageId) {
 void another_world_state::drawPoint(uint8_t color, int16_t x, int16_t y) {
     x = (int16_t) (x * (m_screen->width()/320.0));
     y = (int16_t) (y * (m_screen->height()/200.0));
-    for (int i=0; i<(m_screen->width()/320.0); i++){
-      for (int j=0; j<(m_screen->height()/200.0); j++){
-        m_curPagePtr1->pix16(y+j, x+i) = color;
-      }
+    if (x >= 0 && x <= 319 && y >= 0 && y <= 199) {
+        for (int i=0; i<(m_screen->width()/320.0); i++){
+            for (int j=0; j<(m_screen->height()/200.0); j++){
+                m_curPagePtr1->pix16(y+j, x+i) = color;
+            }
+        }
     }
 }
 
