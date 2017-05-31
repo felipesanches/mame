@@ -364,10 +364,10 @@ void another_world_state::copyVideoPage(uint8_t srcPageId, uint8_t dstPageId, ui
         src = getPagePtr(srcPageId & 3);
         if (vscroll < 0) {
             h += vscroll;
-            dest_y0 += -vscroll;
+            src_y0 += -vscroll;
         } else {
             h -= vscroll;
-            src_y0 += vscroll;
+            dest_y0 += vscroll;
         }
     }
 
