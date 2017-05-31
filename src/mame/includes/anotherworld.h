@@ -92,6 +92,7 @@ public:
     void copyVideoPage(uint8_t srcPageId, uint8_t dstPageId, uint16_t vscroll);
     void changePalette(uint8_t paletteId);
     void setDataBuffer(uint8_t type, uint16_t offset);
+    void loadScreen(uint8_t screen_id);
     void readAndDrawPolygon(uint8_t color, uint16_t zoom, const Point &pt);
     void fillPolygon(uint16_t color, uint16_t zoom, const Point &pt);
     void drawPoint(uint8_t color, int16_t x, int16_t y);

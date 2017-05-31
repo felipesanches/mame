@@ -689,9 +689,18 @@ void another_world_cpu_device::execute_instruction()
                 return;
             }
 
-            #define NUM_MEM_LIST 0x91 /* TODO: check this! */
+            #define NUM_MEM_LIST 0x91
             if (resourceId > NUM_MEM_LIST) {
                 m_requestedNextPart = resourceId;
+            } else {
+                uint8_t screen_resource_indexes[] = {0x12, 0x13, 0x43, 0x44,
+                                                     0x45, 0x46, 0x47, 0x48,
+                                                     0x49, 0x53, 0x90, 0x91};
+                for (int i = 0; i < sizeof(screen_resource_indexes); i++) {
+                    if (screen_resource_indexes[i]==resourceId) {
+                        ((another_world_state*) owner())->loadScreen(i);
+                    }
+                }
             }
             return;
         }
@@ -728,6 +737,7 @@ void another_world_cpu_device::initForPart(uint16_t partId){
     std::ostream log_stream(&m_log_filebuf);
     log_stream << "initForPart " << partId << "\n";
 #endif
+    //machine().debug_break();
 
     for (int i=0; i<NUM_THREADS; i++){
         Thread *thread = &m_threads[i];

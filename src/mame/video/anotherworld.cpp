@@ -48,6 +48,35 @@ void another_world_state::setDataBuffer(uint8_t type, uint16_t offset){
     m_data_offset = offset;
 }
 
+void another_world_state::loadScreen(uint8_t screen_id) {
+    const uint8_t *src = memregion("screens")->base() + screen_id * 0x8000;
+    bitmap_ind16* dest = &m_page_bitmaps[0];
+    int h = 200;
+    while (h--) {
+        int x = 0;
+        int w = 40;
+        while (w--) {
+            uint8_t p[] = {
+                *(src + 8000 * 3),
+                *(src + 8000 * 2),
+                *(src + 8000 * 1),
+                *(src + 8000 * 0)
+            };
+            for(int j = 0; j < 4; ++j) {
+                uint8_t value = 0;
+                for (int i = 0; i < 8; ++i) {
+                    value <<= 1;
+                    value |= (p[i & 3] & 0x80) ? 1 : 0;
+                    p[i & 3] <<= 1;
+                }
+                dest->pix16(199-h, x++) = (value >> 4) & 0x0F;
+                dest->pix16(199-h, x++) = value & 0x0F;
+            }
+            ++src;
+        }
+    }
+}
+
 void Polygon::readVertices(const uint8_t *p, uint16_t zoom) {
     bbox_w = (*p++) * zoom / DEFAULT_ZOOM;
     bbox_h = (*p++) * zoom / DEFAULT_ZOOM;
