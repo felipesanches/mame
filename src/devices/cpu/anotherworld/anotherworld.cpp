@@ -46,7 +46,8 @@ another_world_cpu_device::another_world_cpu_device(const machine_config &mconfig
       m_palette_config("palette", ENDIANNESS_LITTLE, 8, 11, 0),
       m_video_config("video", ENDIANNESS_LITTLE, 8, 16, 0),
       m_icount(0),
-      m_read_input(*this)
+      m_read_input(*this),
+      m_read_keyboard(*this)
 {
     m_stack = new Stack(&m_sp);
     m_requestedNextPart = 0;
@@ -82,21 +83,17 @@ void another_world_cpu_device::checkThreadRequests(){
 }
 
 void another_world_cpu_device::input_updatePlayer() {
-
-#if 0
-        if (res->currentPartId == 0x3E89) {
-                char c = sys->input.lastChar;
-                if (c == 8 || /*c == 0xD |*/ c == 0 || (c >= 'a' && c <= 'z')) {
-                        write_vm_variable(VM_VARIABLE_LAST_KEYCHAR, = c & ~0x20);
-                        sys->input.lastChar = 0;
-                }
-        }
-#endif
-
         int16_t lr = 0;
         int16_t m = 0;
         int16_t ud = 0;
         int8_t input = m_read_input();
+
+        write_vm_variable(VM_VARIABLE_LAST_KEYCHAR, m_read_keyboard());
+
+        if (m_currentPartId != GAME_PART(0)
+            && m_currentPartId != GAME_PART(9)
+            && BIT(input, 4))  m_requestedNextPart = GAME_PART(9);
+
         if (BIT(input, 2)) {
             lr = 1;
             m |= 1;
@@ -185,6 +182,7 @@ void another_world_cpu_device::device_start()
 {
     //resolve callbacks
     m_read_input.resolve_safe(0);
+    m_read_keyboard.resolve_safe(0);
 
     m_program = &space(AS_PROGRAM);
     m_data = &space(AS_DATA);

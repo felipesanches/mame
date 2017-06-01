@@ -59,8 +59,8 @@ public:
     DECLARE_PALETTE_INIT(anotherw);
 
     DECLARE_WRITE8_MEMBER(mus_mark_w);
-//    DECLARE_READ16_MEMBER(letters_r);
     DECLARE_READ8_MEMBER(input_r);
+    DECLARE_READ8_MEMBER(keyboard_r);
 
     bitmap_ind16* m_curPagePtr1;
     bitmap_ind16* m_curPagePtr2;

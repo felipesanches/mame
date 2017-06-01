@@ -30,6 +30,8 @@
 
 #define MCFG_ANOTHERW_READ_INPUT_CALLBACK(_devcb) \
     devcb = &another_world_cpu_device::set_read_input_callback(*device, DEVCB_##_devcb);
+#define MCFG_ANOTHERW_READ_KEYBOARD_CALLBACK(_devcb) \
+    devcb = &another_world_cpu_device::set_read_keyboard_callback(*device, DEVCB_##_devcb);
 
 enum {
   RESET_TYPE__FREEZE_CHANNELS=0,
@@ -111,6 +113,7 @@ public:
     ~another_world_cpu_device();
 
     template<class _Object> static devcb_base &set_read_input_callback(device_t &device, _Object object) { return downcast<another_world_cpu_device &>(device).m_read_input.set_callback(object); }
+    template<class _Object> static devcb_base &set_read_keyboard_callback(device_t &device, _Object object) { return downcast<another_world_cpu_device &>(device).m_read_keyboard.set_callback(object); }
 
     void write_vm_variable(uint8_t i, uint16_t value);
 
@@ -178,6 +181,7 @@ private:
     uint16_t fetch_word();
     uint16_t read_vm_variable(uint8_t i);
     devcb_read8 m_read_input;
+    devcb_read8 m_read_keyboard;
 };
 
 // device type definition
