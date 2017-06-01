@@ -87,10 +87,8 @@ CPU_DISASSEMBLE( another_world )
                 sprintf(y_str, "[0x%02x]", y);
             }
         } else {
-            /*TODO: This seems to be broken. Maybe looking at the emulation of
-             *      this instruction can give us some insight.
-             */
-            sprintf(y_str, "? (FIXME!)");
+            y = oprom[i++];
+            sprintf(y_str, "%d", y);
         }
 
         uint8_t zoom;
