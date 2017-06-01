@@ -278,24 +278,6 @@ void another_world_cpu_device::execute_instruction()
     log_stream << "\n";
 #endif
 
-#ifdef BYPASS_PROTECTION
-            //Whoever wrote this is patching the bytecode on the fly.
-            //I did enable this but it did not work. This needs to be reviewed:
-
-            if (m_currentPartId == 0 && PC == 0xCB9) {
-                // (0x0CB8) condJmp(0x80, VAR(41), VAR(30), 0xCD3)
-                m_program->write_byte(PC + 0x00, 0x81);
-                m_program->write_byte(PC + 0x03, 0x0D);
-                m_program->write_byte(PC + 0x04, 0x24);
-
-                // (0x0D4E) condJmp(0x4, VAR(50), 6, 0xDBC) 
-                m_program->write_byte(PC + 0x99, 0x0D);
-                m_program->write_byte(PC + 0x9A, 0x5A);
-                printf("VirtualMachine::op_condJmp() bypassing protection");
-                printf("bytecode has been patched\n");
-            }
-#endif
-
     unsigned char opcode = fetch_byte();
 
     if (opcode & 0x80) 
