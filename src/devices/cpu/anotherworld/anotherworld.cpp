@@ -232,7 +232,22 @@ void another_world_cpu_device::device_reset()
         thread->requested_state = NO_REQUEST;
     }
 
-    write_vm_variable(0x54, 0x0081); //TODO: figure out why this is supposedly needed.
+#ifdef VM_HACK_INIT_VAR_54_WITH_81
+    // Without this, the Interplay logo does not show up
+    // while running the MSDOS bytecode:
+    write_vm_variable(0x54, 0x0081);
+
+    //TODO: check if this var is read or written anywhere
+    // else during gameplay. Ideally run the whole game with
+    // a watchpoint monitoring this one.
+
+// Some clues:
+// [14 - 007F]: 0A jl [HACK_VAR_54], 0x80, 0x00BF
+// [14 - 00E4]: 0A jge [HACK_VAR_54], 0x80, 0x00F6
+// [14 - 0165]: 14 and [HACK_VAR_54], 0x0001
+// [14 - 0169]: 0A je [HACK_VAR_54], 0x00, 0x0199
+// [18 - 3EAB]: 00 mov [HACK_VAR_54], 0xFFFB
+#endif
 
 #ifdef BYPASS_PROTECTION 
     //This is a hack to skip the code wheel
@@ -572,12 +587,29 @@ void another_world_cpu_device::execute_instruction()
         {
             uint8_t pageId = fetch_byte();
             //printf("blitFramebuffer(pageId:%d, PAUSE_SLICES:%d)\n", pageId, read_vm_variable(VM_VARIABLE_PAUSE_SLICES));
-#if 1
+
+#ifdef VM_HACK_SWITCH_FROM_INTRO_TO_LAKE
             //Nasty hack....was this present in the original assembly  ??!!
             //This seems to be necessary for switching from the intro sequence to the lake stage
             if (m_currentPartId == GAME_PART(0) && read_vm_variable(0x67) == 1)
                 write_vm_variable(0xDC, 0x21);
+
+// Some clues:
+// [32 - 0D41]: 00 mov [HACK_VAR_67], 0x0001
+// [3F - 0D46]: 00 mov [HACK_VAR_67], 0x0000
+// [00 - 00B2]: 0A jne [HACK_VAR_DC], 0x21, 0x00B9
+// [03 - 00B2]: 0A jne [HACK_VAR_DC], 0x21, 0x00B9
+// [3F - 19BB]: 00 mov [HACK_VAR_67], 0x0002
+// [3F - 1954]: 0A jne [HACK_VAR_67], [0x65], 0x196F
+// [2E - 35E2]: 0A jne [HACK_VAR_67], 0x01, 0x35E1
+// [30 - 01F0]: 0A je [HACK_VAR_67], 0x05, 0x01E9
+// [30 - 01F6]: 0A je [HACK_VAR_67], 0x02, 0x01E9
+// [30 - 0226]: 0A je [HACK_VAR_67], 0x05, 0x0238
+
+// Much more with:
+// grep HACK_VAR_67 address_log.txt|sort|uniq|less
 #endif
+
             // The bytecode will set vmVariables[VM_VARIABLE_PAUSE_SLICES] from 1 to 5
             // The virtual machine hence indicate how long the image should be displayed.
 
@@ -587,9 +619,13 @@ void another_world_cpu_device::execute_instruction()
             m_icount -= (int) read_vm_variable(VM_VARIABLE_PAUSE_SLICES);
 #endif
 
+#ifdef VM_HACK_BLITFRAMEBUFFER_VAR_F7
             //Why ?
             write_vm_variable(0xF7, 0x0000);
 
+// Some clues:
+// [14 - 0A1B]: 02 add [0x37], [HACK_VAR_F7]
+#endif
             ((another_world_state*) owner())->updateDisplay(pageId);
             return;
         }

@@ -18,6 +18,10 @@ static void getVariableName(char* s, uint8_t id){
         case VM_VARIABLE_HERO_POS_MASK:         sprintf(s, "HERO_POS_MASK"); break;
         case VM_VARIABLE_HERO_ACTION_POS_MASK:  sprintf(s, "HERO_ACTION_POS_MASK"); break;
         case VM_VARIABLE_PAUSE_SLICES:          sprintf(s, "PAUSE_SLICES"); break;
+        case VM_VARIABLE_HACK_VAR_54:           sprintf(s, "HACK_VAR_54"); break;
+        case VM_VARIABLE_HACK_VAR_67:           sprintf(s, "HACK_VAR_67"); break;
+        case VM_VARIABLE_HACK_VAR_DC:           sprintf(s, "HACK_VAR_DC"); break;
+        case VM_VARIABLE_HACK_VAR_F7:           sprintf(s, "HACK_VAR_F7"); break;
         default:
             sprintf(s, "0x%02X", id); break;
     }

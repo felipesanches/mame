@@ -5,6 +5,16 @@
 #ifndef __ANOTHERWORLD_H__
 #define __ANOTHERWORLD_H__
 
+//VM irregularities (see: https://github.com/felipesanches/mame/issues/17)
+#define VM_HACK_SWITCH_FROM_INTRO_TO_LAKE // Seems needed both on Amiga and MSDOS bytecode.
+#define VM_HACK_BLITFRAMEBUFFER_VAR_F7    // Seems to be unnecessary.
+#define VM_HACK_INIT_VAR_54_WITH_81       // Without this one, the Interplay logo does not show up with MSDOS bytecode
+
+//a few optional features for easing VM debugging:
+#define DUMP_VM_EXECUTION_LOG
+//#define SPEEDUP_VM_EXECUTION
+//#define BYPASS_PROTECTION
+
 #include <fstream>
 #include <iostream>
 
@@ -39,11 +49,6 @@ enum {
 #define NUM_THREADS 64
 #define GAME_PART(n) (0x3E80 + n)
 
-//a few optional features for easing VM debugging:
-#define DUMP_VM_EXECUTION_LOG
-//#define SPEEDUP_VM_EXECUTION
-//#define BYPASS_PROTECTION
-
 #define AS_PROGRAM AS_0
 #define AS_DATA AS_1
 #define AS_PALETTE AS_2
@@ -52,9 +57,13 @@ enum {
 
 enum ScriptVars {
     VM_VARIABLE_RANDOM_SEED          = 0x3C,
+    VM_VARIABLE_HACK_VAR_54          = 0x54, // Interplay logo  TODO: verify this
+    VM_VARIABLE_HACK_VAR_67          = 0x67, // switch from intro to lake  TODO: verify this
     VM_VARIABLE_LAST_KEYCHAR         = 0xDA,
+    VM_VARIABLE_HACK_VAR_DC          = 0xDC, // switch from intro to lake  TODO: verify this
     VM_VARIABLE_HERO_POS_UP_DOWN     = 0xE5,
     VM_VARIABLE_MUS_MARK             = 0xF4,
+    VM_VARIABLE_HACK_VAR_F7          = 0xF7, // Blitframebuffer (not needed?)  TODO: verify this
     VM_VARIABLE_SCROLL_Y             = 0xF9,
     VM_VARIABLE_HERO_ACTION          = 0xFA,
     VM_VARIABLE_HERO_POS_JUMP_DOWN   = 0xFB,
