@@ -353,27 +353,37 @@ void another_world_state::copyVideoPage(uint8_t srcPageId, uint8_t dstPageId, ui
     if (srcPageId == dstPageId)
         return;
 
-    bitmap_ind16* src = getPagePtr(srcPageId);
-    bitmap_ind16* dest = getPagePtr(dstPageId);
-    int h = m_screen->height();
-    int src_y0 = 0;
-    int dest_y0 = 0;
+    bitmap_ind16* src;
+    bitmap_ind16* dest;
 
     /* The actual meaning of this conditional needs to be clarified: */
-    if (srcPageId < 0xFE && ((srcPageId &= 0xBF) & 0x80)) {
-        src = getPagePtr(srcPageId & 3);
-        if (vscroll < 0) {
-            h += vscroll;
-            src_y0 += -vscroll;
-        } else {
-            h -= vscroll;
-            dest_y0 += vscroll;
+    if (srcPageId >= 0xFE || !((srcPageId &= 0xBF) & 0x80)) {
+        src = getPagePtr(srcPageId);
+        dest = getPagePtr(dstPageId);
+        for (int x=0; x < m_screen->width(); x++){
+            for (int y=0; y < m_screen->height(); y++){
+                dest->pix16(y, x) = src->pix16(y, x);
+            }
         }
-    }
-
-    for (int x=0; x < m_screen->width(); x++){
-        for (int y=0; y < h; y++){
-            dest->pix16(dest_y0 + y, x) = src->pix16(src_y0 + y, x);
+    } else {
+        int h = m_screen->height();
+        int src_y0 = 0;
+        int dest_y0 = 0;
+        src = getPagePtr(srcPageId & 3);
+        dest = getPagePtr(dstPageId);
+        if (vscroll >= -199 && vscroll <= 199) {
+            if (vscroll < 0) {
+                h += vscroll;
+                src_y0 = -vscroll;
+            } else {
+                h -= vscroll;
+                dest_y0 = vscroll;
+            }
+            for (int x=0; x < m_screen->width(); x++){
+                for (int y=0; y < h; y++){
+                    dest->pix16(dest_y0 + y, x) = src->pix16(src_y0 + y, x);
+                }
+            }
         }
     }
 }
