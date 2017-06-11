@@ -6,9 +6,9 @@
 
 #include "emu.h"
 #include "debugger.h"
-#include "anotherworld.h"
-#include "sound/anotherw.h"
-#include "includes/anotherworld.h"
+#include "anotherworld.h" // CPU header
+#include "sound/anotherw_vm.h"
+#include "includes/anotherworld_vm.h"
 
 Stack::Stack(uint8_t* sp)
     : m_sp(sp),
@@ -147,7 +147,7 @@ void another_world_cpu_device::nextThread(){
             /* End of Frame */
             m_currentThread = 0;
             checkThreadRequests();
-            ((another_world_state*) owner())->updateDisplay(0xFE);
+            ((another_world_vm_state*) owner())->updateDisplay(0xFE);
         }
         current = &m_threads[m_currentThread];
     } while(current->state == FROZEN
@@ -309,8 +309,8 @@ void another_world_cpu_device::execute_instruction()
 
         // This switch the polygon database to "cinematic" and probably draws a black polygon
         // over all the screen.
-        ((another_world_state*) owner())->setDataBuffer(CINEMATIC, offset);
-        ((another_world_state*) owner())->readAndDrawPolygon(COLOR_BLACK, DEFAULT_ZOOM, Point(x,y));
+        ((another_world_vm_state*) owner())->setDataBuffer(CINEMATIC, offset);
+        ((another_world_vm_state*) owner())->readAndDrawPolygon(COLOR_BLACK, DEFAULT_ZOOM, VMPoint(x,y));
 
         return;
     } 
@@ -368,8 +368,8 @@ void another_world_cpu_device::execute_instruction()
         break;
         }
 
-        ((another_world_state*) owner())->setDataBuffer(m_useVideo2 ? VIDEO_2 : CINEMATIC, offset);
-        ((another_world_state*) owner())->readAndDrawPolygon(0xFF, zoom, Point(x, y));
+        ((another_world_vm_state*) owner())->setDataBuffer(m_useVideo2 ? VIDEO_2 : CINEMATIC, offset);
+        ((another_world_vm_state*) owner())->readAndDrawPolygon(0xFF, zoom, VMPoint(x, y));
         return;
     }
     
@@ -523,7 +523,7 @@ void another_world_cpu_device::execute_instruction()
         case 0x0B: /* setPalette */
         {
             uint16_t paletteId = fetch_word();
-            ((another_world_state*) owner())->changePalette((uint8_t ) (paletteId >> 8));
+            ((another_world_vm_state*) owner())->changePalette((uint8_t ) (paletteId >> 8));
             return;
         }
         case 0x0C: /* resetThread */
@@ -564,21 +564,21 @@ void another_world_cpu_device::execute_instruction()
         case 0x0D: /* selectVideoPage */
         {
             uint8_t frameBufferId = fetch_byte();
-            ((another_world_state*) owner())->selectVideoPage(frameBufferId);
+            ((another_world_vm_state*) owner())->selectVideoPage(frameBufferId);
             return;
         }
         case 0x0E: /* fillVideoPage */
         {
             uint8_t pageId = fetch_byte();
             uint8_t color = fetch_byte();
-            ((another_world_state*) owner())->fillPage(pageId, color);
+            ((another_world_vm_state*) owner())->fillPage(pageId, color);
             return;
         }
         case 0x0F: /* copyVideoPage */
         {
             uint8_t srcPageId = fetch_byte();
             uint8_t dstPageId = fetch_byte();
-            ((another_world_state*) owner())->copyVideoPage(srcPageId, dstPageId, read_vm_variable(VM_VARIABLE_SCROLL_Y));
+            ((another_world_vm_state*) owner())->copyVideoPage(srcPageId, dstPageId, read_vm_variable(VM_VARIABLE_SCROLL_Y));
             return;
         }
         case 0x10: /* blitFramebuffer */
@@ -624,7 +624,7 @@ void another_world_cpu_device::execute_instruction()
 // Some clues:
 // [14 - 0A1B]: 02 add [0x37], [HACK_VAR_F7]
 #endif
-            ((another_world_state*) owner())->updateDisplay(pageId);
+            ((another_world_vm_state*) owner())->updateDisplay(pageId);
             return;
         }
         case 0x11: /* killThread */
@@ -640,7 +640,7 @@ void another_world_cpu_device::execute_instruction()
             uint16_t y = fetch_byte();
             uint16_t color = fetch_byte();
 
-            ((another_world_state*) owner())->draw_string(stringId, x, y, color);
+            ((another_world_vm_state*) owner())->draw_string(stringId, x, y, color);
             return;
         }
         case 0x13: /* sub */
@@ -690,7 +690,7 @@ void another_world_cpu_device::execute_instruction()
             uint8_t freq = fetch_byte();
             uint8_t vol = fetch_byte();
             uint8_t channel = fetch_byte();
-            ((another_world_state*) owner())->m_mixer->playSound(channel, resourceId, freq, vol);
+            ((another_world_vm_state*) owner())->m_mixer->playSound(channel, resourceId, freq, vol);
             return;
         }
         case 0x19: /* load (a.k.a. "updateMemList") */
@@ -699,8 +699,8 @@ void another_world_cpu_device::execute_instruction()
             printf("load (a.k.a. \"updateMemList\") (0x%02X)\n", resourceId);
 
             if (resourceId == 0) {
-                ((another_world_state*) owner())->m_mixer->m_player->stop();
-                ((another_world_state*) owner())->m_mixer->stopAll();
+                ((another_world_vm_state*) owner())->m_mixer->m_player->stop();
+                ((another_world_vm_state*) owner())->m_mixer->stopAll();
                 //res->invalidateRes();
                 return;
             }
@@ -714,7 +714,7 @@ void another_world_cpu_device::execute_instruction()
                                                      0x49, 0x53, 0x90, 0x91};
                 for (int i = 0; i < sizeof(screen_resource_indexes); i++) {
                     if (screen_resource_indexes[i]==resourceId) {
-                        ((another_world_state*) owner())->loadScreen(i);
+                        ((another_world_vm_state*) owner())->loadScreen(i);
                     }
                 }
             }
@@ -727,12 +727,12 @@ void another_world_cpu_device::execute_instruction()
             uint8_t pos = fetch_byte();
             
             if (resNum != 0) {
-                ((another_world_state*) owner())->m_mixer->m_player->loadSfxModule(resNum, delay, pos);
-                ((another_world_state*) owner())->m_mixer->m_player->start();
+                ((another_world_vm_state*) owner())->m_mixer->m_player->loadSfxModule(resNum, delay, pos);
+                ((another_world_vm_state*) owner())->m_mixer->m_player->start();
             } else if (delay != 0) {
-                ((another_world_state*) owner())->m_mixer->m_player->setEventsDelay(delay);
+                ((another_world_vm_state*) owner())->m_mixer->m_player->setEventsDelay(delay);
             } else {
-                ((another_world_state*) owner())->m_mixer->m_player->stop();
+                ((another_world_vm_state*) owner())->m_mixer->m_player->stop();
             }
             return;
         }
@@ -741,12 +741,12 @@ void another_world_cpu_device::execute_instruction()
 }
 
 void another_world_cpu_device::initForPart(uint16_t partId){
-    ((another_world_state*) owner())->m_mixer->m_player->stop();
-    ((another_world_state*) owner())->m_mixer->stopAll();
+    ((another_world_vm_state*) owner())->m_mixer->m_player->stop();
+    ((another_world_vm_state*) owner())->m_mixer->stopAll();
 
     write_vm_variable(0xE4, 0x14); //why?
 
-    ((another_world_state*) owner())->setupPart(partId);
+    ((another_world_vm_state*) owner())->setupPart(partId);
     m_currentPartId = partId;
 
 #ifdef DUMP_VM_EXECUTION_LOG

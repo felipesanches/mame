@@ -19,14 +19,14 @@ files {
 }
 
 ---------------------------------------------------
--- ANOTHER WORLD audio system
---@src/devices/sound/anotherw.h,SOUNDS["ANOTHERWORLD"] = true
+-- ANOTHER WORLD VM audio system
+--@src/devices/sound/anotherw_vm.h,SOUNDS["ANOTHERWORLD_VM"] = true
 ---------------------------------------------------
 
-if (SOUNDS["ANOTHERWORLD"]~=null) then
+if (SOUNDS["ANOTHERWORLD_VM"]~=null) then
     files {
-        MAME_DIR .. "src/devices/sound/anotherw.cpp",
-        MAME_DIR .. "src/devices/sound/anotherw.h",
+        MAME_DIR .. "src/devices/sound/anotherw_vm.cpp",
+        MAME_DIR .. "src/devices/sound/anotherw_vm.h",
     }
 end
 

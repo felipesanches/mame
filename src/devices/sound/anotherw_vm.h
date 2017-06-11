@@ -1,5 +1,5 @@
-#ifndef __ANOTHERWORLD_SOUND__
-#define __ANOTHERWORLD_SOUND__
+#ifndef __ANOTHERWORLD_VM_SOUND__
+#define __ANOTHERWORLD_VM_SOUND__
 
 #define READ_BE_UINT16(p) (*(p) << 8 | *(p + 1))
 
@@ -7,17 +7,17 @@
 //  INTERFACE CONFIGURATION MACROS
 //**************************************************************************
 
-#define MCFG_ANOTHERW_MUSIC_MARK_CALLBACK(_devcb) \
-    devcb = &anotherw_sound_device::set_music_mark_callback(*device, DEVCB_##_devcb);
+#define MCFG_ANOTHERW_VM_MUSIC_MARK_CALLBACK(_devcb) \
+    devcb = &anotherw_vm_sound_device::set_music_mark_callback(*device, DEVCB_##_devcb);
 
-class anotherw_sound_device : public device_t,
-                              public device_sound_interface
+class anotherw_vm_sound_device : public device_t,
+                                 public device_sound_interface
 {
 public:
     // construction/destruction
-    anotherw_sound_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+    anotherw_vm_sound_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
-    template<class _Object> static devcb_base &set_music_mark_callback(device_t &device, _Object object) { return downcast<anotherw_sound_device &>(device).m_write_mus_mark.set_callback(object); }
+    template<class _Object> static devcb_base &set_music_mark_callback(device_t &device, _Object object) { return downcast<anotherw_vm_sound_device &>(device).m_write_mus_mark.set_callback(object); }
 
     struct MixerChunk {
         const uint8_t *data;
@@ -36,7 +36,7 @@ public:
     
     const uint8_t * m_samples_base_ptr;
     static const uint16_t frequenceTable[];
-    struct SfxPlayer*  m_player;
+    struct VMSfxPlayer*  m_player;
     emu_timer* m_timer;
     TIMER_CALLBACK_MEMBER(musicPlayerCallback);
 protected:
@@ -75,28 +75,28 @@ private:
 };
 
 // device type definition
-extern const device_type ANOTHERW_SOUND;
+extern const device_type ANOTHERW_VM_SOUND;
 
 
 /****************
  * Music Player *
  ****************/
 
-struct SfxInstrument {
+struct VMSfxInstrument {
     uint8_t *data;
     uint16_t volume;
 };
 
-struct SfxModule {
+struct VMSfxModule {
     const uint8_t *data;
     uint16_t curPos;
     uint8_t curOrder;
     uint8_t numOrder;
     uint8_t orderTable[0x80];
-    SfxInstrument samples[15];
+    VMSfxInstrument samples[15];
 };
 
-struct SfxPattern {
+struct VMSfxPattern {
     uint16_t note_1;
     uint16_t note_2;
     uint16_t sampleStart;
@@ -108,15 +108,15 @@ struct SfxPattern {
     uint16_t sampleVolume;
 };
 
-struct SfxPlayer {
-    anotherw_sound_device *m_mixer;
+struct VMSfxPlayer {
+    anotherw_vm_sound_device *m_mixer;
     uint16_t m_delay;
     uint16_t m_resNum;
-    SfxModule m_sfxMod;
+    VMSfxModule m_sfxMod;
     int16_t *m_markVar;
     void *m_timerId;
 
-    SfxPlayer(anotherw_sound_device *mixer);
+    VMSfxPlayer(anotherw_vm_sound_device *mixer);
     void initPlayer();
     void freePlayer();
 
@@ -129,4 +129,4 @@ struct SfxPlayer {
     void handlePattern(uint8_t channel, const uint8_t *patternData);
 };
 
-#endif //#ifndef __ANOTHERWORLD_SOUND__
+#endif //#ifndef __ANOTHERWORLD_VM_SOUND__

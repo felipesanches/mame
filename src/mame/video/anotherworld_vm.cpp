@@ -1,22 +1,23 @@
 // license:GPL2+
 // copyright-holders:FelipeSanches
 #include "emu.h"
-#include "includes/anotherworld.h"
+#include "includes/anotherworld_vm.h"
 #include "screen.h"
 
-void another_world_state::video_start()
+void another_world_vm_state::video_start()
 {
     for (int i=0; i<4; i++){
         m_screen->register_screen_bitmap(m_page_bitmaps[i]);
     }
     m_screen->register_screen_bitmap(m_screen_bitmap);
 
+    m_curPagePtr1 = &m_page_bitmaps[2];
     m_curPagePtr2 = &m_page_bitmaps[2];
     m_curPagePtr3 = &m_page_bitmaps[1];
-    m_curPagePtr1 = getPagePtr(0xFE);
+
 }
 
-bitmap_ind16* another_world_state::getPagePtr(uint8_t pageId){
+bitmap_ind16* another_world_vm_state::getPagePtr(uint8_t pageId){
     switch(pageId){
         case 0:
         case 1:
@@ -35,7 +36,7 @@ bitmap_ind16* another_world_state::getPagePtr(uint8_t pageId){
     }
 }
 
-void another_world_state::setDataBuffer(uint8_t type, uint16_t offset){
+void another_world_vm_state::setDataBuffer(uint8_t type, uint16_t offset){
     switch (type){
         case CINEMATIC:
             m_polygonData = (uint8_t *) membank("video1_bank")->base();
@@ -48,7 +49,7 @@ void another_world_state::setDataBuffer(uint8_t type, uint16_t offset){
     m_data_offset = offset;
 }
 
-void another_world_state::loadScreen(uint8_t screen_id) {
+void another_world_vm_state::loadScreen(uint8_t screen_id) {
     const uint8_t *src = memregion("screens")->base() + screen_id * 0x8000;
     bitmap_ind16* dest = &m_page_bitmaps[0];
     int h = 200;
@@ -77,7 +78,7 @@ void another_world_state::loadScreen(uint8_t screen_id) {
     }
 }
 
-void Polygon::readVertices(const uint8_t *p, uint16_t zoom) {
+void VMPolygon::readVertices(const uint8_t *p, uint16_t zoom) {
     bbox_w = (*p++) * zoom / DEFAULT_ZOOM;
     bbox_h = (*p++) * zoom / DEFAULT_ZOOM;
     
@@ -86,7 +87,7 @@ void Polygon::readVertices(const uint8_t *p, uint16_t zoom) {
 
     //Read all points, directly from bytecode segment
     for (int i = 0; i < numPoints; ++i) {
-        Point *pt = &points[i];
+        VMPoint *pt = &points[i];
         pt->x = (*p++) * zoom / DEFAULT_ZOOM;
         pt->y = (*p++) * zoom / DEFAULT_ZOOM;
     }
@@ -98,7 +99,7 @@ void Polygon::readVertices(const uint8_t *p, uint16_t zoom) {
  * -> A list of screenspace vertices.
  * -> A list of objectspace vertices, based on a delta from the first vertex.
  */
-void another_world_state::readAndDrawPolygon(uint8_t color, uint16_t zoom, const Point &pt) {
+void another_world_vm_state::readAndDrawPolygon(uint8_t color, uint16_t zoom, const VMPoint &pt) {
     if (!m_polygonData){
         printf("ERROR: m_polygonData is NULL!\n");
         return;
@@ -130,9 +131,9 @@ void another_world_state::readAndDrawPolygon(uint8_t color, uint16_t zoom, const
     a pure screnspace polygon but a
     polygonspace polygon.
 */
-void another_world_state::readAndDrawPolygonHierarchy(uint16_t zoom, const Point &pgc) {
+void another_world_vm_state::readAndDrawPolygonHierarchy(uint16_t zoom, const VMPoint &pgc) {
 
-    Point pt(pgc);
+    VMPoint pt(pgc);
     pt.x -= m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
     pt.y -= m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
 
@@ -142,7 +143,7 @@ void another_world_state::readAndDrawPolygonHierarchy(uint16_t zoom, const Point
         uint16_t offset = m_polygonData[m_data_offset++];
         offset = offset << 8 | m_polygonData[m_data_offset++];
         
-        Point po(pt);
+        VMPoint po(pt);
         po.x += m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
         po.y += m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
 
@@ -166,7 +167,7 @@ void another_world_state::readAndDrawPolygonHierarchy(uint16_t zoom, const Point
 
 /* Blend a line in the current framebuffer
 */
-void another_world_state::drawLineBlend(int16_t x1, int16_t x2, uint8_t color) {
+void another_world_vm_state::drawLineBlend(int16_t x1, int16_t x2, uint8_t color) {
     int16_t xmax = MAX(x1, x2);
     int16_t xmin = MIN(x1, x2);
 
@@ -176,7 +177,7 @@ void another_world_state::drawLineBlend(int16_t x1, int16_t x2, uint8_t color) {
     }
 }
 
-void another_world_state::drawLineN(int16_t x1, int16_t x2, uint8_t color) {
+void another_world_vm_state::drawLineN(int16_t x1, int16_t x2, uint8_t color) {
     int16_t xmax = MAX(x1, x2);
     int16_t xmin = MIN(x1, x2);
 
@@ -185,7 +186,7 @@ void another_world_state::drawLineN(int16_t x1, int16_t x2, uint8_t color) {
     }
 }
 
-void another_world_state::drawLineP(int16_t x1, int16_t x2, uint8_t color) {
+void another_world_vm_state::drawLineP(int16_t x1, int16_t x2, uint8_t color) {
     int16_t xmax = MAX(x1, x2);
     int16_t xmin = MIN(x1, x2);
 
@@ -195,7 +196,7 @@ void another_world_state::drawLineP(int16_t x1, int16_t x2, uint8_t color) {
     }
 }
 
-int32_t another_world_state::calcStep(const Point &p1, const Point &p2, uint16_t &dy) {
+int32_t another_world_vm_state::calcStep(const VMPoint &p1, const VMPoint &p2, uint16_t &dy) {
     uint16_t v = 0x4000;
     int dx = p2.x - p1.x;
     dy = p2.y - p1.y;
@@ -204,7 +205,7 @@ int32_t another_world_state::calcStep(const Point &p1, const Point &p2, uint16_t
     return dx * v * 4;
 }
 
-void another_world_state::fillPolygon(uint16_t color, uint16_t zoom, const Point &pt) {
+void another_world_vm_state::fillPolygon(uint16_t color, uint16_t zoom, const VMPoint &pt) {
     
     if (m_polygon.bbox_w == 0 && m_polygon.bbox_h == 1 && m_polygon.numPoints == 4) {
         drawPoint(color, pt.x, pt.y);
@@ -240,11 +241,11 @@ void another_world_state::fillPolygon(uint16_t color, uint16_t zoom, const Point
 
     drawLine drawFct;
     if (color < 0x10) {
-        drawFct = &another_world_state::drawLineN;
+        drawFct = &another_world_vm_state::drawLineN;
     } else if (color > 0x10) {
-        drawFct = &another_world_state::drawLineP;
+        drawFct = &another_world_vm_state::drawLineP;
     } else {
-        drawFct = &another_world_state::drawLineBlend;
+        drawFct = &another_world_vm_state::drawLineBlend;
     }
 
     uint32_t cpt1 = x1 << 16;
@@ -288,7 +289,7 @@ void another_world_state::fillPolygon(uint16_t color, uint16_t zoom, const Point
     }
 }
 
-void another_world_state::updateDisplay(uint8_t pageId) {
+void another_world_vm_state::updateDisplay(uint8_t pageId) {
     if (pageId != 0xFE) {
         if (pageId == 0xFF) {
             bitmap_ind16* tmp = m_curPagePtr2;
@@ -307,7 +308,7 @@ void another_world_state::updateDisplay(uint8_t pageId) {
     }
 }
 
-void another_world_state::drawPoint(uint8_t color, int16_t x, int16_t y) {
+void another_world_vm_state::drawPoint(uint8_t color, int16_t x, int16_t y) {
     x = (int16_t) (x * (m_screen->width()/320.0));
     y = (int16_t) (y * (m_screen->height()/200.0));
     if (x >= 0 && x <= 319 && y >= 0 && y <= 199) {
@@ -320,7 +321,7 @@ void another_world_state::drawPoint(uint8_t color, int16_t x, int16_t y) {
 }
 
 #define NUM_COLORS 16
-void another_world_state::changePalette(uint8_t paletteId){
+void another_world_vm_state::changePalette(uint8_t paletteId){
     const uint8_t *colors = (const uint8_t *) membank("palette_bank")->base();
     uint8_t r, g, b;
 
@@ -335,11 +336,11 @@ void another_world_state::changePalette(uint8_t paletteId){
     }
 }
 
-void another_world_state::selectVideoPage(uint8_t pageId){
+void another_world_vm_state::selectVideoPage(uint8_t pageId){
     m_curPagePtr1 = getPagePtr(pageId);
 }
 
-void another_world_state::fillPage(uint8_t pageId, uint8_t color){
+void another_world_vm_state::fillPage(uint8_t pageId, uint8_t color){
     bitmap_ind16* page = getPagePtr(pageId);
 
     for (int x=0; x < m_screen->width(); x++){
@@ -349,7 +350,7 @@ void another_world_state::fillPage(uint8_t pageId, uint8_t color){
     }
 }
 
-void another_world_state::copyVideoPage(uint8_t srcPageId, uint8_t dstPageId, uint16_t vscroll){
+void another_world_vm_state::copyVideoPage(uint8_t srcPageId, uint8_t dstPageId, uint16_t vscroll){
     if (srcPageId == dstPageId)
         return;
 
@@ -388,7 +389,7 @@ void another_world_state::copyVideoPage(uint8_t srcPageId, uint8_t dstPageId, ui
     }
 }
 
-void another_world_state::draw_string(uint16_t stringId, uint16_t x, uint16_t y, uint16_t color){
+void another_world_vm_state::draw_string(uint16_t stringId, uint16_t x, uint16_t y, uint16_t color){
     x = 8 * (x-1);
     uint16_t x0 = x;
 
@@ -406,7 +407,7 @@ void another_world_state::draw_string(uint16_t stringId, uint16_t x, uint16_t y,
     }
 }
 
-void another_world_state::draw_charactere(uint8_t character, uint16_t x, uint16_t y, uint8_t color){
+void another_world_vm_state::draw_charactere(uint8_t character, uint16_t x, uint16_t y, uint8_t color){
     const uint8_t *font = memregion("chargen")->base();
 
     for (int j = 0; j < 8; j++) {
@@ -420,7 +421,7 @@ void another_world_state::draw_charactere(uint8_t character, uint16_t x, uint16_
     }
 }
 
-uint32_t another_world_state::screen_update_aw(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect)
+uint32_t another_world_vm_state::screen_update_aw(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect)
 {
     copybitmap(bitmap, m_screen_bitmap, 0, 0, 0, 0, cliprect);    
     return 0;

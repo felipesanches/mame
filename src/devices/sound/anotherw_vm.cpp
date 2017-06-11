@@ -1,7 +1,7 @@
-#include "anotherw.h"
+#include "anotherw_vm.h"
 
 // device type definition
-DEFINE_DEVICE_TYPE(ANOTHERW_SOUND, anotherw_sound_device, "anotherw", "Another World Sound Hardware")
+DEFINE_DEVICE_TYPE(ANOTHERW_VM_SOUND, anotherw_vm_sound_device, "anotherw_vm", "Another World VM Sound Hardware")
 
 //TODO: Maybe this shuld be stored in a ROM asset as well?
 static uint8_t resource_indexes[] = {
@@ -33,8 +33,8 @@ static int32_t resource_offset(uint16_t resNum){
 //  anotherw_sound_device - constructor
 //-------------------------------------------------
 
-anotherw_sound_device::anotherw_sound_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
-    : device_t(mconfig, ANOTHERW_SOUND, tag, owner, clock),
+anotherw_vm_sound_device::anotherw_vm_sound_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+    : device_t(mconfig, ANOTHERW_VM_SOUND, tag, owner, clock),
         device_sound_interface(mconfig, *this),
         m_stream(nullptr),
         m_write_mus_mark(*this)
@@ -45,7 +45,7 @@ anotherw_sound_device::anotherw_sound_device(const machine_config &mconfig, cons
 //  device_start - device-specific startup
 //-------------------------------------------------
 
-void anotherw_sound_device::device_start()
+void anotherw_vm_sound_device::device_start()
 {
     //resolve callbacks
     m_write_mus_mark.resolve_safe();
@@ -56,15 +56,15 @@ void anotherw_sound_device::device_start()
     memset(m_channels, 0, sizeof(m_channels));
 
     m_samples_base_ptr = owner()->memregion("samples")->base();
-    m_player = new SfxPlayer(this);
-    m_timer = machine().scheduler().timer_alloc(timer_expired_delegate(FUNC(anotherw_sound_device::musicPlayerCallback),this));
+    m_player = new VMSfxPlayer(this);
+    m_timer = machine().scheduler().timer_alloc(timer_expired_delegate(FUNC(anotherw_vm_sound_device::musicPlayerCallback),this));
 }
 
 //-------------------------------------------------
 //  device_reset - device-specific reset
 //-------------------------------------------------
 
-void anotherw_sound_device::device_reset()
+void anotherw_vm_sound_device::device_reset()
 {
     m_stream->update();
     for (auto & elem : m_channels)
@@ -76,7 +76,7 @@ void anotherw_sound_device::device_reset()
 //  device_post_load - device-specific post-load
 //-------------------------------------------------
 
-void anotherw_sound_device::device_post_load()
+void anotherw_vm_sound_device::device_post_load()
 {
     device_clock_changed();
 }
@@ -87,13 +87,13 @@ void anotherw_sound_device::device_post_load()
 //  changes
 //-------------------------------------------------
 
-void anotherw_sound_device::device_clock_changed()
+void anotherw_vm_sound_device::device_clock_changed()
 {
     m_stream->set_sample_rate(clock());
 }
 
 
-TIMER_CALLBACK_MEMBER(anotherw_sound_device::musicPlayerCallback)
+TIMER_CALLBACK_MEMBER(anotherw_vm_sound_device::musicPlayerCallback)
 {
     m_player->handleEvents();
 }
@@ -103,7 +103,7 @@ TIMER_CALLBACK_MEMBER(anotherw_sound_device::musicPlayerCallback)
 //  our sound stream
 //-------------------------------------------------
 
-void anotherw_sound_device::sound_stream_update(sound_stream &stream, stream_sample_t **inputs, stream_sample_t **outputs, int samples)
+void anotherw_vm_sound_device::sound_stream_update(sound_stream &stream, stream_sample_t **inputs, stream_sample_t **outputs, int samples)
 {
     // reset the output stream
     memset(outputs[0], 0, samples * sizeof(*outputs[0]));
@@ -114,7 +114,7 @@ void anotherw_sound_device::sound_stream_update(sound_stream &stream, stream_sam
 }
 
 #define MIN(a, b) (a<b ? a : b)
-void anotherw_sound_device::playSound(uint8_t channel, uint16_t resNum, uint8_t freq, uint8_t vol){
+void anotherw_vm_sound_device::playSound(uint8_t channel, uint16_t resNum, uint8_t freq, uint8_t vol){
     if (vol == 0) {
         stopChannel(channel);
     } else {
@@ -138,7 +138,7 @@ void anotherw_sound_device::playSound(uint8_t channel, uint16_t resNum, uint8_t 
 }
 
 #define OUTPUT_SAMPLE_RATE 31677
-void anotherw_sound_device::playChannel(uint8_t channel, const MixerChunk *mc, uint16_t freq, uint8_t volume) {
+void anotherw_vm_sound_device::playChannel(uint8_t channel, const MixerChunk *mc, uint16_t freq, uint8_t volume) {
     //printf("play channel #%d freq:%d volume:%d\n", channel, freq, volume);
     assert(channel < ANOTHERW_CHANNELS);
 
@@ -150,19 +150,19 @@ void anotherw_sound_device::playChannel(uint8_t channel, const MixerChunk *mc, u
     ch->m_chunkInc = (freq << 8) / OUTPUT_SAMPLE_RATE;
 }
 
-void anotherw_sound_device::stopChannel(uint8_t channel) {
+void anotherw_vm_sound_device::stopChannel(uint8_t channel) {
     //printf("stop channel #%d\n", channel);
     assert(channel < ANOTHERW_CHANNELS);
     m_channels[channel].m_active = false;
 }
 
-void anotherw_sound_device::setChannelVolume(uint8_t channel, uint8_t volume) {
+void anotherw_vm_sound_device::setChannelVolume(uint8_t channel, uint8_t volume) {
     //printf("set channel #%d volume = %X\n", channel, volume);
     assert(channel < ANOTHERW_CHANNELS);
     m_channels[channel].m_volume = volume;
 }
 
-void anotherw_sound_device::stopAll() {
+void anotherw_vm_sound_device::stopAll() {
     //printf("Stop all channels!\n");
     for (uint8_t i = 0; i < ANOTHERW_CHANNELS; ++i) {
         m_channels[i].m_active = false;        
@@ -177,7 +177,7 @@ void anotherw_sound_device::stopAll() {
 //  anotherw_channel - constructor
 //-------------------------------------------------
 
-anotherw_sound_device::anotherw_channel::anotherw_channel()
+anotherw_vm_sound_device::anotherw_channel::anotherw_channel()
     : m_sample(0),
       m_count(0),
       m_active(false),
@@ -201,7 +201,7 @@ static int16_t addclamp(int a, int b) {
 //  add them to an output stream
 //-------------------------------------------------
 
-void anotherw_sound_device::anotherw_channel::mix(stream_sample_t *buffer, int samples)
+void anotherw_vm_sound_device::anotherw_channel::mix(stream_sample_t *buffer, int samples)
 {
     // skip if not active
     if (!m_active)
@@ -242,7 +242,7 @@ void anotherw_sound_device::anotherw_channel::mix(stream_sample_t *buffer, int s
     }
 }
 
-const uint16_t anotherw_sound_device::frequenceTable[] = {
+const uint16_t anotherw_vm_sound_device::frequenceTable[] = {
     0x0CFF, 0x0DC3, 0x0E91, 0x0F6F, 0x1056, 0x114E, 0x1259, 0x136C,
     0x149F, 0x15D9, 0x1726, 0x1888, 0x19FD, 0x1B86, 0x1D21, 0x1EDE,
     0x20AB, 0x229C, 0x24B3, 0x26D7, 0x293F, 0x2BB2, 0x2E4C, 0x3110,
@@ -250,7 +250,7 @@ const uint16_t anotherw_sound_device::frequenceTable[] = {
     0x5240, 0x5764, 0x5C9A, 0x61C8, 0x6793, 0x6E19, 0x7485, 0x7BBD
 };
 
-void anotherw_sound_device::music_mark(uint8_t data){
+void anotherw_vm_sound_device::music_mark(uint8_t data){
     m_write_mus_mark(data);
 }
 
@@ -258,24 +258,24 @@ void anotherw_sound_device::music_mark(uint8_t data){
  * Music Player *
  ****************/
 
-SfxPlayer::SfxPlayer(anotherw_sound_device *mixer)
+VMSfxPlayer::VMSfxPlayer(anotherw_vm_sound_device *mixer)
     : m_mixer(mixer), m_delay(0), m_resNum(0) {
 }
 
-void SfxPlayer::initPlayer() {
+void VMSfxPlayer::initPlayer() {
 }
 
-void SfxPlayer::freePlayer() {
+void VMSfxPlayer::freePlayer() {
     stop();
 }
 
-void SfxPlayer::setEventsDelay(uint16_t delay) {
-    //printf("SfxPlayer::setEventsDelay(%d)\n", delay);
+void VMSfxPlayer::setEventsDelay(uint16_t delay) {
+    //printf("VMSfxPlayer::setEventsDelay(%d)\n", delay);
     m_delay = delay * 60 / 7050;
 }
 
-void SfxPlayer::loadSfxModule(uint16_t resNum, uint16_t delay, uint8_t pos) {
-    printf("SfxPlayer::loadSfxModule(resNum:0x%X, delay:%d, pos:%d)\n", resNum, delay, pos);
+void VMSfxPlayer::loadSfxModule(uint16_t resNum, uint16_t delay, uint8_t pos) {
+    printf("VMSfxPlayer::loadSfxModule(resNum:0x%X, delay:%d, pos:%d)\n", resNum, delay, pos);
 
     int32_t offset = resource_offset(resNum);
     if (offset < 0)
@@ -284,11 +284,11 @@ void SfxPlayer::loadSfxModule(uint16_t resNum, uint16_t delay, uint8_t pos) {
     const uint8_t * resource_ptr = ((uint8_t*) m_mixer->m_samples_base_ptr) + offset * 0x10000;
 
     m_resNum = resNum;
-    memset(&m_sfxMod, 0, sizeof(SfxModule));
+    memset(&m_sfxMod, 0, sizeof(VMSfxModule));
     m_sfxMod.curOrder = pos;
     m_sfxMod.numOrder = READ_BE_UINT16(resource_ptr + 0x3E);
 
-    printf("SfxPlayer::loadSfxModule() curOrder = 0x%X numOrder = 0x%X\n", m_sfxMod.curOrder, m_sfxMod.numOrder);
+    printf("VMSfxPlayer::loadSfxModule() curOrder = 0x%X numOrder = 0x%X\n", m_sfxMod.curOrder, m_sfxMod.numOrder);
     for (int i = 0; i < 0x80; ++i) {
         m_sfxMod.orderTable[i] = *(resource_ptr + 0x40 + i);
     }
@@ -299,16 +299,16 @@ void SfxPlayer::loadSfxModule(uint16_t resNum, uint16_t delay, uint8_t pos) {
     }
     m_delay = m_delay * 60 / 7050;
     m_sfxMod.data = resource_ptr + 0xC0;
-    printf("SfxPlayer::loadSfxModule() eventDelay = %d ms\n", m_delay);
+    printf("VMSfxPlayer::loadSfxModule() eventDelay = %d ms\n", m_delay);
     prepareInstruments(resource_ptr + 2);
 }
 
-void SfxPlayer::prepareInstruments(const uint8_t *p) {
+void VMSfxPlayer::prepareInstruments(const uint8_t *p) {
 
     memset(m_sfxMod.samples, 0, sizeof(m_sfxMod.samples));
 
     for (int i = 0; i < 15; ++i) {
-        SfxInstrument *ins = &m_sfxMod.samples[i];
+        VMSfxInstrument *ins = &m_sfxMod.samples[i];
         uint16_t resNum = READ_BE_UINT16(p); p += 2;
 
         if (resNum != 0) {
@@ -325,19 +325,19 @@ void SfxPlayer::prepareInstruments(const uint8_t *p) {
     }
 }
 
-void SfxPlayer::start() {
+void VMSfxPlayer::start() {
     m_sfxMod.curPos = 0;
     m_mixer->m_timer->adjust(attotime::from_msec(m_delay), 0, attotime::from_msec(m_delay));
 }
 
-void SfxPlayer::stop() {
+void VMSfxPlayer::stop() {
     if (m_resNum != 0) {
         m_resNum = 0;
         m_mixer->m_timer->adjust(attotime::zero);
     }
 }
 
-void SfxPlayer::handleEvents() {
+void VMSfxPlayer::handleEvents() {
     uint8_t order = m_sfxMod.orderTable[m_sfxMod.curOrder];
     const uint8_t *patternData = m_sfxMod.data + m_sfxMod.curPos + order * 1024;
     for (uint8_t ch = 0; ch < 4; ++ch) {
@@ -345,7 +345,7 @@ void SfxPlayer::handleEvents() {
         patternData += 4;
     }
     m_sfxMod.curPos += (4 * 4);
-    //printf("SfxPlayer::handleEvents() order = 0x%X curPos = 0x%X\n", order, m_sfxMod.curPos);
+    //printf("VMSfxPlayer::handleEvents() order = 0x%X curPos = 0x%X\n", order, m_sfxMod.curPos);
     if (m_sfxMod.curPos >= 1024) {
         m_sfxMod.curPos = 0;
         order = m_sfxMod.curOrder + 1;
@@ -358,10 +358,10 @@ void SfxPlayer::handleEvents() {
     }
 }
 
-void SfxPlayer::handlePattern(uint8_t channel, const uint8_t *data) {
+void VMSfxPlayer::handlePattern(uint8_t channel, const uint8_t *data) {
     //printf("==== handlePattern ==== channel:%d data:%X\n", channel, (unsigned int) (uint64_t) data);
-    SfxPattern pat;
-    memset(&pat, 0, sizeof(SfxPattern));
+    VMSfxPattern pat;
+    memset(&pat, 0, sizeof(VMSfxPattern));
     pat.note_1 = READ_BE_UINT16(data + 0);
     pat.note_2 = READ_BE_UINT16(data + 2);
     if (pat.note_1 != 0xFFFD) {
@@ -369,7 +369,7 @@ void SfxPlayer::handlePattern(uint8_t channel, const uint8_t *data) {
         if (sample != 0) {
             uint8_t *ptr = m_sfxMod.samples[sample - 1].data;
             if (ptr != 0) {
-                //printf("SfxPlayer::handlePattern() preparing sample %d\n", sample);
+                //printf("VMSfxPlayer::handlePattern() preparing sample %d\n", sample);
                 pat.sampleVolume = m_sfxMod.samples[sample - 1].volume;
                 pat.sampleStart = 8;
                 pat.sampleBuffer = ptr;
@@ -405,13 +405,13 @@ void SfxPlayer::handlePattern(uint8_t channel, const uint8_t *data) {
         }
     }
     if (pat.note_1 == 0xFFFD) {
-        printf("SfxPlayer::handlePattern() _scriptVars[VM_VARIABLE_MUS_MARK] = 0x%X\n", pat.note_2);
+        printf("VMSfxPlayer::handlePattern() _scriptVars[VM_VARIABLE_MUS_MARK] = 0x%X\n", pat.note_2);
         m_mixer->music_mark(pat.note_2);
     } else if (pat.note_1 != 0) {
         if (pat.note_1 == 0xFFFE) {
             m_mixer->stopChannel(channel);
         } else if (pat.sampleBuffer != 0) {
-            struct anotherw_sound_device::MixerChunk mc;
+            struct anotherw_vm_sound_device::MixerChunk mc;
             memset(&mc, 0, sizeof(mc));
             mc.data = pat.sampleBuffer + pat.sampleStart;
             mc.len = pat.sampleLen;

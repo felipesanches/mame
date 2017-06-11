@@ -1190,6 +1190,9 @@ angelkds                        // 833-6599 (c) 1988 Sega / Nasco?
 spcpostn                        // (c) 1986 Sega / Nasco"
 
 @source:another_world.cpp
+anotherw                        //
+
+@source:another_world_vm.cpp
 aw_msdos                        //
 aw_amipk                        //
 

@@ -143,7 +143,7 @@ CPUS["CLIPPER"] = true
 --------------------------------------------------
 
 --SOUNDS["SAMPLES"] = true
-SOUNDS["ANOTHERWORLD"] = true
+SOUNDS["ANOTHERWORLD_VM"] = true
 SOUNDS["DAC"] = true
 SOUNDS["DMADAC"] = true
 SOUNDS["SPEAKER"] = true
@@ -1096,7 +1096,8 @@ function linkProjects_mame_mess(_target, _subtarget)
 		"zpa",
 		"zvt",
 		"messshared",
-        "virtualmachine",
+        	"virtualmachine",
+		"fsanches"
 	}
 	if (_subtarget=="mess") then
 	links {
@@ -3226,8 +3227,8 @@ files {
 
 createMESSProjects(_target, _subtarget, "virtualmachine")
 files {
-    MAME_DIR .. "src/mame/drivers/another_world.cpp",
-    MAME_DIR .. "src/mame/video/anotherworld.cpp",
+    MAME_DIR .. "src/mame/drivers/another_world_vm.cpp",
+    MAME_DIR .. "src/mame/video/anotherworld_vm.cpp",
 }
 
 createMESSProjects(_target, _subtarget, "votrax")
