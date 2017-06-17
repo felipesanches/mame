@@ -51,6 +51,7 @@ private:
     uint8_t level_bank;
     uint8_t work_videopage_bank;
     uint8_t work_videopage_y;
+    uint8_t* bytecode_base;
 };
 
 #endif //#ifndef __ANOTHERW_H__

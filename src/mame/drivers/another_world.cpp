@@ -39,6 +39,7 @@ DRIVER_INIT_MEMBER(another_world_state, another_world)
     uint8_t *RAM = memregion("maincpu")->base();
     membank("active_videopage")->configure_entries(0, 256, &RAM[0x9000], 0x200);
     membank("work_videopage")->configure_entries(0, 4*256, &RAM[0x9200], 0x200);
+    bytecode_base = memregion("bytecode")->base();
 }
 
 void another_world_state::machine_start(){
@@ -116,8 +117,7 @@ ADDRESS_MAP_END
 
 READ8_MEMBER(another_world_state::fetch_byte)
 {
-    printf("bank: %04X ip: %04X\n", level_bank, instruction_pointer);
-    return memregion("bytecode")->base()[((level_bank & 0x0F) << 16) | instruction_pointer++];
+    return *(bytecode_base + (level_bank & 0x0F) * 0x10000 + instruction_pointer++);
 }
 
 WRITE8_MEMBER(another_world_state::set_instruction_pointer)
@@ -249,7 +249,7 @@ ROM_START( anotherw )
     ROM_REGION( 0x8000, "videocpu", ROMREGION_ERASEFF )
     ROM_LOAD( "anotherworld_videocpu.rom", 0x0000, 0x8000, WORK_IN_PROGRESS )
 
-    ROM_REGION( 0x90000, "bytecode", ROMREGION_ERASEFF ) /* MS-DOS: Bytecode */
+    ROM_REGION( 0x100000, "bytecode", ROMREGION_ERASEFF ) /* MS-DOS: Bytecode */
     ROM_LOAD( "bytecode.rom", 0x00000, 0x90000, CRC(1fe0f8b5) SHA1(8a4650f742b4462806adaa31f358b0377a819135) )
 
     ROM_REGION( 0x4800, "palettes", 0 ) /* MS-DOS: Palette */
