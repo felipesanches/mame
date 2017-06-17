@@ -23,10 +23,13 @@ public:
     DECLARE_DRIVER_INIT(another_world);
     DECLARE_PALETTE_INIT(anotherw);
 
-    DECLARE_READ8_MEMBER(fetchbyte);
+    DECLARE_READ8_MEMBER(fetch_byte);
     DECLARE_WRITE8_MEMBER(set_instruction_pointer);
     DECLARE_WRITE8_MEMBER(switch_level_bank);
     DECLARE_WRITE8_MEMBER(changePalette);
+    DECLARE_WRITE8_MEMBER(switch_work_videopage_bank);
+    DECLARE_WRITE8_MEMBER(select_active_videopage_y);
+    DECLARE_WRITE8_MEMBER(select_work_videopage_y);
 
 //    bitmap_ind16* m_curPagePtr1;
 //    bitmap_ind16* m_curPagePtr2;
@@ -46,6 +49,8 @@ public:
 private:
     uint16_t instruction_pointer;
     uint8_t level_bank;
+    uint8_t work_videopage_bank;
+    uint8_t work_videopage_y;
 };
 
 #endif //#ifndef __ANOTHERW_H__
