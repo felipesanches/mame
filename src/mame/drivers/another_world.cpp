@@ -9,22 +9,6 @@
     https://github.com/fabiensanglard/Another-World-Bytecode-Interpreter
 */
 
-#define SCREEN_WIDTH 320
-#define SCREEN_HEIGHT 200
-
-//Try this for high-res polygon rendering:
-//#define SCREEN_WIDTH (320*4)
-//#define SCREEN_HEIGHT (200*4)
-
-//#define SCREEN_WIDTH 256
-//#define SCREEN_HEIGHT 224
-//
-// This other resolution (256x224) was used in some ports (I guess SEGA Genesis used it)
-// It is here for the purpose of testing a generic renderer code that would work
-// in any given resolution. But the initial port of the graphics code was based on
-// Fabien Sanglard's free-software VM re-implementation, which used
-// a screen resolution of 320x200 pixels.
-
 #include "emu.h"
 #include "includes/anotherworld.h"
 #include "cpu/z80/z80.h"
@@ -36,9 +20,16 @@
 */
 DRIVER_INIT_MEMBER(another_world_state, another_world)
 {
-    uint8_t *RAM = memregion("maincpu")->base();
-    membank("active_videopage")->configure_entries(0, 256, &RAM[0x9000], 0x200);
-    membank("work_videopage")->configure_entries(0, 4*256, &RAM[0x9200], 0x200);
+    // Allocate 256 VRAM banks (200 of which are active display "line banks")
+    m_active_vram = std::make_unique<uint8_t[]>(256 * 0x200);
+
+    // Allocate 4 * 256 VRAM banks (which are used as 4 "work" pages for video-buffering)
+    m_work_vram = std::make_unique<uint8_t[]>(4 * 256 * 0x200);
+
+    membank("active_videopage")->configure_entries(0, 256, m_active_vram.get(), 0x200);
+    membank("work_videopage")->configure_entries(0, 4 * 256, m_work_vram.get(), 0x200);
+    membank("screens_rombank")->configure_entries(0, 16 * 256, memregion("screens")->base(), 0x200);
+
     bytecode_base = memregion("bytecode")->base();
 }
 
@@ -85,6 +76,9 @@ static ADDRESS_MAP_START( maincpu_prog_map, AS_PROGRAM, 8, another_world_state )
     AM_RANGE(0x800b, 0x800b) AM_DEVWRITE("param2latch", generic_latch_8_device, write)
     AM_RANGE(0x800c, 0x800c) AM_DEVWRITE("param3latch", generic_latch_8_device, write)
     AM_RANGE(0x800d, 0x800d) AM_DEVWRITE("param4latch", generic_latch_8_device, write)
+    AM_RANGE(0x800e, 0x800e) AM_DEVWRITE("param5latch", generic_latch_8_device, write)
+    AM_RANGE(0x800f, 0x800f) AM_DEVREAD("videocpu_status_latch", generic_latch_8_device, read)
+    AM_RANGE(0x8010, 0x8010) AM_DEVREAD("soundcpu_status_latch", generic_latch_8_device, read)
     AM_RANGE(0x9000, 0x91ff) AM_RAM /* VM Variables */
     AM_RANGE(0xc000, 0xffff) AM_RAM /* 16kb SRAM */
 ADDRESS_MAP_END
@@ -97,6 +91,7 @@ static ADDRESS_MAP_START( soundcpu_prog_map, AS_PROGRAM, 8, another_world_state 
     AM_RANGE(0x8003, 0x8003) AM_DEVREAD("param3latch", generic_latch_8_device, read)
     AM_RANGE(0x8004, 0x8004) AM_DEVREAD("param4latch", generic_latch_8_device, read)
     AM_RANGE(0x8005, 0x8005) AM_DEVWRITE("musicmarklatch", generic_latch_8_device, write) /* shouldn't it be a 16 bit value ?! */
+    AM_RANGE(0x8006, 0x8006) AM_DEVWRITE("soundcpu_status_latch", generic_latch_8_device, write)
     AM_RANGE(0xc000, 0xffff) AM_RAM /* 16kb SRAM */
 ADDRESS_MAP_END
 
@@ -107,11 +102,18 @@ static ADDRESS_MAP_START( videocpu_prog_map, AS_PROGRAM, 8, another_world_state 
     AM_RANGE(0x8002, 0x8002) AM_DEVREAD("param2latch", generic_latch_8_device, read)
     AM_RANGE(0x8003, 0x8003) AM_DEVREAD("param3latch", generic_latch_8_device, read)
     AM_RANGE(0x8004, 0x8004) AM_DEVREAD("param4latch", generic_latch_8_device, read)
-    AM_RANGE(0x8005, 0x8005) AM_WRITE(switch_work_videopage_bank)
-    AM_RANGE(0x8006, 0x8006) AM_WRITE(select_active_videopage_y)
-    AM_RANGE(0x8007, 0x8007) AM_WRITE(select_work_videopage_y)
+    AM_RANGE(0x8005, 0x8005) AM_DEVREAD("param5latch", generic_latch_8_device, read)
+    AM_RANGE(0x8006, 0x8006) AM_WRITE(switch_work_videopage_bank)
+    AM_RANGE(0x8007, 0x8007) AM_WRITE(set_screen_selector)
+    AM_RANGE(0x8008, 0x8008) AM_WRITE(select_active_videopage_y)
+    AM_RANGE(0x8009, 0x8009) AM_WRITE(select_work_videopage_y)
+    AM_RANGE(0x800a, 0x800a) AM_WRITE(select_screens_y)
+    AM_RANGE(0x800b, 0x800b) AM_DEVWRITE("videocpu_status_latch", generic_latch_8_device, write)
     AM_RANGE(0x9000, 0x91ff) AM_RAMBANK("active_videopage")
     AM_RANGE(0x9200, 0x93ff) AM_RAMBANK("work_videopage")
+    AM_RANGE(0x9400, 0x95ff) AM_ROMBANK("screens_rombank")
+    AM_RANGE(0xa000, 0xa7ff) AM_ROM AM_SHARE("chargen")
+    AM_RANGE(0xa800, 0xbfff) AM_ROM AM_SHARE("strings")
     AM_RANGE(0xc000, 0xffff) AM_RAM /* 16kb SRAM */
 ADDRESS_MAP_END
 
@@ -131,12 +133,13 @@ WRITE8_MEMBER(another_world_state::set_instruction_pointer)
 
 WRITE8_MEMBER(another_world_state::switch_level_bank)
 {
-    level_bank = data;
+    level_bank = data & 0x0F;
 }
 
 WRITE8_MEMBER(another_world_state::select_active_videopage_y)
 {
-    membank("active_videopage")->set_entry(data);
+    active_videopage_y = data;
+    membank("active_videopage")->set_entry(active_videopage_y);
 }
 
 WRITE8_MEMBER(another_world_state::select_work_videopage_y)
@@ -145,20 +148,37 @@ WRITE8_MEMBER(another_world_state::select_work_videopage_y)
     membank("work_videopage")->set_entry(256 * work_videopage_bank + work_videopage_y);
 }
 
+WRITE8_MEMBER(another_world_state::select_screens_y)
+{
+    screens_y = data;
+    membank("screens_rombank")->set_entry(256 * screens_bank + screens_y);
+}
+
 WRITE8_MEMBER(another_world_state::switch_work_videopage_bank)
 {
-    work_videopage_bank = data;
+    work_videopage_bank = data & 0x03;
     membank("work_videopage")->set_entry(256 * work_videopage_bank + work_videopage_y);
+}
+
+WRITE8_MEMBER(another_world_state::set_screen_selector)
+{
+    screens_bank = data & 0x0F;
+    membank("screens_rombank")->set_entry(256 * screens_bank + screens_y);
 }
 
 WRITE8_MEMBER(another_world_state::changePalette)
 {
-    set_palette(data);
+    set_palette(data & 0x3F);
 }
 
 uint32_t another_world_state::screen_update_aw(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect)
 {
-    copybitmap(bitmap, m_screen_bitmap, 0, 0, 0, 0, cliprect);
+    for (uint8_t y=0; y<200; y++){
+        for (uint16_t x=0; x<320; x++){
+            bitmap.pix16(y, x) = m_active_vram[512*y + x];
+        }
+    }
+
     return 0;
 }
 
@@ -181,19 +201,22 @@ static MACHINE_CONFIG_START( another_world )
     MCFG_GENERIC_LATCH_8_ADD("param2latch")
     MCFG_GENERIC_LATCH_8_ADD("param3latch")
     MCFG_GENERIC_LATCH_8_ADD("param4latch")
+    MCFG_GENERIC_LATCH_8_ADD("param5latch")
     MCFG_GENERIC_LATCH_8_ADD("musicmarklatch")
+    MCFG_GENERIC_LATCH_8_ADD("videocpu_status_latch")
+    MCFG_GENERIC_LATCH_8_ADD("soundcpu_status_latch")
 
     /* video hardware */
     MCFG_SCREEN_ADD("screen", RASTER)
     MCFG_SCREEN_REFRESH_RATE(60)
     MCFG_SCREEN_VBLANK_TIME(ATTOSECONDS_IN_USEC(0))
-    MCFG_SCREEN_SIZE(SCREEN_WIDTH, SCREEN_HEIGHT)
-    MCFG_SCREEN_VISIBLE_AREA(0, SCREEN_WIDTH-1, 0, SCREEN_HEIGHT-1)
+    MCFG_SCREEN_SIZE(320, 200)
+    MCFG_SCREEN_VISIBLE_AREA(0, 319, 0, 199)
     MCFG_SCREEN_UPDATE_DRIVER(another_world_state, screen_update_aw)
 
     MCFG_SCREEN_PALETTE("palette")
     MCFG_PALETTE_ADD("palette", 16)
-    MCFG_PALETTE_INDIRECT_ENTRIES(16) /*I am not sure yet what does it mean...*/
+    MCFG_PALETTE_INDIRECT_ENTRIES(16)
 
     /* sound hardware */
     MCFG_SPEAKER_STANDARD_STEREO("lspeaker", "rspeaker")
@@ -207,14 +230,6 @@ MACHINE_CONFIG_END
 
 void another_world_state::video_start()
 {
-//    for (int i=0; i<4; i++){
-//        m_screen->register_screen_bitmap(m_page_bitmaps[i]);
-//    }
-    m_screen->register_screen_bitmap(m_screen_bitmap);
-
-//    m_curPagePtr1 = &m_page_bitmaps[2];
-//    m_curPagePtr2 = &m_page_bitmaps[2];
-//    m_curPagePtr3 = &m_page_bitmaps[1];
 }
 
 #define NUM_COLORS 16
@@ -224,8 +239,8 @@ void another_world_state::set_palette(uint8_t paletteId){
 
     for (int i = 0; i < NUM_COLORS; ++i)
     {
-        uint8_t c1 = *(colors + paletteId * 2*NUM_COLORS + 2*i);
-        uint8_t c2 = *(colors + paletteId * 2*NUM_COLORS + 2*i + 1);
+        uint8_t c1 = colors[paletteId * 2*NUM_COLORS + 2*i];
+        uint8_t c2 = colors[paletteId * 2*NUM_COLORS + 2*i + 1];
         r = ((c1 & 0x0F) << 2) | ((c1 & 0x0F) >> 2);
         g = ((c2 & 0xF0) >> 2) | ((c2 & 0xF0) >> 6);
         b = ((c2 & 0x0F) >> 2) | ((c2 & 0x0F) << 2);
@@ -252,8 +267,8 @@ ROM_START( anotherw )
     ROM_REGION( 0x100000, "bytecode", ROMREGION_ERASEFF ) /* MS-DOS: Bytecode */
     ROM_LOAD( "bytecode.rom", 0x00000, 0x90000, CRC(1fe0f8b5) SHA1(8a4650f742b4462806adaa31f358b0377a819135) )
 
-    ROM_REGION( 0x4800, "palettes", 0 ) /* MS-DOS: Palette */
-    ROM_LOAD( "palettes.rom", 0x0000, 0x4800, NO_DUMP )
+    ROM_REGION( 0x8000, "palettes", ROMREGION_ERASEFF ) /* MS-DOS: Palette */
+    ROM_LOAD( "palettes.rom", 0x0000, 0x4800, CRC(87e879b8) SHA1(dc40fb30a1a982365887059bc0768c27c55f1418) )
 
     ROM_REGION( 0x90000, "video1", ROMREGION_ERASEFF ) /* MS-DOS: Cinematic */
     ROM_LOAD( "video1.rom", 0x00000, 0x90000, NO_DUMP )
@@ -261,10 +276,10 @@ ROM_START( anotherw )
     ROM_REGION( 0x8000, "video2", ROMREGION_ERASEFF ) /* MS-DOS: Video2 */
     ROM_LOAD( "video2.rom", 0x0000, 0x8000, NO_DUMP )
 
-    ROM_REGION( 0x60000, "screens", ROMREGION_ERASEFF ) /* MS-DOS: Screens */
-    ROM_LOAD( "screens.rom", 0x00000, 0x60000, NO_DUMP )
+    ROM_REGION( 0x200000, "screens", ROMREGION_ERASEFF ) /* MS-DOS: Screens */
+    ROM_LOAD( "screens.rom", 0x00000, 0x160000, CRC(af8aefe2) SHA1(dfa75c96c4e165baf3f718577854cc24fef0ad9d) )
 
-    ROM_REGION( 0x0300, "chargen", 0)
+    ROM_REGION( 0x0800, "chargen", ROMREGION_ERASEFF)
     ROM_LOAD( "anotherworld_chargen.rom", 0x0000, 0x0300, CRC(e2df8c47) SHA1(b79b41835aa2d5747932f8080bb6fb2cf32837d7) )
 
     ROM_REGION( 0x1800, "strings", 0)

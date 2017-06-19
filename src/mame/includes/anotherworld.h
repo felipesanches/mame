@@ -17,6 +17,9 @@ public:
         m_palette(*this, "palette")
     { }
 
+    std::unique_ptr<uint8_t[]> m_active_vram;
+    std::unique_ptr<uint8_t[]> m_work_vram;
+
     virtual void machine_start() override;
     virtual void video_start() override;
     DECLARE_MACHINE_START(anotherw);
@@ -28,15 +31,11 @@ public:
     DECLARE_WRITE8_MEMBER(switch_level_bank);
     DECLARE_WRITE8_MEMBER(changePalette);
     DECLARE_WRITE8_MEMBER(switch_work_videopage_bank);
+    DECLARE_WRITE8_MEMBER(set_screen_selector);
     DECLARE_WRITE8_MEMBER(select_active_videopage_y);
     DECLARE_WRITE8_MEMBER(select_work_videopage_y);
+    DECLARE_WRITE8_MEMBER(select_screens_y);
 
-//    bitmap_ind16* m_curPagePtr1;
-//    bitmap_ind16* m_curPagePtr2;
-//    bitmap_ind16* m_curPagePtr3;
-    bitmap_ind16 m_screen_bitmap;
-//    bitmap_ind16 m_page_bitmaps[4];
-    
     required_device<cpu_device> m_maincpu;
     required_device<cpu_device> m_soundcpu;
     required_device<cpu_device> m_videocpu;
@@ -50,7 +49,10 @@ private:
     uint16_t instruction_pointer;
     uint8_t level_bank;
     uint8_t work_videopage_bank;
+    uint8_t screens_bank;
+    uint8_t active_videopage_y;
     uint8_t work_videopage_y;
+    uint8_t screens_y;
     uint8_t* bytecode_base;
 };
 
