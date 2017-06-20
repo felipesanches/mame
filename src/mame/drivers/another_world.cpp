@@ -31,6 +31,11 @@ DRIVER_INIT_MEMBER(another_world_state, another_world)
     membank("screens_rombank")->configure_entries(0, 16 * 256, memregion("screens")->base(), 0x200);
 
     bytecode_base = memregion("bytecode")->base();
+    chargen_base = memregion("chargen")->base();
+    strings_base = memregion("strings")->base();
+    polygon_cinematic_base = memregion("cinematic")->base();
+    polygon_video2_base = memregion("video2")->base();
+    use_video_2 = false; //TODO: review this.
 }
 
 void another_world_state::machine_start(){
@@ -109,17 +114,47 @@ static ADDRESS_MAP_START( videocpu_prog_map, AS_PROGRAM, 8, another_world_state 
     AM_RANGE(0x8009, 0x8009) AM_WRITE(select_work_videopage_y)
     AM_RANGE(0x800a, 0x800a) AM_WRITE(select_screens_y)
     AM_RANGE(0x800b, 0x800b) AM_DEVWRITE("videocpu_status_latch", generic_latch_8_device, write)
+    AM_RANGE(0x800c, 0x800d) AM_WRITE(set_polygon_data_offset)
+    AM_RANGE(0x800e, 0x800e) AM_READ(fetch_polygon_data)
+    AM_RANGE(0x800f, 0x800f) AM_WRITE(select_polygon_data_source)
     AM_RANGE(0x9000, 0x91ff) AM_RAMBANK("active_videopage")
     AM_RANGE(0x9200, 0x93ff) AM_RAMBANK("work_videopage")
     AM_RANGE(0x9400, 0x95ff) AM_ROMBANK("screens_rombank")
-    AM_RANGE(0xa000, 0xa7ff) AM_ROM AM_SHARE("chargen")
-    AM_RANGE(0xa800, 0xbfff) AM_ROM AM_SHARE("strings")
+    AM_RANGE(0xa000, 0xa7ff) AM_READ(chargen_r)
+    AM_RANGE(0xa800, 0xbfff) AM_READ(strings_r)
     AM_RANGE(0xc000, 0xffff) AM_RAM /* 16kb SRAM */
 ADDRESS_MAP_END
 
+READ8_MEMBER(another_world_state::chargen_r)
+{
+    return chargen_base[offset];
+}
+
+READ8_MEMBER(another_world_state::strings_r)
+{
+    return strings_base[offset];
+}
+
+READ8_MEMBER(another_world_state::fetch_polygon_data)
+{
+    if (use_video_2) {
+        return polygon_video2_base[polygon_data_offset++];
+    } else {
+        return polygon_cinematic_base[(level_bank & 0x0F) * 0x10000 + polygon_data_offset++];
+    }
+}
+
+WRITE8_MEMBER(another_world_state::set_polygon_data_offset)
+{
+    if (offset % 2 == 0){
+      polygon_data_offset = (polygon_data_offset & 0xFF00) | data;
+    } else {
+      polygon_data_offset = (polygon_data_offset & 0x00FF) | (data << 8);
+    }
+}
 READ8_MEMBER(another_world_state::fetch_byte)
 {
-    return *(bytecode_base + (level_bank & 0x0F) * 0x10000 + instruction_pointer++);
+    return bytecode_base[(level_bank & 0x0F) * 0x10000 + instruction_pointer++];
 }
 
 WRITE8_MEMBER(another_world_state::set_instruction_pointer)
@@ -129,6 +164,13 @@ WRITE8_MEMBER(another_world_state::set_instruction_pointer)
     } else {
       instruction_pointer = (instruction_pointer & 0x00FF) | (data << 8);
     }
+}
+
+WRITE8_MEMBER(another_world_state::select_polygon_data_source)
+{
+    //0x00: CINEMATIC
+    //0x01: VIDEO2
+    use_video_2 = (data == 0x01);
 }
 
 WRITE8_MEMBER(another_world_state::switch_level_bank)
@@ -250,7 +292,6 @@ void another_world_state::set_palette(uint8_t paletteId){
 
 MACHINE_START_MEMBER(another_world_state, anotherw)
 {
-//    membank("video1_bank")->configure_entries(0, 10, memregion("video1")->base(), 0x10000);
 }
 
 #define WORK_IN_PROGRESS (BAD_DUMP CRC(e2df8c47) SHA1(b79b41835aa2d5747932f8080bb6fb2cf32837d7))
@@ -270,8 +311,8 @@ ROM_START( anotherw )
     ROM_REGION( 0x8000, "palettes", ROMREGION_ERASEFF ) /* MS-DOS: Palette */
     ROM_LOAD( "palettes.rom", 0x0000, 0x4800, CRC(87e879b8) SHA1(dc40fb30a1a982365887059bc0768c27c55f1418) )
 
-    ROM_REGION( 0x90000, "video1", ROMREGION_ERASEFF ) /* MS-DOS: Cinematic */
-    ROM_LOAD( "video1.rom", 0x00000, 0x90000, NO_DUMP )
+    ROM_REGION( 0x90000, "cinematic", ROMREGION_ERASEFF ) /* MS-DOS: Cinematic */
+    ROM_LOAD( "cinematic.rom", 0x00000, 0x90000, NO_DUMP )
 
     ROM_REGION( 0x8000, "video2", ROMREGION_ERASEFF ) /* MS-DOS: Video2 */
     ROM_LOAD( "video2.rom", 0x0000, 0x8000, NO_DUMP )

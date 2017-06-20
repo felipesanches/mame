@@ -28,6 +28,10 @@ public:
 
     DECLARE_READ8_MEMBER(fetch_byte);
     DECLARE_WRITE8_MEMBER(set_instruction_pointer);
+    DECLARE_READ8_MEMBER(fetch_polygon_data);
+    DECLARE_WRITE8_MEMBER(set_polygon_data_offset);
+    DECLARE_READ8_MEMBER(chargen_r);
+    DECLARE_READ8_MEMBER(strings_r);
     DECLARE_WRITE8_MEMBER(switch_level_bank);
     DECLARE_WRITE8_MEMBER(changePalette);
     DECLARE_WRITE8_MEMBER(switch_work_videopage_bank);
@@ -35,6 +39,7 @@ public:
     DECLARE_WRITE8_MEMBER(select_active_videopage_y);
     DECLARE_WRITE8_MEMBER(select_work_videopage_y);
     DECLARE_WRITE8_MEMBER(select_screens_y);
+    DECLARE_WRITE8_MEMBER(select_polygon_data_source);
 
     required_device<cpu_device> m_maincpu;
     required_device<cpu_device> m_soundcpu;
@@ -47,6 +52,7 @@ public:
 
 private:
     uint16_t instruction_pointer;
+    uint16_t polygon_data_offset;
     uint8_t level_bank;
     uint8_t work_videopage_bank;
     uint8_t screens_bank;
@@ -54,6 +60,11 @@ private:
     uint8_t work_videopage_y;
     uint8_t screens_y;
     uint8_t* bytecode_base;
+    uint8_t* chargen_base;
+    uint8_t* strings_base;
+    uint8_t* polygon_cinematic_base;
+    uint8_t* polygon_video2_base;
+    bool use_video_2;
 };
 
 #endif //#ifndef __ANOTHERW_H__

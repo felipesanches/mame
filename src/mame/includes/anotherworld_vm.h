@@ -94,7 +94,7 @@ public:
     void setDataBuffer(uint8_t type, uint16_t offset);
     void loadScreen(uint8_t screen_id);
     void readAndDrawPolygon(uint8_t color, uint16_t zoom, const VMPoint &pt);
-    void fillPolygon(uint16_t color, uint16_t zoom, const VMPoint &pt);
+    void fillPolygon(uint16_t color, const VMPoint &pt);
     void drawPoint(uint8_t color, int16_t x, int16_t y);
     void readAndDrawPolygonHierarchy(uint16_t zoom, const VMPoint &pgc);
     int32_t calcStep(const VMPoint &p1, const VMPoint &p2, uint16_t &dy);

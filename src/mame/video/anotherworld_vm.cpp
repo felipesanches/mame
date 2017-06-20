@@ -113,7 +113,7 @@ void another_world_vm_state::readAndDrawPolygon(uint8_t color, uint16_t zoom, co
         }
 
         m_polygon.readVertices(&m_polygonData[m_data_offset], zoom);
-        fillPolygon(color, zoom, pt);
+        fillPolygon(color, pt);
     } else {
         value &= 0x3F;
         switch (value){
@@ -205,7 +205,7 @@ int32_t another_world_vm_state::calcStep(const VMPoint &p1, const VMPoint &p2, u
     return dx * v * 4;
 }
 
-void another_world_vm_state::fillPolygon(uint16_t color, uint16_t zoom, const VMPoint &pt) {
+void another_world_vm_state::fillPolygon(uint16_t color, const VMPoint &pt) {
     
     if (m_polygon.bbox_w == 0 && m_polygon.bbox_h == 1 && m_polygon.numPoints == 4) {
         drawPoint(color, pt.x, pt.y);

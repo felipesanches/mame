@@ -369,7 +369,7 @@ void another_world_cpu_device::execute_instruction()
         }
 
         ((another_world_vm_state*) owner())->setDataBuffer(m_useVideo2 ? VIDEO_2 : CINEMATIC, offset);
-        ((another_world_vm_state*) owner())->readAndDrawPolygon(0xFF, zoom, VMPoint(x, y));
+        ((another_world_vm_state*) owner())->readAndDrawPolygon(COLOR_BLACK, zoom, VMPoint(x, y));
         return;
     }
     
