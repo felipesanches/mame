@@ -37,6 +37,7 @@ bitmap_ind16* another_world_vm_state::getPagePtr(uint8_t pageId){
 }
 
 void another_world_vm_state::setDataBuffer(uint8_t type, uint16_t offset){
+    m_use_video2 = (type==0x01);
     switch (type){
         case CINEMATIC:
             m_polygonData = (uint8_t *) membank("video1_bank")->base();
@@ -78,7 +79,14 @@ void another_world_vm_state::loadScreen(uint8_t screen_id) {
     }
 }
 
-void VMPolygon::readVertices(const uint8_t *p, uint16_t zoom) {
+void VMPolygon::readVertices(const uint8_t *p, uint16_t zoom, const uint8_t *ref, bool video_2, uint8_t level) {
+
+    if (video_2) {
+        printf("VIDEO 2: 0x%04lX-", (unsigned long int) (p - ref));
+    } else {
+        printf("CINE-%02X: 0x%04lX-", level, (unsigned long int) (p - ref));
+    }
+
     bbox_w = (*p++) * zoom / DEFAULT_ZOOM;
     bbox_h = (*p++) * zoom / DEFAULT_ZOOM;
     
@@ -91,6 +99,8 @@ void VMPolygon::readVertices(const uint8_t *p, uint16_t zoom) {
         pt->x = (*p++) * zoom / DEFAULT_ZOOM;
         pt->y = (*p++) * zoom / DEFAULT_ZOOM;
     }
+
+    printf("0x%04lX \t: readVertices (numPoints = %d)\n", (unsigned long int) (p - ref - 1), numPoints);
 }
 
 /* This is a recursive method.
@@ -105,6 +115,11 @@ void another_world_vm_state::readAndDrawPolygon(uint8_t color, uint16_t zoom, co
         return;
     }
 
+    if (m_use_video2) {
+        printf("VIDEO 2: 0x%04X \t: readAndDrawPolygon\n", m_data_offset);
+    } else {
+        printf("CINE-%02X: 0x%04X \t: readAndDrawPolygon\n", level_bank, m_data_offset);
+    }
     uint8_t value = m_polygonData[m_data_offset++];
 
     if (value >= 0xC0) {
@@ -112,7 +127,7 @@ void another_world_vm_state::readAndDrawPolygon(uint8_t color, uint16_t zoom, co
             color = value & 0x3F; //why?
         }
 
-        m_polygon.readVertices(&m_polygonData[m_data_offset], zoom);
+        m_polygon.readVertices(&m_polygonData[m_data_offset], zoom, m_polygonData, m_use_video2, level_bank);
         fillPolygon(color, pt);
     } else {
         value &= 0x3F;
@@ -133,11 +148,13 @@ void another_world_vm_state::readAndDrawPolygon(uint8_t color, uint16_t zoom, co
 */
 void another_world_vm_state::readAndDrawPolygonHierarchy(uint16_t zoom, const VMPoint &pgc) {
 
+    uint16_t initial = m_data_offset;
     VMPoint pt(pgc);
     pt.x -= m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
     pt.y -= m_polygonData[m_data_offset++] * zoom / DEFAULT_ZOOM;
 
     int16_t children = m_polygonData[m_data_offset++];
+    int16_t num_children = children;
 
     for ( ; children >= 0; --children) {
         uint16_t offset = m_polygonData[m_data_offset++];
@@ -149,8 +166,8 @@ void another_world_vm_state::readAndDrawPolygonHierarchy(uint16_t zoom, const VM
 
         uint16_t color = 0xFF;
         if (offset & 0x8000) {
-            color = m_polygonData[m_data_offset] & 0x7F;
-            m_data_offset+=2;
+            color = m_polygonData[m_data_offset++] & 0x7F;
+            m_data_offset++; //and waste a byte...
         }
 
         uint16_t backup = m_data_offset;
@@ -160,6 +177,14 @@ void another_world_vm_state::readAndDrawPolygonHierarchy(uint16_t zoom, const VM
 
         m_data_offset = backup;
     }
+
+    if (m_use_video_2) {
+        printf("VIDEO 2:");
+    } else {
+        printf("CINE-%02X:", level);
+    }
+
+    printf(" 0x%04X-0x%04X \t: readAndDrawPolygonHierarchy (children = %d)\n", initial, m_data_offset-1, num_children);
 }
 
 #define MIN(a, b) (a < b ? a : b)
@@ -205,7 +230,7 @@ int32_t another_world_vm_state::calcStep(const VMPoint &p1, const VMPoint &p2, u
     return dx * v * 4;
 }
 
-void another_world_vm_state::fillPolygon(uint16_t color, const VMPoint &pt) {
+void another_world_vm_state::fillPolygon(uint8_t color, const VMPoint &pt) {
     
     if (m_polygon.bbox_w == 0 && m_polygon.bbox_h == 1 && m_polygon.numPoints == 4) {
         drawPoint(color, pt.x, pt.y);
@@ -248,8 +273,8 @@ void another_world_vm_state::fillPolygon(uint16_t color, const VMPoint &pt) {
         drawFct = &another_world_vm_state::drawLineBlend;
     }
 
-    uint32_t cpt1 = x1 << 16;
-    uint32_t cpt2 = x2 << 16;
+    uint32_t cpt1 = ((uint32_t) x1) << 16;
+    uint32_t cpt2 = ((uint32_t) x2) << 16;
 
     while (true) {
         m_polygon.numPoints -= 2;

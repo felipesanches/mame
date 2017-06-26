@@ -37,7 +37,7 @@ struct VMPolygon {
     uint8_t numPoints;
     VMPoint points[MAX_POINTS];
 
-    void readVertices(const uint8_t *p, uint16_t zoom);
+    void readVertices(const uint8_t *p, uint16_t zoom, const uint8_t *ref, bool video2, uint8_t level);
 };
 
 /*******************************
@@ -76,6 +76,7 @@ public:
     uint16_t m_data_offset;
     VMPolygon m_polygon;
     int16_t m_hliney;
+    bool m_use_video2;
 
     required_device<another_world_cpu_device> m_maincpu;
     required_device<screen_device> m_screen;
@@ -94,7 +95,7 @@ public:
     void setDataBuffer(uint8_t type, uint16_t offset);
     void loadScreen(uint8_t screen_id);
     void readAndDrawPolygon(uint8_t color, uint16_t zoom, const VMPoint &pt);
-    void fillPolygon(uint16_t color, const VMPoint &pt);
+    void fillPolygon(uint8_t color, const VMPoint &pt);
     void drawPoint(uint8_t color, int16_t x, int16_t y);
     void readAndDrawPolygonHierarchy(uint16_t zoom, const VMPoint &pgc);
     int32_t calcStep(const VMPoint &p1, const VMPoint &p2, uint16_t &dy);

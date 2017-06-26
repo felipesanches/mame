@@ -252,7 +252,7 @@ void another_world_cpu_device::device_reset()
     write_vm_variable(VM_VARIABLE_HERO_ACTION, 0xFFFF);
 #endif
 
-    write_vm_variable(VM_VARIABLE_RANDOM_SEED, time(0));
+    write_vm_variable(VM_VARIABLE_RANDOM_SEED, time(0) );
 }
 
 /* execute instructions on this CPU until icount expires */
