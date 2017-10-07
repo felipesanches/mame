@@ -3782,6 +3782,13 @@ files {
 	MAME_DIR .. "src/mame/video/comquest.cpp",
 }
 
+createMESSProjects(_target, _subtarget, "tectoy")
+files {
+	MAME_DIR .. "src/mame/drivers/pensebem.cpp",
+	MAME_DIR .. "src/mame/drivers/titan_soc.cpp",
+	MAME_DIR .. "src/mame/drivers/zeebo_qualcomm_adreno130.cpp",
+}
+
 createMESSProjects(_target, _subtarget, "tektroni")
 files {
 	MAME_DIR .. "src/mame/drivers/tek405x.cpp",
@@ -4073,7 +4080,6 @@ files {
 	MAME_DIR .. "src/mame/machine/xavix2002_io.cpp",
 	MAME_DIR .. "src/mame/machine/xavix2002_io.h",
 	MAME_DIR .. "src/mame/drivers/xavix2.cpp",
-	MAME_DIR .. "src/mame/drivers/titan_soc.cpp",
 	MAME_DIR .. "src/mame/drivers/unk6502_st2xxx.cpp",
 	MAME_DIR .. "src/mame/drivers/actions_atj2279b.cpp",
 	MAME_DIR .. "src/mame/drivers/pubint_storyreader.cpp",
@@ -4568,7 +4574,6 @@ files {
 	MAME_DIR .. "src/mame/drivers/gscpm.cpp",
 	MAME_DIR .. "src/mame/drivers/gsz80.cpp",
 	MAME_DIR .. "src/mame/drivers/ultim809.cpp",
-	MAME_DIR .. "src/mame/drivers/zeebo_qualcomm_adreno130.cpp",
 }
 
 end
