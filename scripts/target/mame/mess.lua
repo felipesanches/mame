@@ -4201,6 +4201,7 @@ files {
 	MAME_DIR .. "src/mame/drivers/vsmileb.cpp",
 	MAME_DIR .. "src/mame/drivers/clickstart.cpp",
 	MAME_DIR .. "src/mame/drivers/storio.cpp",
+	MAME_DIR .. "src/mame/drivers/smartstart.cpp",
 }
 
 createMESSProjects(_target, _subtarget, "wang")
