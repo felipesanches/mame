@@ -35389,6 +35389,11 @@ renegadeb                       // bootleg
 @source:replicator.cpp
 replica1                        // Makerbot Replicator 1 desktop 3d printer
 
+@source:smartstart.cpp
+//smastart                        // 198? VTech SmartStart
+//pensebem                        // 198? TecToy PenseBem
+pbem2017                        // 2017 TecToy PenseBem
+
 @source:retofinv.cpp
 retofinv                        // A37 (c) 1985 Taito Corporation
 retofinvb                       // bootleg
