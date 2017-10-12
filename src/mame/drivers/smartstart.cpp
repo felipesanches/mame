@@ -24,6 +24,24 @@
 
     2017 OCT 07 [Felipe Sanches]:
         * Initial driver skeleton
+
+
+//Call-graph:
+
+1c94 -> call 1a56 OK
+1c98 -> call 18e4 OK
+1c9e -> call 2f94 ZICA! 
+
+2f94:
+FB2 -> call 1c78 ZICA!
+
+1c78:
+loop infinito ? volta pra 1c94... :-P
+
+Investigar instrução RJMP no endereço F96. Comportamento difere dos parametros do disasm.
+
+
+
 */
 
 #include "emu.h"
