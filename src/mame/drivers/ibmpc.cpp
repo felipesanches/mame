@@ -2,7 +2,7 @@
 // copyright-holders:Wilbert Pol, Miodrag Milanovic
 /***************************************************************************
 
-    drivers/pc.c
+    drivers/ibmpc.cpp
 
 Driver file for IBM PC, IBM PC XT, and related machines.
 
@@ -257,6 +257,7 @@ XT U44 IBM.bin: IBM 5160 PC/XT Bank-selection decoding ROM (256x4 bit). Not mapp
 
 #include "emu.h"
 #include "cpu/i86/i86.h"
+#include "cpu/mcs48/mcs48.h"
 #include "machine/ram.h"
 #include "bus/pc_kbd/keyboards.h"
 #include "machine/genpc.h"
@@ -271,6 +272,11 @@ public:
 
 	required_device<cpu_device> m_maincpu;
 };
+
+static ADDRESS_MAP_START( scopus_kb_map, AS_PROGRAM, 8, ibmpc_state )
+	ADDRESS_MAP_UNMAP_HIGH
+	AM_RANGE(0x000, 0xfff) AM_ROM AM_REGION("keyboard", 0)
+ADDRESS_MAP_END
 
 static ADDRESS_MAP_START( pc8_map, AS_PROGRAM, 8, ibmpc_state )
 	ADDRESS_MAP_UNMAP_HIGH
@@ -330,20 +336,23 @@ static MACHINE_CONFIG_START( ibm5160 )
 	MCFG_CPU_IO_MAP(pc8_io)
 	MCFG_CPU_IRQ_ACKNOWLEDGE_DEVICE("mb:pic8259", pic8259_device, inta_cb)
 
+	MCFG_CPU_ADD("keyboard", I8035, XTAL_6_144MHz)
+	MCFG_CPU_PROGRAM_MAP(scopus_kb_map)
+
 	MCFG_IBM5160_MOTHERBOARD_ADD("mb","maincpu")
 	MCFG_DEVICE_INPUT_DEFAULTS(cga)
 
 	MCFG_ISA8_SLOT_ADD("mb:isa", "isa1", pc_isa8_cards, "cga", false)
 	MCFG_ISA8_SLOT_ADD("mb:isa", "isa2", pc_isa8_cards, "com", false)
 	MCFG_ISA8_SLOT_ADD("mb:isa", "isa3", pc_isa8_cards, "fdc_xt", false)
-	MCFG_ISA8_SLOT_ADD("mb:isa", "isa4", pc_isa8_cards, "hdc", false)
+//	MCFG_ISA8_SLOT_ADD("mb:isa", "isa4", pc_isa8_cards, "hdc", false)
 	MCFG_ISA8_SLOT_ADD("mb:isa", "isa5", pc_isa8_cards, nullptr, false)
 	MCFG_ISA8_SLOT_ADD("mb:isa", "isa6", pc_isa8_cards, nullptr, false)
 	MCFG_ISA8_SLOT_ADD("mb:isa", "isa7", pc_isa8_cards, nullptr, false)
 	MCFG_ISA8_SLOT_ADD("mb:isa", "isa8", pc_isa8_cards, nullptr, false)
 
 	/* keyboard */
-	MCFG_PC_KBDC_SLOT_ADD("mb:pc_kbdc", "kbd", pc_xt_keyboards, STR_KBD_IBM_PC_XT_83)
+	//MCFG_PC_KBDC_SLOT_ADD("mb:pc_kbdc", "kbd", pc_xt_keyboards, STR_KBD_IBM_PC_XT_83)
 
 	/* internal ram */
 	MCFG_RAM_ADD(RAM_TAG)
@@ -400,6 +409,7 @@ ROM_START( ibm5150 )
 	ROM_REGION(0x2000,"gfx1", 0)
 	ROM_LOAD("5788005.u33", 0x00000, 0x2000, CRC(0bf56d70) SHA1(c2a8b10808bf51a3c123ba3eb1e9dd608231916f)) /* "AMI 8412PI // 5788005 // (C) IBM CORP. 1981 // KOREA" */
 ROM_END
+
 ROM_START( ibm5155 )
 	ROM_REGION(0x10000,"bios", 0)
 	ROM_LOAD("5000027.u19", 0x0000, 0x8000, CRC(fc982309) SHA1(2aa781a698a21c332398d9bc8503d4f580df0a05))
@@ -476,6 +486,14 @@ ROM_START( ibm5160 )
 	ROM_SYSTEM_BIOS( 3, "rev4", "IBM XT 5160 05/09/86" )    /* Minor bugfixes to keyboard code, supposedly */
 	ROMX_LOAD("68x4370.u19", 0x0000, 0x8000, CRC(758ff036) SHA1(045e27a70407d89b7956ecae4d275bd2f6b0f8e2), ROM_BIOS(4))
 	ROMX_LOAD("62x0890.u18", 0x8000, 0x8000, CRC(4f417635) SHA1(daa61762d3afdd7262e34edf1a3d2df9a05bcebb), ROM_BIOS(4))
+	
+	ROM_SYSTEM_BIOS( 4, "nexus2600", "Scopus Nexus 2600" )    /* THIS IS A HACK!!! */
+	ROMX_LOAD("bios_v5.03_1de2.u1", 0x0000, 0x2000, CRC(a7fa24e2) SHA1(be9f804455ff35d8e385df552e4734fde5319ba8), ROM_BIOS(5))
+	ROMX_LOAD("bios_v5.03_2de2.u14", 0xe000, 0x2000, CRC(3269925c) SHA1(c8ef18b56888b414faa0cc3a00ca94eb6bea539b), ROM_BIOS(5))
+
+//  F000:0000 => F0000
+//  F000:FFFF => FFFFF
+
 
 //  ROM_SYSTEM_BIOS( 4, "xtdiag", "IBM XT 5160 w/Supersoft Diagnostics" )    /* ROMs marked as BAD_DUMP for now. We expect the data to be in a different ROM chip layout */
 //  ROMX_LOAD("basicc11.f6", 0xf6000, 0x2000, BAD_DUMP CRC(80d3cf5d) SHA1(64769b7a8b60ffeefa04e4afbec778069a2840c9), ROM_BIOS(5) )
@@ -487,6 +505,9 @@ ROM_START( ibm5160 )
 	/* IBM 1501981(CGA) and 1501985(MDA) Character rom */
 	ROM_REGION(0x2000,"gfx1", 0)
 	ROM_LOAD("5788005.u33", 0x00000, 0x2000, CRC(0bf56d70) SHA1(c2a8b10808bf51a3c123ba3eb1e9dd608231916f)) /* "AMI 8412PI // 5788005 // (C) IBM CORP. 1981 // KOREA" */
+
+	ROM_REGION(0x1000,"keyboard", 0)
+	ROM_LOAD("1600_27a3_t.u603", 0x0000, 0x1000, CRC(14a944ef) SHA1(9e56cb67b0b60ff97031914688545324e3b5789e))
 
 	/* Z80 ROM on the Xebec 1210 and 1220 Hard Disk Controllers */
 //  ROM_REGION(0x10000, "cpu1", 0)
@@ -558,5 +579,6 @@ ROM_END
 //    YEAR     NAME        PARENT      COMPAT  MACHINE     INPUT    STATE        INIT  COMPANY                             FULLNAME                    FLAGS
 COMP( 1981,    ibm5150,    0,          0,      ibm5150,    0,       ibmpc_state, 0,    "International Business Machines",  "IBM PC 5150",              0 )
 COMP( 1982,    ibm5155,    ibm5150,    0,      ibm5150,    0,       ibmpc_state, 0,    "International Business Machines",  "IBM PC 5155",              0 )
+//COMP( 1982,    nexus2600,  ibm5160,    0,      ibm5160,    0,       ibmpc_state, 0,    "Scopus",                           "Nexus 2600",               MACHINE_NOT_WORKING )
 COMP( 1985,    ibm5140,    ibm5150,    0,      ibm5140,    0,       ibmpc_state, 0,    "International Business Machines",  "IBM PC 5140 Convertible",  MACHINE_NOT_WORKING )
 COMP( 1982,    ibm5160,    ibm5150,    0,      ibm5160,    0,       ibmpc_state, 0,    "International Business Machines",  "IBM XT 5160",              0 )
