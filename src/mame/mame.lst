@@ -15073,6 +15073,7 @@ ibm5140                         // 1985 IBM 5140
 ibm5150                         // 1981 IBM 5150
 ibm5155                         // 1982 IBM 5155
 ibm5160                         // 1982 IBM XT 5160
+nexus2600                       // 1982 Scopus Nexus 2600
 
 @source:ibmpcjr.cpp
 ibmpcjr                         // 1984 IBM PC Jr
