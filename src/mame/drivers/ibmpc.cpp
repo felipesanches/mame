@@ -260,6 +260,7 @@ XT U44 IBM.bin: IBM 5160 PC/XT Bank-selection decoding ROM (256x4 bit). Not mapp
 #include "cpu/mcs48/mcs48.h"
 #include "machine/ram.h"
 #include "bus/pc_kbd/keyboards.h"
+#include "machine/i8251.h"
 #include "machine/genpc.h"
 #include "softlist.h"
 
@@ -273,10 +274,17 @@ public:
 	required_device<cpu_device> m_maincpu;
 };
 
-static ADDRESS_MAP_START( scopus_kb_map, AS_PROGRAM, 8, ibmpc_state )
+static ADDRESS_MAP_START( scopus_kb_prog_map, AS_PROGRAM, 8, ibmpc_state )
 	ADDRESS_MAP_UNMAP_HIGH
 	AM_RANGE(0x000, 0xfff) AM_ROM AM_REGION("keyboard", 0)
 ADDRESS_MAP_END
+
+static ADDRESS_MAP_START( scopus_kb_io_map, AS_IO, 8, ibmpc_state )
+	ADDRESS_MAP_UNMAP_HIGH
+//        AM_RANGE(0x00??, 0x00??) AM_DEVREADWRITE("keyb_uart", i8251_device, data_r, data_w)
+//        AM_RANGE(0x00??, 0x00??) AM_DEVREADWRITE("keyb_uart", i8251_device, status_r, control_w)
+ADDRESS_MAP_END
+
 
 static ADDRESS_MAP_START( pc8_map, AS_PROGRAM, 8, ibmpc_state )
 	ADDRESS_MAP_UNMAP_HIGH
@@ -286,6 +294,8 @@ ADDRESS_MAP_END
 static ADDRESS_MAP_START(pc8_io, AS_IO, 8, ibmpc_state )
 	ADDRESS_MAP_UNMAP_HIGH
 	AM_RANGE(0x0000, 0x00ff) AM_DEVICE("mb", ibm5160_mb_device, map)
+//        AM_RANGE(0x00??, 0x00??) AM_DEVREADWRITE("mb_uart", i8251_device, data_r, data_w)
+//        AM_RANGE(0x00??, 0x00??) AM_DEVREADWRITE("mb_uart", i8251_device, status_r, control_w)
 ADDRESS_MAP_END
 
 static DEVICE_INPUT_DEFAULTS_START(cga)
@@ -337,7 +347,18 @@ static MACHINE_CONFIG_START( ibm5160 )
 	MCFG_CPU_IRQ_ACKNOWLEDGE_DEVICE("mb:pic8259", pic8259_device, inta_cb)
 
 	MCFG_CPU_ADD("keyboard", I8035, XTAL_6_144MHz)
-	MCFG_CPU_PROGRAM_MAP(scopus_kb_map)
+	MCFG_CPU_PROGRAM_MAP(scopus_kb_prog_map)
+	MCFG_CPU_IO_MAP(scopus_kb_io_map)
+
+        MCFG_DEVICE_ADD("keyb_uart", I8251, 0)
+        MCFG_I8251_TXD_HANDLER(DEVWRITELINE("mb_uart", i8251_device, write_rxd))
+        MCFG_I8251_DTR_HANDLER(DEVWRITELINE("mb_uart", i8251_device, write_cts))
+        MCFG_I8251_RTS_HANDLER(DEVWRITELINE("mb_uart", i8251_device, write_dsr))
+
+        MCFG_DEVICE_ADD("mb_uart", I8251, 0)
+        MCFG_I8251_TXD_HANDLER(DEVWRITELINE("keyb_uart", i8251_device, write_rxd))
+        MCFG_I8251_DTR_HANDLER(DEVWRITELINE("keyb_uart", i8251_device, write_cts))
+        MCFG_I8251_RTS_HANDLER(DEVWRITELINE("keyb_uart", i8251_device, write_dsr))
 
 	MCFG_IBM5160_MOTHERBOARD_ADD("mb","maincpu")
 	MCFG_DEVICE_INPUT_DEFAULTS(cga)
