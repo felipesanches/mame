@@ -76,6 +76,7 @@
 
 #include "machine/netlist.h"
 #include "machine/nl_stuntcyc.h"
+#include "machine/nl_gtrak10.h"
 #include "netlist/devices/net_lib.h"
 #include "video/fixfreq.h"
 #include "screen.h"
@@ -102,6 +103,10 @@
 #define SC_HBEND        (32)
 #define SC_VBSTART      (SC_VTOTAL)
 #define SC_VBEND        (8)
+
+#define GTRAK10_VIDCLOCK 14318181
+#define GTRAK10_HTOTAL 451
+#define GTRAK10_VTOTAL 521
 
 class atarikee_state : public driver_device
 {
@@ -190,6 +195,23 @@ private:
 	int m_last_hpos;
 	int m_last_vpos;
 	double m_last_fraction;
+};
+
+class gtrak10_state : public driver_device
+{
+public:
+	gtrak10_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag)
+	{
+	}
+
+	void gtrak10(machine_config &config);
+
+protected:
+        // driver_device overrides
+        virtual void machine_start() override { };
+        virtual void machine_reset() override { };
+        virtual void video_start() override  { };
 };
 
 static NETLIST_START(atarikee)
@@ -352,6 +374,30 @@ MACHINE_CONFIG_START(stuntcyc_state::stuntcyc)
 	//MCFG_FIXFREQ_SYNC_THRESHOLD(0.30)
 MACHINE_CONFIG_END
 
+MACHINE_CONFIG_START(gtrak10_state::gtrak10)
+	/* basic machine hardware */
+	MCFG_DEVICE_ADD("maincpu", NETLIST_CPU, NETLIST_CLOCK)
+	MCFG_NETLIST_SETUP(gtrak10)
+
+	MCFG_NETLIST_ANALOG_OUTPUT("maincpu", "vid0", "VIDEO_OUT", fixedfreq_device, update_vid, "fixfreq")
+
+/* video hardware */
+
+	MCFG_FIXFREQ_ADD("fixfreq", "screen")
+	MCFG_FIXFREQ_MONITOR_CLOCK(GTRAK10_VIDCLOCK)
+	//MCFG_FIXFREQ_HORZ_PARAMS(GTRAK10_HTOTAL-32,GTRAK10_HTOTAL-20,GTRAK10_HTOTAL-4, GTRAK10_HTOTAL)
+	//MCFG_FIXFREQ_VERT_PARAMS(GTRAK10_VTOTAL-8,GTRAK10_VTOTAL-9,GTRAK10_VTOTAL-6,GTRAK10_VTOTAL)
+	MCFG_FIXFREQ_HORZ_PARAMS(GTRAK10_HTOTAL, GTRAK10_HTOTAL + 10, GTRAK10_HTOTAL + 19, GTRAK10_HTOTAL + 32)
+	MCFG_FIXFREQ_VERT_PARAMS(GTRAK10_VTOTAL, GTRAK10_VTOTAL, GTRAK10_VTOTAL, GTRAK10_VTOTAL + 8)
+	MCFG_FIXFREQ_FIELDCOUNT(2)
+	MCFG_FIXFREQ_SYNC_THRESHOLD(1.0)
+	MCFG_FIXFREQ_GAIN(0.5)
+
+MACHINE_CONFIG_END
+
+static INPUT_PORTS_START( gtrak10 )
+	// TODO
+INPUT_PORTS_END
 
 /***************************************************************************
 
@@ -646,23 +692,23 @@ ROM_END
 
 */
 
-GAME(1975,  antiairc,  0,        atarikee, 0, atarikee_state, empty_init, ROT0,  "Atari",        "Anti-Aircraft [TTL]",    MACHINE_IS_SKELETON)
-GAME(1975,  crashnsc,  0,        atarikee, 0, atarikee_state, empty_init, ROT0,  "Atari",        "Crash 'n Score/Stock Car [TTL]",   MACHINE_IS_SKELETON)
-GAME(1974,  gtrak10,   0,        atarikee, 0, atarikee_state, empty_init, ROT0,  "Atari/Kee",    "Gran Trak 10/Trak 10/Formula K [TTL]",     MACHINE_IS_SKELETON)
-GAME(1974,  gtrak10a,  gtrak10,  atarikee, 0, atarikee_state, empty_init, ROT0,  "Atari/Kee",    "Gran Trak 10/Trak 10/Formula K (older) [TTL]",     MACHINE_IS_SKELETON)
-GAME(1974,  gtrak20,   0,        atarikee, 0, atarikee_state, empty_init, ROT0,  "Atari/Kee",    "Gran Trak 20/Trak 20/Twin Racer [TTL]",    MACHINE_IS_SKELETON)
-GAME(1976,  indy4,     0,        atarikee, 0, atarikee_state, empty_init, ROT0,  "Atari/Kee",    "Indy 4 [TTL]",           MACHINE_IS_SKELETON)
-GAME(1975,  indy800,   0,        atarikee, 0, atarikee_state, empty_init, ROT90, "Atari/Kee",    "Indy 800 [TTL]",         MACHINE_IS_SKELETON)
-GAME(1975,  jetfight,  0,        atarikee, 0, atarikee_state, empty_init, ROT0,  "Atari",        "Jet Fighter/Jet Fighter Cocktail/Launch Aircraft (set 1) [TTL]",      MACHINE_IS_SKELETON)
-GAME(1975,  jetfighta, jetfight, atarikee, 0, atarikee_state, empty_init, ROT0,  "Atari",        "Jet Fighter/Jet Fighter Cocktail/Launch Aircraft (set 2) [TTL]",      MACHINE_IS_SKELETON)
-GAME(1976,  lemans,    0,        atarikee, 0, atarikee_state, empty_init, ROT0,  "Atari",        "Le Mans [TTL]",          MACHINE_IS_SKELETON)
-GAME(1976,  outlaw,    0,        atarikee, 0, atarikee_state, empty_init, ROT0,  "Atari",        "Outlaw [TTL]",           MACHINE_IS_SKELETON)
-GAME(1974,  qwakttl,   0,        atarikee, 0, atarikee_state, empty_init, ROT0,  "Atari",        "Qwak!/Quack [TTL]",      MACHINE_IS_SKELETON)
-GAME(1975,  sharkjaw,  0,        atarikee, 0, atarikee_state, empty_init, ROT0,  "Atari/Horror Games",    "Shark JAWS [TTL]",     MACHINE_IS_SKELETON)
-GAME(1975,  steeplec,  0,        atarikee, 0, atarikee_state, empty_init, ROT0,  "Atari",        "Steeplechase [TTL]",     MACHINE_IS_SKELETON)
-GAME(1976,  stuntcyc,  0,        stuntcyc, 0, stuntcyc_state, empty_init, ROT0,  "Atari",        "Stunt Cycle [TTL]",      MACHINE_IS_SKELETON)
-GAME(1974,  tank,      0,        atarikee, 0, atarikee_state, empty_init, ROT0,  "Atari/Kee",    "Tank/Tank Cocktail [TTL]",     MACHINE_IS_SKELETON)
-GAME(1975,  tankii,    0,        atarikee, 0, atarikee_state, empty_init, ROT0,  "Atari/Kee",    "Tank II [TTL]",          MACHINE_IS_SKELETON)
+GAME(1975,  antiairc,  0,        atarikee,       0, atarikee_state, empty_init, ROT0,  "Atari",        "Anti-Aircraft [TTL]",    MACHINE_IS_SKELETON)
+GAME(1975,  crashnsc,  0,        atarikee,       0, atarikee_state, empty_init, ROT0,  "Atari",        "Crash 'n Score/Stock Car [TTL]",   MACHINE_IS_SKELETON)
+GAME(1974,  gtrak10,   0,         gtrak10, gtrak10,  gtrak10_state, empty_init, ROT0,  "Atari/Kee",    "Gran Trak 10/Trak 10/Formula K [TTL]",     MACHINE_NO_SOUND)
+GAME(1974,  gtrak10a,  gtrak10,  atarikee,       0, atarikee_state, empty_init, ROT0,  "Atari/Kee",    "Gran Trak 10/Trak 10/Formula K (older) [TTL]",     MACHINE_IS_SKELETON)
+GAME(1974,  gtrak20,   0,        atarikee,       0, atarikee_state, empty_init, ROT0,  "Atari/Kee",    "Gran Trak 20/Trak 20/Twin Racer [TTL]",    MACHINE_IS_SKELETON)
+GAME(1976,  indy4,     0,        atarikee,       0, atarikee_state, empty_init, ROT0,  "Atari/Kee",    "Indy 4 [TTL]",           MACHINE_IS_SKELETON)
+GAME(1975,  indy800,   0,        atarikee,       0, atarikee_state, empty_init, ROT90, "Atari/Kee",    "Indy 800 [TTL]",         MACHINE_IS_SKELETON)
+GAME(1975,  jetfight,  0,        atarikee,       0, atarikee_state, empty_init, ROT0,  "Atari",        "Jet Fighter/Jet Fighter Cocktail/Launch Aircraft (set 1) [TTL]",      MACHINE_IS_SKELETON)
+GAME(1975,  jetfighta, jetfight, atarikee,       0, atarikee_state, empty_init, ROT0,  "Atari",        "Jet Fighter/Jet Fighter Cocktail/Launch Aircraft (set 2) [TTL]",      MACHINE_IS_SKELETON)
+GAME(1976,  lemans,    0,        atarikee,       0, atarikee_state, empty_init, ROT0,  "Atari",        "Le Mans [TTL]",          MACHINE_IS_SKELETON)
+GAME(1976,  outlaw,    0,        atarikee,       0, atarikee_state, empty_init, ROT0,  "Atari",        "Outlaw [TTL]",           MACHINE_IS_SKELETON)
+GAME(1974,  qwakttl,   0,        atarikee,       0, atarikee_state, empty_init, ROT0,  "Atari",        "Qwak!/Quack [TTL]",      MACHINE_IS_SKELETON)
+GAME(1975,  sharkjaw,  0,        atarikee,       0, atarikee_state, empty_init, ROT0,  "Atari/Horror Games",    "Shark JAWS [TTL]",     MACHINE_IS_SKELETON)
+GAME(1975,  steeplec,  0,        atarikee,       0, atarikee_state, empty_init, ROT0,  "Atari",        "Steeplechase [TTL]",     MACHINE_IS_SKELETON)
+GAME(1976,  stuntcyc,  0,        stuntcyc,       0, stuntcyc_state, empty_init, ROT0,  "Atari",        "Stunt Cycle [TTL]",      MACHINE_IS_SKELETON)
+GAME(1974,  tank,      0,        atarikee,       0, atarikee_state, empty_init, ROT0,  "Atari/Kee",    "Tank/Tank Cocktail [TTL]",     MACHINE_IS_SKELETON)
+GAME(1975,  tankii,    0,        atarikee,       0, atarikee_state, empty_init, ROT0,  "Atari/Kee",    "Tank II [TTL]",          MACHINE_IS_SKELETON)
 
 // MISSING ROM DUMPS
 //GAME(1975,  astrotrf,  steeplec, atarikee, 0, atarikee_state, empty_init, ROT0,  "Atari",        "Astroturf [TTL]",        MACHINE_IS_SKELETON)
