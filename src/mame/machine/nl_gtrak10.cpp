@@ -154,13 +154,29 @@ NETLIST_START(gtrak10)
 	ALIAS(I03, J7.QC)
 	ALIAS(I04, J7.QD)
 
-	//      name,   CLK, CLKINH,  SH_LDQ,   SER,     A,     B,     C,     D,     E,     F,     G,     H
-	TTL_74165(H6, CLOCK,      P, HSYNC_Q,     P, J5.D0, J5.D1, J5.D2, J5.D3, J5.D4, J5.D5, J5.D6, J5.D7)
-	TTL_74165(F6, CLOCK,      P,  Ld1B_Q, H6.QH, J5.D0, J5.D1, J5.D2, J5.D3, J5.D4, J5.D5, J5.D6, J5.D7)
+	// ------------ Car window ----------------------
+	//       name,   CLK,      D, CLRQ,  PREQ
+	TTL_7474(A5_B, CLOCK, H5_A.Q,    P, L7.RC) // this flip-flop is incorrectly labeled "79" in the schematics
+	//     name,   CLK,   ENP,   ENT,   CLRQ, LOADQ,      A,      B,      C,      D
+	TTL_9316(E7, CLOCK,     P,     P,  CLOCK,  D5.Q,  H7.Q0,  H7.Q1,  H7.Q2,  H7.Q3)
+	TTL_9316(D7, CLOCK, E7.RC,     P,  CLOCK,  D5.Q,      P,      P,      P,      P)
+	TTL_7400_NAND(D5, E7.RC, B6_D.Q)
+	TTL_7404_INVERT(B6_D, H5_A.Q)
+	TTL_7410_NAND(H5_A, D7.RC, D6_A.Q, D6_B.Q)
+	//        name,    CLK, J, K,     CLRQ
+	TTL_74107(D6_A,  D7.RC, P, P, RESET1_Q)
+	TTL_74107(D6_B, D6_A.Q, P, P, RESET1_Q)
+
+
+	// ------------- Car1Video shift registers: -----------
+	//      name,   CLK,  CLKINH,   SH_LDQ,    SER,      A,     B,     C,     D,     E,     F,     G,     H
+	TTL_74165(H6, CLOCK,  A5_B.Q,  HSYNC_Q,      P,  J5.D0, J5.D1, J5.D2, J5.D3, J5.D4, J5.D5, J5.D6, J5.D7)
+	TTL_74165(F6, CLOCK,  A5_B.Q,   Ld1B_Q,  H6.QH,  J5.D0, J5.D1, J5.D2, J5.D3, J5.D4, J5.D5, J5.D6, J5.D7)
 	//HACK: ALIAS(G, GROUND)
 	//HACK: TTL_74165(H6, CLOCK, P, HSYNC_Q,     P,     P, G, G, P,   G, G, G, P) // '.--.---.----...-'
 	//HACK: TTL_74165(F6, CLOCK, P,  Ld1B_Q, H6.QH,     G, G, G, G,   P, P, P, G)
-	ALIAS(CAR1VIDEO, F6.QHQ)
+	TTL_7408_AND(F7_B, F6.QHQ, A5_B.QQ)
+	ALIAS(CAR1VIDEO, F7_B.Q)
 
 
 	// --------------- Hack ----------------------
