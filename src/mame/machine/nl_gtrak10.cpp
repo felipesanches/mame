@@ -119,6 +119,24 @@ NETLIST_START(gtrak10)
 	TTL_7404_INVERT(E1_D, Ld1B_Q)
 	ALIAS(Ld1B, E1_D.Q)
 
+	// HCOUNT signal:
+	//        name, CLK,      J,        K,  CLRQ
+	TTL_74107(L1_A,  1H,      P,  L1_B.QQ,  C9.2)
+	TTL_74107(L1_B,  1H, L1_A.Q,   GROUND,  C9.2)
+	CAP(C9, CAP_P(330))
+	RES(R1, RES_K(0.330))
+	RES(R2, RES_K(0.330))
+	NET_C(C9.1, HSYNC_Q)
+	NET_C(V5, R1.1)
+	NET_C(C9.2, R1.2)
+	NET_C(C9.2, R2.1)
+	NET_C(GROUND, R2.2)
+	ALIAS(HCOUNT, L1_A.QQ)
+
+	// TODO: /RESET1 signal:
+	// ...
+	ALIAS(RESET1_Q, P) // FIXME!
+
 	// Actual ROM chip is labeled 74186:
 	//       name,  GQ, EPQ,  A0,  A1,  A2,  A3,  A4,  A5,  A6,  A7,  A8,  A9, A10
 	EPROM_2716(J5, low, low, low, low, low, low, low, low, low, low, low, low, low)
@@ -127,29 +145,38 @@ NETLIST_START(gtrak10)
 	// Vertical positioning of the car:
 	//     name,     EQ, MRQ,    S0Q,    S1Q,    S2Q,    S3Q,    D0,    D1,    D2,    D3
 	TTL_9314(H7, VLd1_Q,   P, GROUND, GROUND, GROUND, GROUND, J5.D4, J5.D5, J5.D6, J5.D7)
+	//     name,    CLK,   ENP,   ENT,     CLRQ, LOADQ,      A,      B,      C,      D
+	TTL_9316(J7, HCOUNT,     P,     P, RESET1_Q,  L5.Q,  H7.Q0,  H7.Q1,  H7.Q2,  H7.Q3)
+	TTL_9316(K7, HCOUNT, J7.RC,     P, RESET1_Q,  L5.Q,      P,      P,      P,      P)
+	TTL_9316(L7, HCOUNT, J7.RC, K7.RC, RESET1_Q,  L5.Q,      P, GROUND,      P,      P)
+	TTL_7400_NAND(L5, J7.RC, L7.RC)
+	ALIAS(I02, J7.QB)
+	ALIAS(I03, J7.QC)
+	ALIAS(I04, J7.QD)
 
-        //      name,   CLK, CLKINH,  SH_LDQ,   SER,     A,     B,     C,     D,     E,     F,     G,     H
+	//      name,   CLK, CLKINH,  SH_LDQ,   SER,     A,     B,     C,     D,     E,     F,     G,     H
 	TTL_74165(H6, CLOCK,      P, HSYNC_Q,     P, J5.D0, J5.D1, J5.D2, J5.D3, J5.D4, J5.D5, J5.D6, J5.D7)
 	TTL_74165(F6, CLOCK,      P,  Ld1B_Q, H6.QH, J5.D0, J5.D1, J5.D2, J5.D3, J5.D4, J5.D5, J5.D6, J5.D7)
-	//TTL_74165(H6, CLOCK, P, HSYNC_Q,     P,     P, G, G, P,   G, G, G, P) // '.--.---.----...-'
-	//TTL_74165(F6, CLOCK, P,  Ld1B_Q, H6.QH,     G, G, G, G,   P, P, P, G)
+	//HACK: ALIAS(G, GROUND)
+	//HACK: TTL_74165(H6, CLOCK, P, HSYNC_Q,     P,     P, G, G, P,   G, G, G, P) // '.--.---.----...-'
+	//HACK: TTL_74165(F6, CLOCK, P,  Ld1B_Q, H6.QH,     G, G, G, G,   P, P, P, G)
 	ALIAS(CAR1VIDEO, F6.QHQ)
-	//ALIAS(G, GROUND)
+
 
 	// --------------- Hack ----------------------
 	// This is a signal only used for debugging.
 	// It generats a pattern of squares on the screen.
 	// CAR1VIDEO = not(16H & 16V | VBLANK | HBLANK)
 	#define SIGNAL_RT 1
-        #if SIGNAL_RT
+	#if SIGNAL_RT
 	TTL_7408_AND(16H_and_16V, 16H, 16V)
 //	TTL_7486_XOR(16H_xor_16V, 16H, 16V)
-        TTL_7432_OR(BLANK, HBLANK, VRESET)
-        TTL_7402_NOR(nor, 16H_and_16V, BLANK)
+	TTL_7432_OR(BLANK, HBLANK, VRESET)
+	TTL_7402_NOR(nor, 16H_and_16V, BLANK)
 	ALIAS(RT, nor.Q)
 	#endif
 
-        // ------------- Video Mixer -----------------
+	// ------------- Video Mixer -----------------
 	RES(R63, RES_K(1))
 	RES(R73, RES_K(0.330))
 	RES(R64, RES_K(0.330))
