@@ -219,6 +219,9 @@
     <ClCompile Include="..\devices\nld_4316.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\devices\nld_dm9314.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\devices\nld_dm9334.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -465,6 +468,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\devices\nld_74194.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\devices\nld_dm9314.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\devices\nld_dm9334.h">

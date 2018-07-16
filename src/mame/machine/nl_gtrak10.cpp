@@ -124,6 +124,10 @@ NETLIST_START(gtrak10)
 	EPROM_2716(J5, low, low, low, low, low, low, low, low, low, low, low, low, low)
 	PARAM(J5.ROM, "racetrack")
 
+	// Vertical positioning of the car:
+	//     name,     EQ, MRQ,    S0Q,    S1Q,    S2Q,    S3Q,    D0,    D1,    D2,    D3
+	TTL_9314(H7, VLd1_Q,   P, GROUND, GROUND, GROUND, GROUND, J5.D4, J5.D5, J5.D6, J5.D7)
+
         //      name,   CLK, CLKINH,  SH_LDQ,   SER,     A,     B,     C,     D,     E,     F,     G,     H
 	TTL_74165(H6, CLOCK,      P, HSYNC_Q,     P, J5.D0, J5.D1, J5.D2, J5.D3, J5.D4, J5.D5, J5.D6, J5.D7)
 	TTL_74165(F6, CLOCK,      P,  Ld1B_Q, H6.QH, J5.D0, J5.D1, J5.D2, J5.D3, J5.D4, J5.D5, J5.D6, J5.D7)

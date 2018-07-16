@@ -69,6 +69,7 @@
 #include "nld_9322.h"
 
 #include "nld_am2847.h"
+#include "nld_dm9314.h"
 #include "nld_dm9334.h"
 
 #include "nld_ne555.h"

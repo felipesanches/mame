@@ -148,6 +148,7 @@
     <ClCompile Include="..\devices\nld_9316.cpp" />
     <ClCompile Include="..\devices\nld_9322.cpp" />
     <ClCompile Include="..\devices\nld_am2847.cpp" />
+    <ClCompile Include="..\devices\nld_dm9314.cpp" />
     <ClCompile Include="..\devices\nld_dm9334.cpp" />
     <ClCompile Include="..\devices\nld_legacy.cpp" />
     <ClCompile Include="..\devices\nld_log.cpp" />
@@ -230,6 +231,7 @@
     <ClInclude Include="..\devices\nld_9322.h" />
     <ClInclude Include="..\devices\nld_am2847.h" />
     <ClInclude Include="..\devices\nld_devinc.h" />
+    <ClInclude Include="..\devices\nld_dm9314.h" />
     <ClInclude Include="..\devices\nld_dm9334.h" />
     <ClInclude Include="..\devices\nld_legacy.h" />
     <ClInclude Include="..\devices\nld_log.h" />

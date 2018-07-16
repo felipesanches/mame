@@ -113,6 +113,7 @@ NLOBJS := \
 	$(NLOBJ)/devices/nld_9316.o \
 	$(NLOBJ)/devices/nld_9322.o \
 	$(NLOBJ)/devices/nld_am2847.o \
+	$(NLOBJ)/devices/nld_dm9314.o \
 	$(NLOBJ)/devices/nld_dm9334.o \
 	$(NLOBJ)/devices/nld_mm5837.o \
 	$(NLOBJ)/devices/nld_ne555.o \
