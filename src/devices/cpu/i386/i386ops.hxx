@@ -2331,6 +2331,7 @@ void i386_device::i386_int()               // Opcode 0xcd
 	int interrupt = FETCH();
 	CYCLES(CYCLES_INT);
 	m_ext = 0; // not an external interrupt
+        logerror("SW INTERRUPT: int %02Xh\n", interrupt);
 	i386_trap(interrupt, 1, 0);
 	m_ext = 1;
 }
