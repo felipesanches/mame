@@ -14,6 +14,7 @@
 #include "bus/pc_kbd/pc_kbdc.h"
 #include "softlist_dev.h"
 #include "speaker.h"
+#include <alsa/asoundlib.h>
 
 #define LOG_PORT80  0
 
@@ -40,8 +41,18 @@ void at_mb_device::device_reset()
 	m_cur_eop = false;
 }
 
+snd_rawmidi_t* m_midiout = NULL;
+char noteon[3]  = {(char) 0x90, (char) 60, (char) 100};
+char noteoff[3]  = {(char) 0x90, (char) 60, (char) 0};
+int current_note = 0;
+int new_note = 0;
+
 void at_mb_device::device_start()
 {
+	int mode = SND_RAWMIDI_SYNC;
+	const char* portname = "hw:1,0,0";
+	snd_rawmidi_open(NULL, &m_midiout, portname, mode);
+
 	if(!strncmp(m_maincpu->shortname(), "i80286", 6))
 		downcast<i80286_cpu_device *>(m_maincpu.target())->set_a20_callback(i80286_cpu_device::a20_cb(&at_mb_device::a20_286, this));
 }
@@ -145,12 +156,12 @@ MACHINE_CONFIG_START(at_mb_device::device_add_mconfig)
 	MCFG_PC_KBDC_OUT_DATA_CB(WRITELINE("keybc", at_keyboard_controller_device, keyboard_data_w))
 MACHINE_CONFIG_END
 
-
 void at_mb_device::map(address_map &map)
 {
 	map(0x0000, 0x001f).rw("dma8237_1", FUNC(am9517a_device::read), FUNC(am9517a_device::write)).umask16(0xffff);
 	map(0x0020, 0x003f).rw("pic8259_master", FUNC(pic8259_device::read), FUNC(pic8259_device::write)).umask16(0xffff);
 	map(0x0040, 0x005f).rw("pit8254", FUNC(pit8254_device::read), FUNC(pit8254_device::write)).umask16(0xffff);
+	map(0x0042, 0x0042).w(FUNC(at_mb_device::pit42_w)).umask16(0xffff);
 	map(0x0061, 0x0061).rw(FUNC(at_mb_device::portb_r), FUNC(at_mb_device::portb_w));
 	map(0x0060, 0x0060).rw("keybc", FUNC(at_keyboard_controller_device::data_r), FUNC(at_keyboard_controller_device::data_w));
 	map(0x0064, 0x0064).rw("keybc", FUNC(at_keyboard_controller_device::status_r), FUNC(at_keyboard_controller_device::command_w));
@@ -185,7 +196,23 @@ void at_mb_device::speaker_set_spkrdata(uint8_t data)
 	m_speaker->level_w(m_at_spkrdata & m_pit_out2);
 }
 
-
+int counter = 0;
+int word = 0;
+WRITE8_MEMBER( at_mb_device::pit42_w )
+{
+	if (word==0){
+		word=1;
+		counter &= 0xFF00;
+		counter |= data;
+	} else {
+		word=0;
+		counter &= 0xFF;
+		counter |= (data << 8);
+	}
+	// freq = 1193180 / counter = 440 * 2^((n-69)/12);
+	new_note = (log2f((1193180.0 / 440.0) / counter) * 12 + 69);
+	printf("Note: %d\n", new_note);
+}
 
 /*************************************************************
  *
@@ -406,8 +433,27 @@ READ8_MEMBER( at_mb_device::portb_r )
 	return data;
 }
 
+static void mute(){
+	noteoff[1] = current_note;
+	snd_rawmidi_write(m_midiout, noteoff, 3);
+}
+
+static void play(int note){
+	mute();
+	noteon[1] = note;
+	snd_rawmidi_write(m_midiout, noteon, 3);
+	current_note = note;
+}
+
 WRITE8_MEMBER( at_mb_device::portb_w )
 {
+	if (new_note > 0 && new_note < 200){
+	        if (BIT(data, 0)){
+			play(new_note);
+		} else
+			mute();
+	}
+
 	m_at_speaker = data;
 	m_pit8254->write_gate2(BIT(data, 0));
 	speaker_set_spkrdata( BIT(data, 1));

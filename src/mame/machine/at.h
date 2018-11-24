@@ -19,6 +19,8 @@ public:
 
 	void map(address_map &map);
 
+	DECLARE_WRITE8_MEMBER(pit42_w);
+
 	DECLARE_READ8_MEMBER(page8_r);
 	DECLARE_WRITE8_MEMBER(page8_w);
 	DECLARE_READ8_MEMBER(portb_r);
