@@ -40980,6 +40980,9 @@ xyonix                          // [1989 Philko]
 kof2002um                       // (c)2009 SNK Playmore / New Channel
 kof2002umj                      // (c)2009 SNK Playmore / New Channel
 
+@source:yamaha_dx7.cpp
+ymdx7s                          // 1987 Yamaha DX7s
+
 @source:yiear.cpp
 yiear                           // GX407 (c) 1985
 yiear2                          // GX407 (c) 1985

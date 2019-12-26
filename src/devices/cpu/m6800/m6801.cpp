@@ -86,6 +86,26 @@ enum
 	IO_ICR2L
 };
 
+/* 6303Y internal registers: */
+enum
+{
+	HD6303_IO_TCSR2 = 0x0F,
+	HD6303_IO_RAMP5CR = 0x14,
+	HD6303_IO_P5DATA,
+	HD6303_IO_P6DDR,
+	HD6303_IO_P6DATA,
+	HD6303_IO_P7DATA,
+	HD6303_IO_OCR2H,
+	HD6303_IO_OCR2L,
+	HD6303_IO_TCSR3,
+	HD6303_IO_TCR,
+	HD6303_IO_TCNT2,
+	HD6303_IO_TRCSR,
+	HD6303_IO_TESTREG,
+        HD6303_IO_P5DDR,
+        HD6303_IO_P6CSR
+};
+
 // serial I/O
 
 #define M6801_RMCR_SS_MASK      0x03 // Speed Select
@@ -111,6 +131,11 @@ enum
 #define M6801_P3CSR_OSS         0x10
 #define M6801_P3CSR_IS3_ENABLE  0x40
 #define M6801_P3CSR_IS3_FLAG    0x80
+
+#define HD6303_P6CSR_LE          0x08
+#define HD6303_P6CSR_OSS         0x10
+#define HD6303_P6CSR_IS6_ENABLE  0x40
+#define HD6303_P6CSR_IS6_FLAG    0x80
 
 static const int M6801_RMCR_SS[] = { 16, 128, 1024, 4096 };
 
@@ -259,9 +284,9 @@ const m6800_cpu_device::op_func m6801_cpu_device::hd63701_insn[0x100] = {
 
 void m6801_cpu_device::m6803_mem(address_map &map)
 {
-	map(0x0000, 0x001f).rw(FUNC(m6801_cpu_device::m6801_io_r), FUNC(m6801_cpu_device::m6801_io_w));
-	map(0x0020, 0x007f).noprw();        /* unused */
-	map(0x0080, 0x00ff).ram();        /* 6803 internal RAM */
+	map(0x0000, 0x0027).rw(FUNC(m6801_cpu_device::hd6303y_io_r), FUNC(m6801_cpu_device::hd6303y_io_w));
+	map(0x0028, 0x007f).noprw();        /* unused */
+	map(0x0080, 0x013f).ram();        /* HD6303Y internal RAM */
 }
 
 
@@ -279,8 +304,8 @@ m6801_cpu_device::m6801_cpu_device(const machine_config &mconfig, const char *ta
 
 m6801_cpu_device::m6801_cpu_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, const op_func *insn, const uint8_t *cycles, address_map_constructor internal)
 	: m6800_cpu_device(mconfig, type, tag, owner, clock, insn, cycles, internal)
-	, m_in_port_func{{*this}, {*this}, {*this}, {*this}}
-	, m_out_port_func{{*this}, {*this}, {*this}, {*this}}
+	, m_in_port_func{{*this}, {*this}, {*this}, {*this}, {*this}, {*this}}
+	, m_out_port_func{{*this}, {*this}, {*this}, {*this}, {*this}, {*this}}
 	, m_out_sc2_func(*this)
 	, m_out_sertx_func(*this)
 {
@@ -842,6 +867,68 @@ void m6801_cpu_device::set_os3(int state)
 	m_out_sc2_func(state);
 }
 
+void m6801_cpu_device::set_os6(int state)
+{
+	LOG("FIXME! OS6: %u\n", state);
+
+	//FIXME: m_out_sc2_func(state);
+}
+
+READ8_MEMBER( m6801_cpu_device::hd6303y_io_r )
+{
+	if (offset < 0x14 && offset != 0x0F){
+		return m6801_cpu_device::m6801_io_r(space, offset, mem_mask);
+	}
+
+	uint8_t data = 0;
+	switch(offset){
+	case HD6303_IO_P6CSR:
+		if ((m_p6csr & HD6303_P6CSR_IS6_FLAG) && !machine().side_effects_disabled())
+		{
+			m_p6csr_is6_flag_read = 1;
+		}
+
+		data = m_p6csr;
+		break;
+	case HD6303_IO_P6DATA:
+		if (!machine().side_effects_disabled())
+		{
+			if (m_p6csr_is6_flag_read)
+			{
+				LOGPORT("Cleared IS6\n");
+				m_p6csr &= ~HD6303_P6CSR_IS6_FLAG;
+				m_p6csr_is6_flag_read = 0;
+			}
+
+			if (!(m_p6csr & HD6303_P6CSR_OSS))
+			{
+				set_os6(ASSERT_LINE);
+			}
+		}
+
+		if ((m_p6csr & HD6303_P6CSR_LE) || (m_port_ddr[5] == 0xff))
+			data = m_port_data[5];
+		else
+			data = (m_in_port_func[5]() & (m_port_ddr[5] ^ 0xff))
+				| (m_port_data[5] & m_port_ddr[5]);
+
+		if (!machine().side_effects_disabled())
+		{
+			m_port6_latched = 0;
+
+			if (!(m_p6csr & HD6303_P6CSR_OSS))
+			{
+				set_os6(CLEAR_LINE);
+			}
+		}
+		break;
+	default:
+		logerror("PC %04x: warning - read from reserved internal register %02x\n", pc(),offset);
+	}
+
+	return data;
+}
+
 READ8_MEMBER( m6801_cpu_device::m6801_io_r )
 {
 	uint8_t data = 0;
@@ -1050,6 +1137,24 @@ READ8_MEMBER( m6801_cpu_device::m6801_io_r )
 	}
 
 	return data;
+}
+
+WRITE8_MEMBER( m6801_cpu_device::hd6303y_io_w )
+{
+	if (offset < 0x14 && offset != 0x0F){
+		m6801_cpu_device::m6801_io_w(space, offset, data, mem_mask);
+		return;
+	}
+
+	switch (offset)
+	{
+	case IO_P1DDR: /* DELETE THIS */
+		break; /* DELETE THIS */
+	default:
+		logerror("PC %04x: warning - write %02x to reserved internal register %02x\n", pc(),data,offset);
+		break;
+	}
+
 }
 
 WRITE8_MEMBER( m6801_cpu_device::m6801_io_w )

@@ -59,6 +59,9 @@ public:
 	DECLARE_READ8_MEMBER( m6801_io_r );
 	DECLARE_WRITE8_MEMBER( m6801_io_w );
 
+	DECLARE_READ8_MEMBER( hd6303y_io_r );
+	DECLARE_WRITE8_MEMBER( hd6303y_io_w );
+
 	void m6801_clock_serial();
 protected:
 	m6801_cpu_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, const m6800_cpu_device::op_func *insn, const uint8_t *cycles, address_map_constructor internal = address_map_constructor());
@@ -78,16 +81,17 @@ protected:
 
 	void m6803_mem(address_map &map);
 
-	devcb_read8 m_in_port_func[4];
-	devcb_write8 m_out_port_func[4];
+	devcb_read8 m_in_port_func[6];
+	devcb_write8 m_out_port_func[6];
 
 	devcb_write_line m_out_sc2_func;
 	devcb_write_line m_out_sertx_func;
 
 	/* internal registers */
-	uint8_t   m_port_ddr[4];
-	uint8_t   m_port_data[4];
+	uint8_t   m_port_ddr[6];
+	uint8_t   m_port_data[6];
 	uint8_t   m_p3csr;          // Port 3 Control/Status Register
+	uint8_t   m_p6csr;          // Port 6 Control/Status Register
 	uint8_t   m_tcsr;           /* Timer Control and Status Register */
 	uint8_t   m_pending_tcsr;   /* pending IRQ flag for clear IRQflag process */
 	uint8_t   m_irq2;           /* IRQ2 flags */
@@ -96,7 +100,9 @@ protected:
 	PAIR    m_output_compare; /* output compare       */
 	uint16_t  m_input_capture;  /* input capture        */
 	int     m_p3csr_is3_flag_read;
+	int     m_p6csr_is6_flag_read;
 	int     m_port3_latched;
+	int     m_port6_latched;
 
 	uint8_t   m_trcsr, m_rmcr, m_rdr, m_tdr, m_rsr, m_tsr;
 	int     m_rxbits, m_txbits, m_txstate, m_trcsr_read_tdre, m_trcsr_read_orfe, m_trcsr_read_rdrf, m_tx, m_ext_serclock;
@@ -131,6 +137,7 @@ protected:
 	void serial_receive();
 	TIMER_CALLBACK_MEMBER( sci_tick );
 	void set_os3(int state);
+	void set_os6(int state);
 };
 
 
