@@ -1042,6 +1042,7 @@ univac.cpp
 unixpc.cpp
 unk6502_st2xxx.cpp
 ut88.cpp
+uvw1200.cpp
 uzebox.cpp
 v100.cpp
 v102.cpp

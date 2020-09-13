@@ -3639,6 +3639,7 @@ files {
 	MAME_DIR .. "src/mame/drivers/pve500.cpp",
 	MAME_DIR .. "src/mame/drivers/smc777.cpp",
 	MAME_DIR .. "src/mame/drivers/ps2sony.cpp",
+	MAME_DIR .. "src/mame/drivers/uvw1200.cpp",
 }
 
 createMESSProjects(_target, _subtarget, "sony_news")

@@ -40897,6 +40897,9 @@ usgames                         // (c) 1992
 ut88                            //
 ut88mini                        //
 
+@source:uvw1200.cpp
+uvw1200                         //
+
 @source:uzebox.cpp
 uzebox                          //
 
