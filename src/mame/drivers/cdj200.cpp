@@ -24,10 +24,12 @@ public:
 private:
 	virtual void machine_start() override;
 	virtual void machine_reset() override;
-
+	u32 mbar2_reg_r(offs_t offset);
+	void mbar2_reg_w(offs_t offset, u32 data);
 	void cdj200_map(address_map &map);
 
 	required_device<cpu_device> m_maincpu;
+	u32 m_PLLCR;
 };
 
 void cdj200_state::machine_start()
@@ -43,6 +45,31 @@ void cdj200_state::cdj200_map(address_map &map)
 	map(0x00000000, 0x0006eccf).rom().region("maincpu", 0);
 	map(0x00100000, 0x00ffffff).ram(); //guessed based on elektronmono.cpp
 	map(0x10000000, 0x10017fff).ram(); //stack
+
+  // FIXME: hardware setup registers should be emulated inside the CPU
+	map(0x80000000, 0x80000183).rw(FUNC(cdj200_state::mbar2_reg_r), FUNC(cdj200_state::mbar2_reg_w));
+}
+
+void cdj200_state::mbar2_reg_w(offs_t offset, u32 data)
+{
+	switch(offset*4){
+		case 0x180:
+			m_PLLCR = data;
+			break;
+		default:
+			break;
+	}
+}
+
+u32 cdj200_state::mbar2_reg_r(offs_t offset)
+{
+	switch(offset*4){
+		case 0x180:
+			// PLLCR register
+			return m_PLLCR | 0x80000000; // PLL locked bit!
+		default:
+			return 0;
+	}
 }
 
 void cdj200_state::cdj200(machine_config &config)
