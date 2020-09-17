@@ -3228,6 +3228,11 @@ files {
 	MAME_DIR .. "src/mame/drivers/vg5k.cpp",
 }
 
+createMESSProjects(_target, _subtarget, "pioneer")
+files {
+	MAME_DIR .. "src/mame/drivers/cdj200.cpp",
+}
+
 createMESSProjects(_target, _subtarget, "poly")
 files {
 	MAME_DIR .. "src/mame/drivers/poly.cpp",
