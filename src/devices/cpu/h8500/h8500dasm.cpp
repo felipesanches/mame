@@ -459,7 +459,7 @@ offs_t h8500_disassembler::dasm_immop(std::ostream &stream, offs_t pc, bool w, c
 	}
 }
 
-offs_t h8500_disassembler::disassemble(std::ostream &stream, offs_t pc, const h8500_disassembler::data_buffer &opcodes, const h8500_disassembler::data_buffer &params)
+offs_t h8500_disassembler::disassemble(std::ostream &stream, std::ostream &doc_stream, offs_t pc, const h8500_disassembler::data_buffer &opcodes, const h8500_disassembler::data_buffer &params)
 {
 	u8 op = opcodes.r8(pc);
 	if (op >= 0xa0 || (op & 0xe7) == 0x05)

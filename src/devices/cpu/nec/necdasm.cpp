@@ -873,7 +873,7 @@ void nec_disassembler::handle_modrm(offs_t pc_base, offs_t &pc, const data_buffe
 	m_modrm_string += ']';
 }
 
-void nec_disassembler::handle_param(std::ostream &stream, uint32_t param, offs_t pc_base, offs_t &pc, const data_buffer &params)
+void nec_disassembler::handle_param(std::ostream &stream, std::ostream &doc_stream, uint32_t param, offs_t pc_base, offs_t &pc, const data_buffer &params)
 {
 	uint8_t i8;
 	uint16_t i16;
@@ -939,6 +939,7 @@ void nec_disassembler::handle_param(std::ostream &stream, uint32_t param, offs_t
 
 		case PARAM_I16:
 			i16 = FETCH16(pc_base, pc, params);
+			util::stream_format( doc_stream, "%s", shexstring((int16_t)i16, 0, false) );
 			util::stream_format( stream, "%s", shexstring((int16_t)i16, 0, false) );
 			break;
 
@@ -1383,7 +1384,7 @@ void nec_disassembler::handle_fpu(std::ostream &stream, uint8_t op1, uint8_t op2
 	}
 }
 
-void nec_disassembler::decode_opcode(std::ostream &stream, const NEC_I386_OPCODE *op, uint8_t op1, offs_t pc_base, offs_t &pc, const data_buffer &opcodes, const data_buffer &params)
+void nec_disassembler::decode_opcode(std::ostream &stream, std::ostream &doc_stream, const NEC_I386_OPCODE *op, uint8_t op1, offs_t pc_base, offs_t &pc, const data_buffer &opcodes, const data_buffer &params)
 {
 	int i;
 	uint8_t op2;
@@ -1392,7 +1393,7 @@ void nec_disassembler::decode_opcode(std::ostream &stream, const NEC_I386_OPCODE
 	{
 		case TWO_BYTE:
 			op2 = FETCH(pc_base, pc, params);
-			decode_opcode( stream, &necv_opcode_table2[op2], op1, pc_base, pc, opcodes, params );
+			decode_opcode( stream, doc_stream, &necv_opcode_table2[op2], op1, pc_base, pc, opcodes, params );
 			return;
 
 		case SEG_PS:
@@ -1402,14 +1403,14 @@ void nec_disassembler::decode_opcode(std::ostream &stream, const NEC_I386_OPCODE
 			m_segment = op->flags;
 			op2 = FETCH(pc_base, pc, opcodes);
 			if (m_decryption_table) op2 = m_decryption_table[op2];
-			decode_opcode( stream, &necv_opcode_table1[op2], op1, pc_base, pc, opcodes, params );
+			decode_opcode( stream, doc_stream, &necv_opcode_table1[op2], op1, pc_base, pc, opcodes, params );
 			return;
 
 		case PREFIX:
 			util::stream_format( stream, "%-8s", op->mnemonic );
 			op2 = FETCH(pc_base, pc, opcodes);
 			if (m_decryption_table) op2 = m_decryption_table[op2];
-			decode_opcode( stream, &necv_opcode_table1[op2], op1, pc_base, pc, opcodes, params );
+			decode_opcode( stream, doc_stream, &necv_opcode_table1[op2], op1, pc_base, pc, opcodes, params );
 			return;
 
 		case GROUP:
@@ -1417,7 +1418,7 @@ void nec_disassembler::decode_opcode(std::ostream &stream, const NEC_I386_OPCODE
 			for( i=0; i < ARRAY_LENGTH(group_op_table); i++ ) {
 				if( strcmp(op->mnemonic, group_op_table[i].mnemonic) == 0 )
 				{
-					decode_opcode( stream, &group_op_table[i].opcode[MODRM_REG1], op1, pc_base, pc, opcodes, params );
+					decode_opcode( stream, doc_stream, &group_op_table[i].opcode[MODRM_REG1], op1, pc_base, pc, opcodes, params );
 					return;
 				}
 			}
@@ -1437,17 +1438,17 @@ void nec_disassembler::decode_opcode(std::ostream &stream, const NEC_I386_OPCODE
 	m_dasm_flags = op->dasm_flags;
 
 	if( op->param1 != 0 ) {
-		handle_param(stream, op->param1, pc_base, pc, params);
+		handle_param(stream, doc_stream, op->param1, pc_base, pc, params);
 	}
 
 	if( op->param2 != 0 ) {
 		util::stream_format( stream, "," );
-		handle_param(stream, op->param2, pc_base, pc, params);
+		handle_param(stream, doc_stream, op->param2, pc_base, pc, params);
 	}
 
 	if( op->param3 != 0 ) {
 		util::stream_format( stream, "," );
-		handle_param(stream, op->param3, pc_base, pc, params);
+		handle_param(stream, doc_stream, op->param3, pc_base, pc, params);
 	}
 	return;
 
@@ -1732,10 +1733,10 @@ offs_t nec_disassembler::dis80(std::ostream &stream, offs_t pc, const data_buffe
 	return (pc - prevpc) | flags | SUPPORTED;
 }
 
-offs_t nec_disassembler::disassemble(std::ostream &stream, offs_t eip, const data_buffer &opcodes, const data_buffer &params)
+offs_t nec_disassembler::disassemble(std::ostream &instr_stream, std::ostream &doc_stream, offs_t eip, const data_buffer &opcodes, const data_buffer &params)
 {
 	if(!(m_config->get_mode()))
-		return dis80(stream, eip, opcodes, params);
+		return dis80(instr_stream, eip, opcodes, params);
 
 	uint8_t op;
 
@@ -1748,7 +1749,7 @@ offs_t nec_disassembler::disassemble(std::ostream &stream, offs_t eip, const dat
 	if (m_decryption_table)
 		op = m_decryption_table[op];
 
-	decode_opcode( stream, &necv_opcode_table1[op], op, eip, pc, opcodes, params );
+	decode_opcode( instr_stream, doc_stream, &necv_opcode_table1[op], op, eip, pc, opcodes, params );
 	return (pc-eip) | m_dasm_flags | SUPPORTED;
 }
 

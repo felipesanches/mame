@@ -4,6 +4,7 @@
 #define __DEBUG_QT_DEBUGGER_VIEW_H__
 
 #include <QtWidgets/QAbstractScrollArea>
+#include <QToolTip>
 
 #include "debug/debugvw.h"
 
@@ -30,6 +31,8 @@ signals:
 protected:
 	void keyPressEvent(QKeyEvent* event);
 	void mousePressEvent(QMouseEvent* event);
+	void mouseMoveEvent(QMouseEvent* event);
+
 
 private slots:
 	void verticalScrollSlot(int value);

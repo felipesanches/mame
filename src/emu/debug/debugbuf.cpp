@@ -1464,11 +1464,13 @@ debug_disasm_buffer::debug_disasm_buffer(device_t &device) :
 	}
 }
 
-void debug_disasm_buffer::disassemble(offs_t pc, std::string &instruction, offs_t &next_pc, offs_t &size, u32 &info) const
+void debug_disasm_buffer::disassemble(offs_t pc, std::string &instruction, std::string &doc, offs_t &next_pc, offs_t &size, u32 &info) const
 {
-	std::ostringstream out;
-	u32 result = m_dintf.disassemble(out, pc, m_buf_opcodes, m_buf_params.active() ? m_buf_params : m_buf_opcodes);
-	instruction = out.str();
+	std::ostringstream out_instr;
+	std::ostringstream out_doc;
+	u32 result = m_dintf.disassemble(out_instr, out_doc, pc, m_buf_opcodes, m_buf_params.active() ? m_buf_params : m_buf_opcodes);
+	instruction = out_instr.str();
+	doc = out_doc.str();
 	size = result & util::disasm_interface::LENGTHMASK;
 	next_pc = m_next_pc(pc, size);
 	info = result;
@@ -1477,8 +1479,9 @@ void debug_disasm_buffer::disassemble(offs_t pc, std::string &instruction, offs_
 
 u32 debug_disasm_buffer::disassemble_info(offs_t pc) const
 {
-	std::ostringstream out;
-	return m_dintf.disassemble(out, pc, m_buf_opcodes, m_buf_params.active() ? m_buf_params : m_buf_opcodes);
+	std::ostringstream out_instr;
+	std::ostringstream out_doc;
+	return m_dintf.disassemble(out_instr, out_doc, pc, m_buf_opcodes, m_buf_params.active() ? m_buf_params : m_buf_opcodes);
 }
 
 std::string debug_disasm_buffer::pc_to_string(offs_t pc) const

@@ -226,11 +226,12 @@ void debug_view_disasm::generate_from_address(debug_disasm_buffer &buffer, offs_
 	m_dasm.clear();
 	for(int i=0; i != m_total.y; i++) {
 		std::string dasm;
+		std::string doc;
 		offs_t size;
 		offs_t next_address;
 		u32 info;
-		buffer.disassemble(address, dasm, next_address, size, info);
-		m_dasm.emplace_back(address, size, dasm);
+		buffer.disassemble(address, dasm, doc, next_address, size, info);
+		m_dasm.emplace_back(address, size, dasm, doc);
 		address = next_address;
 	}
 }
@@ -260,11 +261,12 @@ bool debug_view_disasm::generate_with_pc(debug_disasm_buffer &buffer, offs_t pc)
 		offs_t lpc = intf.pc_real_to_linear(pc);
 		while(intf.pc_real_to_linear(address) < lpc) {
 			std::string dasm;
+			std::string doc;
 			offs_t size;
 			offs_t next_address;
 			u32 info;
-			buffer.disassemble(address, dasm, next_address, size, info);
-			m_dasm.emplace_back(address, size, dasm);
+			buffer.disassemble(address, dasm, doc, next_address, size, info);
+			m_dasm.emplace_back(address, size, dasm, doc);
 			if(intf.pc_real_to_linear(address) > intf.pc_real_to_linear(next_address))
 				return false;
 			address = next_address;
@@ -273,11 +275,12 @@ bool debug_view_disasm::generate_with_pc(debug_disasm_buffer &buffer, offs_t pc)
 	} else {
 		while(address < pc) {
 			std::string dasm;
+			std::string doc;
 			offs_t size;
 			offs_t next_address;
 			u32 info;
-			buffer.disassemble(address, dasm, next_address, size, info);
-			m_dasm.emplace_back(address, size, dasm);
+			buffer.disassemble(address, dasm, doc, next_address, size, info);
+			m_dasm.emplace_back(address, size, dasm, doc);
 			if(address > next_address)
 				return false;
 			address = next_address;
@@ -292,11 +295,12 @@ bool debug_view_disasm::generate_with_pc(debug_disasm_buffer &buffer, offs_t pc)
 
 	while(m_dasm.size() < m_total.y) {
 		std::string dasm;
+		std::string doc;
 		offs_t size;
 		offs_t next_address;
 		u32 info;
-		buffer.disassemble(address, dasm, next_address, size, info);
-		m_dasm.emplace_back(address, size, dasm);
+		buffer.disassemble(address, dasm, doc, next_address, size, info);
+		m_dasm.emplace_back(address, size, dasm, doc);
 		address = next_address;
 	}
 	return true;
@@ -432,6 +436,10 @@ void debug_view_disasm::redraw()
 	// set the width of the third column to max comment length
 	m_total.x = m_divider2 + 1 + 50;        // DEBUG_COMMENT_MAX_LINE_LENGTH
 
+  m_linedocs.empty();
+//  for (int i=0; i< m_visible.y; i++)
+  //  m_linedocs.push_back(std::string());
+
 	// loop over visible rows
 	for(u32 row = 0; row < m_visible.y; row++)
 	{
@@ -456,6 +464,10 @@ void debug_view_disasm::redraw()
 			// if we've visited this pc, mark it as such
 			if(m_dasm[effrow].m_is_visited)
 				attrib |= DCA_VISITED;
+
+      //m_linedocs.push_back(m_dasm[effrow].m_doc);
+      //m_linedocs.push_back(std::to_string(effrow));
+      m_linedocs.push_back(m_dasm[row].m_dasm);
 
 			print(row, ' ' + m_dasm[effrow].m_tadr, 0, m_divider1, attrib | DCA_ANCILLARY);
 			print(row, ' ' + m_dasm[effrow].m_dasm, m_divider1, m_divider2, attrib);

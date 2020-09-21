@@ -17,7 +17,7 @@ u32 mb88_disassembler::opcode_alignment() const
 	return 1;
 }
 
-offs_t mb88_disassembler::disassemble(std::ostream &stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params)
+offs_t mb88_disassembler::disassemble(std::ostream &stream, std::ostream &doc_stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params)
 {
 	unsigned startpc = pc;
 	uint8_t op = opcodes.r8(pc++);

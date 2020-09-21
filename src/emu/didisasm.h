@@ -23,7 +23,7 @@
 //  TYPE DEFINITIONS
 //**************************************************************************
 
-typedef device_delegate<offs_t (std::ostream &stream, offs_t pc, const util::disasm_interface::data_buffer &opcodes, const util::disasm_interface::data_buffer &params)> dasm_override_delegate;
+typedef device_delegate<offs_t (std::ostream &instr_stream, std::ostream &doc_stream, offs_t pc, const util::disasm_interface::data_buffer &opcodes, const util::disasm_interface::data_buffer &params)> dasm_override_delegate;
 
 // ======================> device_disasm_interface
 

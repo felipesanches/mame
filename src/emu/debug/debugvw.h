@@ -145,6 +145,7 @@ public:
 	debug_view *next() const { return m_next; }
 	debug_view_type type() const { return m_type; }
 	const debug_view_char *viewdata() const { return &m_viewdata[0]; }
+	const std::vector<std::string> linedocs() const { return m_linedocs; }
 	debug_view_xy total_size() { flush_updates(); return m_total; }
 	debug_view_xy visible_size() { flush_updates(); return m_visible; }
 	debug_view_xy visible_position() { flush_updates(); return m_topleft; }
@@ -217,6 +218,7 @@ protected:
 	bool                    m_update_pending;   // true if there is a pending update
 	bool                    m_osd_update_pending; // true if there is a pending update
 	std::vector<debug_view_char> m_viewdata;  // current array of view data
+	std::vector<std::string> m_linedocs;  // current array of documentation strings
 
 private:
 	running_machine &       m_machine;          // machine associated with this view

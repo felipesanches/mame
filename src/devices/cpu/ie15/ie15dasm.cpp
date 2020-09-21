@@ -8,7 +8,7 @@ u32 ie15_disassembler::opcode_alignment() const
 	return 1;
 }
 
-offs_t ie15_disassembler::disassemble(std::ostream &stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params)
+offs_t ie15_disassembler::disassemble(std::ostream &stream, std::ostream &doc_stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params)
 {
 	uint32_t flags = 0;
 	uint8_t op;

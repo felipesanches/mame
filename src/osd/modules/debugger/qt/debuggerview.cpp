@@ -30,8 +30,9 @@ DebuggerView::DebuggerView(const debug_view_type& type,
 	viewFontRequest.setStyleHint(QFont::TypeWriter);
 	viewFontRequest.setPointSize((selectedFontSize <= 0) ? 11 : selectedFontSize);
 	setFont(viewFontRequest);
+  setMouseTracking(true);
 
-	m_view = m_machine->debug_view().alloc_view(type,
+  m_view = m_machine->debug_view().alloc_view(type,
 												DebuggerView::debuggerViewUpdate,
 												this);
 
@@ -46,6 +47,18 @@ DebuggerView::~DebuggerView()
 {
 	if (m_machine && m_view)
 		m_machine->debug_view().free_view(*m_view);
+}
+
+void DebuggerView::mouseMoveEvent(QMouseEvent *event)
+{
+		    QFontMetrics actualFont = fontMetrics();
+		    const int fontHeight = std::max(1, actualFont.lineSpacing());
+		    int index = m_view->visible_position().y + (event->y() / fontHeight);
+        if (index < m_view->linedocs().size()){
+          QToolTip::showText(event->globalPos(), QString(m_view->linedocs()[index].c_str()));
+        } else {
+          QToolTip::hideText();
+        }
 }
 
 void DebuggerView::paintEvent(QPaintEvent* event)

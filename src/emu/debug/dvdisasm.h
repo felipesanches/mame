@@ -98,6 +98,7 @@ private:
 
 		std::string m_tadr;                     // instruction address as a string
 		std::string m_dasm;                     // disassembly
+		std::string m_doc;                      // documentation
 		std::string m_topcodes;                 // textual representation of opcode/default values
 		std::string m_tparams;                  // textual representation of parameter values
 		std::string m_comment;                  // comment, when present
@@ -106,7 +107,7 @@ private:
 		bool m_is_bp;                           // this line's address is a breakpoint
 		bool m_is_visited;                      // this line has been visited
 
-		dasm_line(offs_t address, offs_t size, std::string dasm) : m_address(address), m_size(size), m_dasm(dasm), m_is_pc(false), m_is_bp(false), m_is_visited(false) {}
+		dasm_line(offs_t address, offs_t size, std::string dasm, std::string doc) : m_address(address), m_size(size), m_dasm(dasm), m_doc(doc), m_is_pc(false), m_is_bp(false), m_is_visited(false) {}
 	};
 
 	// internal helpers

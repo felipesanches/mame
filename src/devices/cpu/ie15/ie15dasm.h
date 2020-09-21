@@ -13,7 +13,7 @@ public:
 	virtual ~ie15_disassembler() = default;
 
 	virtual u32 opcode_alignment() const override;
-	virtual offs_t disassemble(std::ostream &stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params) override;
+	virtual offs_t disassemble(std::ostream &stream, std::ostream &doc_stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params) override;
 };
 
 #endif

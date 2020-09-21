@@ -399,7 +399,7 @@ u32 z80_disassembler::opcode_alignment() const
 	return 1;
 }
 
-offs_t z80_disassembler::disassemble(std::ostream &stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params)
+offs_t z80_disassembler::disassemble(std::ostream &stream, std::ostream &doc_stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params)
 {
 	s8 offset = 0;
 

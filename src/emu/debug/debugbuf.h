@@ -13,7 +13,7 @@ class debug_disasm_buffer
 public:
 	debug_disasm_buffer(device_t &device);
 
-	void disassemble(offs_t pc, std::string &instruction, offs_t &next_pc, offs_t &size, u32 &info) const;
+	void disassemble(offs_t pc, std::string &instruction, std::string &doc, offs_t &next_pc, offs_t &size, u32 &info) const;
 	u32 disassemble_info(offs_t pc) const;
 	std::string pc_to_string(offs_t pc) const;
 	std::string data_to_string(offs_t pc, offs_t size, bool opcode) const;

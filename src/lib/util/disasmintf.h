@@ -74,7 +74,7 @@ public:
 	virtual u64 decrypt64(u64 value, offs_t pc, bool opcode) const;
 
 	virtual u32 opcode_alignment() const = 0;
-	virtual offs_t disassemble(std::ostream &stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params) = 0;
+	virtual offs_t disassemble(std::ostream &stream, std::ostream &doc_stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params) = 0;
 };
 }
 

@@ -21,7 +21,7 @@ public:
 	virtual ~nec_disassembler() = default;
 
 	virtual u32 opcode_alignment() const override;
-	virtual offs_t disassemble(std::ostream &stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params) override;
+	virtual offs_t disassemble(std::ostream &stream, std::ostream &doc_stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params) override;
 
 private:
 	enum
@@ -126,10 +126,10 @@ private:
 	std::string hexstring(uint32_t value, int digits);
 	std::string shexstring(uint32_t value, int digits, bool always);
 	void handle_modrm(offs_t pc_base, offs_t &pc, const data_buffer &params);
-	void handle_param(std::ostream &stream, uint32_t param, offs_t pc_base, offs_t &pc, const data_buffer &params);
+	void handle_param(std::ostream &instr_stream, std::ostream &doc_stream, uint32_t param, offs_t pc_base, offs_t &pc, const data_buffer &params);
 	void handle_fpu(std::ostream &stream, uint8_t op1, uint8_t op2, offs_t pc_base, offs_t &pc, const data_buffer &params);
 
-	void decode_opcode(std::ostream &stream, const NEC_I386_OPCODE *op, uint8_t op1, offs_t pc_base, offs_t &pc, const data_buffer &opcodes, const data_buffer &params);
+	void decode_opcode(std::ostream &instr_stream, std::ostream &doc_stream, const NEC_I386_OPCODE *op, uint8_t op1, offs_t pc_base, offs_t &pc, const data_buffer &opcodes, const data_buffer &params);
 	offs_t dis80(std::ostream &stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params);
 };
 

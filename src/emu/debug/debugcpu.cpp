@@ -1872,9 +1872,10 @@ void device_debug::tracer::update(offs_t pc)
 
 	debug_disasm_buffer buffer(m_debug.device());
 	std::string instruction;
+	std::string doc;
 	offs_t next_pc, size;
 	u32 dasmresult;
-	buffer.disassemble(pc, instruction, next_pc, size, dasmresult);
+	buffer.disassemble(pc, instruction, doc, next_pc, size, dasmresult);
 
 	// output the result
 	fprintf(&m_file, "%s: %s\n", buffer.pc_to_string(pc).c_str(), instruction.c_str());

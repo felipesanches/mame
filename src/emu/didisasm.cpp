@@ -34,10 +34,10 @@ public:
 	virtual u64 decrypt64(u64 value, offs_t pc, bool opcode) const override { return m_disasm->decrypt64(value, pc, opcode); }
 
 	virtual u32 opcode_alignment() const override { return m_disasm->opcode_alignment(); }
-	virtual offs_t disassemble(std::ostream &stream, offs_t pc, data_buffer const &opcodes, data_buffer const &params) override
+	virtual offs_t disassemble(std::ostream &instr_stream, std::ostream &doc_stream, offs_t pc, data_buffer const &opcodes, data_buffer const &params) override
 	{
-		offs_t const result(m_dasm_override(stream, pc, opcodes, params));
-		return result ? result : m_disasm->disassemble(stream, pc, opcodes, params);
+		offs_t const result(m_dasm_override(instr_stream, doc_stream, pc, opcodes, params));
+		return result ? result : m_disasm->disassemble(instr_stream, doc_stream, pc, opcodes, params);
 	}
 
 private:

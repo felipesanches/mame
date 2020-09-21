@@ -3059,10 +3059,11 @@ void debugger_commands::execute_dasm(int ref, const std::vector<std::string> &pa
 	for (u64 i = 0; i < length; )
 	{
 		std::string instruction;
+    std::string doc;
 		offs_t next_offset;
 		offs_t size;
 		u32 info;
-		buffer.disassemble(offset, instruction, next_offset, size, info);
+		buffer.disassemble(offset, instruction, doc, next_offset, size, info);
 		pcs.push_back(offset);
 		instructions.emplace_back(instruction);
 		tpc.emplace_back(buffer.pc_to_string(offset));
@@ -3252,10 +3253,11 @@ void debugger_commands::execute_history(int ref, const std::vector<std::string> 
 	{
 		offs_t pc = debug->history_pc(-index);
 		std::string instruction;
+		std::string doc;
 		offs_t next_offset;
 		offs_t size;
 		u32 info;
-		buffer.disassemble(pc, instruction, next_offset, size, info);
+		buffer.disassemble(pc, instruction, doc, next_offset, size, info);
 
 		m_console.printf("%s: %s\n", buffer.pc_to_string(pc), instruction);
 	}

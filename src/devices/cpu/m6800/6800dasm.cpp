@@ -135,7 +135,7 @@ u32 m680x_disassembler::opcode_alignment() const
 	return 1;
 }
 
-offs_t m680x_disassembler::disassemble(std::ostream &stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params)
+offs_t m680x_disassembler::disassemble(std::ostream &stream, std::ostream &doc_stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params)
 {
 	offs_t flags = 0;
 	int invalid_mask;
