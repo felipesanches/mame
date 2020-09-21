@@ -3361,6 +3361,10 @@ bestleaw                        // bootleg
 @source:beta.cpp
 beta                            //
 
+@source:betacam.cpp
+uvw1200                         // Sony Betacam-SP UVW-1200
+uvw1800                         // Sony Betacam-SP UVW-1800
+
 @source:bfcobra.cpp
 beeline                         // 1991 BFM
 brkball                         // 1994 BFM / ATOD
@@ -40896,9 +40900,6 @@ usgames                         // (c) 1992
 @source:ut88.cpp
 ut88                            //
 ut88mini                        //
-
-@source:uvw1200.cpp
-uvw1200                         //
 
 @source:uzebox.cpp
 uzebox                          //
