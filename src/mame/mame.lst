@@ -3363,6 +3363,7 @@ beta                            //
 
 @source:betacam.cpp
 uvw1200                         // Sony Betacam-SP UVW-1200
+uvw1600                         // Sony Betacam-SP UVW-1600
 uvw1800                         // Sony Betacam-SP UVW-1800
 
 @source:bfcobra.cpp

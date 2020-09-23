@@ -1,4 +1,4 @@
-// license:BSD-3-Clause
+// license:GPL-2.0+
 // copyright-holders:Felipe Sanches
 /****************************************************************************
 
@@ -113,6 +113,14 @@ ROM_START(uvw1200)
 	ROM_LOAD("75953491_uvw-1000_sv_v2.04_f024.ic212", 0x00000, 0x40000, CRC(dc2b8d4b) SHA1(f10a3dc0c317582e3dcb6f3dcc741c0d55c6fd22))
 ROM_END
 
+ROM_START(uvw1600)
+	ROM_REGION(0x20000, "systemcpu", 0)
+	ROM_LOAD("75925907_uvw-1000_sy_v1.03_e3b4.ic4", 0x00000, 0x20000, CRC(f9e575ce) SHA1(2f802c5685f7ce00586079ad5bc456083c595d66))
+
+	ROM_REGION(0x40000, "servocpu", 0)
+	ROM_LOAD("75927098_uvw-1000_sv_v1.04_150c.ic212", 0x00000, 0x40000, CRC(b4cb9c02) SHA1(92ae5ce303b9f67977b960047bac7f6bb337b8c0))
+ROM_END
+
 ROM_START(uvw1800)
 	ROM_REGION(0x20000, "systemcpu", 0)
 	ROM_LOAD("75925907_uvw-1000_sy_v1.03_e3b4.ic4", 0x00000, 0x20000, CRC(f9e575ce) SHA1(2f802c5685f7ce00586079ad5bc456083c595d66))
@@ -123,4 +131,5 @@ ROM_END
 
 //   YEAR  NAME   PARENT/COMPAT MACHINE  INPUT    CLASS          INIT       COMPANY  FULLNAME                                                FLAGS
 SYST(199?, uvw1200,   0, 0,     betacam, betacam, betacam_state, empty_init, "Sony", "BETACAM-SP Videocassete Player UVW-1200 RGB",          MACHINE_IS_SKELETON)
+SYST(199?, uvw1600,   0, 0,     betacam, betacam, betacam_state, empty_init, "Sony", "BETACAM-SP Videocassete Player/Recorder UVW-1600 RGB", MACHINE_IS_SKELETON)
 SYST(199?, uvw1800,   0, 0,     betacam, betacam, betacam_state, empty_init, "Sony", "BETACAM-SP Videocassete Player/Recorder UVW-1800 RGB", MACHINE_IS_SKELETON)
