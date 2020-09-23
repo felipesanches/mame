@@ -40830,6 +40830,9 @@ ultratnk                        // 009801           1978/02 [6502]
 @source:ultrsprt.cpp
 fiveside                        // GX479 (c)1995
 
+@source:umatic.cpp
+vo5850pm                        // Sony U-Matic VO-5850PM
+
 @source:umipoker.cpp
 saiyukip                        //
 umipoker                        //
