@@ -2,7 +2,7 @@
 // copyright-holders:Felipe Sanches
 /****************************************************************************
 
-    Skeleton driver for Sony DFS-500 DME Video Mixer
+    Sony DFS-500 DME Video Mixer
 
 ****************************************************************************/
 
@@ -12,7 +12,8 @@
 #include "machine/pit8253.h"
 #include "machine/pic8259.h"
 #include "machine/i8251.h"
-
+#include "sound/beep.h"
+#include "speaker.h"
 
 class dfs500_state : public driver_device
 {
@@ -30,6 +31,7 @@ public:
 		, m_cpanel_pit(*this, "cpanel_pit")
 		, m_rombank1(*this, "rombank1")
 		, m_rombank2(*this, "rombank2")
+		, m_buzzer(*this, "buzzer")
 	{
 	}
 
@@ -45,6 +47,8 @@ private:
 	void effectcpu_mem_map(address_map &map);
 	uint8_t pit_r(offs_t offset);
 	void pit_w(offs_t offset, uint8_t data);
+	uint8_t cpanel_pit_r(offs_t offset);
+	void cpanel_pit_w(offs_t offset, uint8_t data);
 	uint8_t pic_r(offs_t offset);
 	void pic_w(offs_t offset, uint8_t data);
 	void rombank1_entry_w(offs_t offset, uint8_t data);
@@ -77,10 +81,12 @@ private:
 	required_device<pit8254_device> m_cpanel_pit;
 	required_memory_bank m_rombank1;
 	required_memory_bank m_rombank2;
+	required_device<beep_device> m_buzzer;
 };
 
 void dfs500_state::machine_start()
 {
+	m_buzzer->set_state(0);
 	m_rombank1->configure_entries(0, 128, memregion("effectdata")->base(), 0x4000);
 	m_rombank2->configure_entries(0, 128, memregion("effectdata")->base(), 0x4000);
 	m_rombank1->set_entry(0);
@@ -101,6 +107,18 @@ void dfs500_state::pit_w(offs_t offset, uint8_t data)
 {
 	// CXQ71054P (Programmable Timer / Counter)
 	m_pit->write((offset>>1) & 3, data); // addressed by CPU's address bits AB2 and AB1
+}
+
+uint8_t dfs500_state::cpanel_pit_r(offs_t offset)
+{
+	// CXQ71054P (Programmable Timer / Counter)
+	return m_cpanel_pit->read((offset>>1) & 3); // addressed by CPU's address bits AB2 and AB1
+}
+
+void dfs500_state::cpanel_pit_w(offs_t offset, uint8_t data)
+{
+	// CXQ71054P (Programmable Timer / Counter)
+	m_cpanel_pit->write((offset>>1) & 3, data); // addressed by CPU's address bits AB2 and AB1
 }
 
 uint8_t dfs500_state::pic_r(offs_t offset)
@@ -190,7 +208,23 @@ uint8_t dfs500_state::RB2_r(offs_t offset)
 void dfs500_state::cpanelcpu_mem_map(address_map &map)
 {
 	map(0x00000, 0x07fff).mirror(0xe8000).ram();                        // 32kb SRAM chip at IC15 
+	map(0x08000, 0x08000).mirror(0xe0ffd).rw(m_cpanel_serial, FUNC(i8251_device::data_r), FUNC(i8251_device::data_w));       // "IO" IC17
+	map(0x08002, 0x08002).mirror(0xe0ffd).rw(m_cpanel_serial, FUNC(i8251_device::status_r), FUNC(i8251_device::control_w));
+	map(0x09000, 0x09007).mirror(0xe0ff8).rw(FUNC(dfs500_state::cpanel_pit_r), FUNC(dfs500_state::cpanel_pit_w));       // "TIMER" IC16
+	//map(0x0a000, 0x0a007).mirror(0xe0ff8).rw(FUNC(dfs500_state::cpanel_ad_r), FUNC(dfs500_state::cpanel_ad_w));       // "AD" IC??
+	//map(0x0b000, 0x0b007).mirror(0xe0ff8).rw(FUNC(dfs500_state::cpanel_reg0_r), FUNC(dfs500_state::cpanel_reg0_w));       // "REG0" IC??
+	//map(0x0c000, 0x0c007).mirror(0xe0ff8).rw(FUNC(dfs500_state::cpanel_reg1_r), FUNC(dfs500_state::cpanel_reg1_w));       // "REG1" IC??
+	//map(0x0d000, 0x0d007).mirror(0xe0ff8).rw(FUNC(dfs500_state::cpanel_reg2_r), FUNC(dfs500_state::cpanel_reg2_w));       // "REG2" IC??
+	//map(0x0f000, 0x0f007).mirror(0xe0ff8).rw(FUNC(dfs500_state::cpanel_buzzer_r), FUNC(dfs500_state::cpanel_buzzer_w)); // "BUZZER" IC89
 	map(0x10000, 0x17fff).mirror(0xe8000).rom().region("cpanelcpu", 0); // 32kb EPROM at IC14
+
+// BUZZER: MEM A16=0 A15=1 A14..12=111 => xxx0 1111 0000 0000 0000 = 0x0f000 mirror(0xe0fff)
+// REG2:   MEM A16=0 A15=1 A14..12=101 
+// REG1:   MEM A16=0 A15=1 A14..12=100
+// REG0:   MEM A16=0 A15=1 A14..12=011
+// AD:     MEM A16=0 A15=1 A14..12=010
+// timer:  MEM A16=0 A15=1 A14..12=001
+// serial: MEM A16=0 A15=1 A14..12=000
 }
 
 void dfs500_state::cpanelcpu_io_map(address_map &map)
@@ -272,6 +306,7 @@ void dfs500_state::effectcpu_mem_map(address_map &map)
 
 	// ==== "ORG2" registers: ====
 	//map(0x6B800, 0x6B800).mirror(0x907ff).w(...);
+	map(0xc0000, 0xdffff).nopw(); // FIXME! Temporarily quieting unmapped access log messages on this range...
 
 	// CKD8263Q: "Color Bar Pattern Generator"
 //IC73:
@@ -342,8 +377,10 @@ void dfs500_state::dfs500(machine_config &config)
 	I8251(config, m_cpanel_serial, 8_MHz_XTAL/2);
 	m_cpanel_serial->txd_handler().set(m_serial1, FUNC(i8251_device::write_rxd));
 
-	//Buzzer
-	//...
+	//Buzzer		
+	SPEAKER(config, "mono").front_center();
+	BEEP(config, "buzzer", 4000).add_route(ALL_OUTPUTS, "mono", 0.05); // incorrect/arbitrary freq.
+	                                                                   // I did not calculate the correct one yet.
 
 	/******************* Effects Processing Unit ********************/
 	// CXQ70116P-10 at IC40 (same as V20, but with a 16-bit data bus)
