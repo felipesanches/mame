@@ -5,6 +5,8 @@
     Sony DFS-500 DME Video Mixer
 
 ****************************************************************************/
+#define VIDEO_WIDTH 768
+#define VIDEO_HEIGHT 256
 
 #include "emu.h"
 #include "cpu/nec/nec.h"
@@ -14,6 +16,8 @@
 #include "machine/i8251.h"
 #include "sound/beep.h"
 #include "speaker.h"
+#include "imagedev/picture.h"
+#include "screen.h"
 
 class dfs500_state : public driver_device
 {
@@ -32,6 +36,11 @@ public:
 		, m_rombank1(*this, "rombank1")
 		, m_rombank2(*this, "rombank2")
 		, m_buzzer(*this, "buzzer")
+		, m_screen(*this, "screen")
+		, m_input1(*this, "input1")
+		, m_input2(*this, "input2")
+		, m_input3(*this, "input3")
+		, m_input4(*this, "input4")
 	{
 	}
 
@@ -61,6 +70,7 @@ private:
 	uint16_t RA1_r(offs_t offset);
 	uint8_t RB1_r(offs_t offset);
 	uint8_t RB2_r(offs_t offset);
+	u32 screen_update(screen_device &screen, bitmap_rgb32 &bitmap, rectangle const &cliprect);
 
 	uint8_t m_input_sel_A;
 	uint8_t m_input_sel_B;
@@ -82,6 +92,11 @@ private:
 	required_memory_bank m_rombank1;
 	required_memory_bank m_rombank2;
 	required_device<beep_device> m_buzzer;
+	required_device<screen_device> m_screen;
+	required_device<picture_image_device> m_input1;
+	required_device<picture_image_device> m_input2;
+	required_device<picture_image_device> m_input3;
+	required_device<picture_image_device> m_input4;
 };
 
 void dfs500_state::machine_start()
@@ -95,6 +110,27 @@ void dfs500_state::machine_start()
 	m_effectcpu_latch16 = 0x0000;
 	m_TOC = false;
 	m_TOE = false;
+}
+
+u32 dfs500_state::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, rectangle const &cliprect)
+{
+	bitmap_argb32 *input1_bitmap = &m_input1->get_bitmap();
+	if (input1_bitmap)
+	{
+		// convert arbitrary sized ARGB32 image to a full-screen image
+		double stepx = (double)input1_bitmap->width() / VIDEO_WIDTH;
+		double stepy = (double)input1_bitmap->height() / VIDEO_HEIGHT;
+
+		for (unsigned screen_y = screen.visible_area().min_y; screen_y <= screen.visible_area().max_y; screen_y++)
+		{
+			for (unsigned screen_x = screen.visible_area().min_x; screen_x <= screen.visible_area().max_x; screen_x++)
+			{
+				bitmap.pix(screen_y, screen_x) = input1_bitmap->pix((int)((double)(screen_y % VIDEO_HEIGHT) * stepy),
+				                                                    (int)((double)(screen_x % VIDEO_WIDTH) * stepx));
+			}
+		}
+	}
+	return 0;
 }
 
 uint8_t dfs500_state::pit_r(offs_t offset)
@@ -426,6 +462,20 @@ void dfs500_state::dfs500(machine_config &config)
 	GENERIC_LATCH_16(config, "reg7_5");
 	GENERIC_LATCH_16(config, "xflt");
 	GENERIC_LATCH_16(config, "yflt");
+
+	// In the future this could become IMAGE_AVIVIDEO (or even, perhaps, we
+	// should add support for capturing frames from real video devices such
+	// as a webcam on /dev/video0)
+	IMAGE_PICTURE(config, m_input1);
+	IMAGE_PICTURE(config, m_input2);
+	IMAGE_PICTURE(config, m_input3);
+	IMAGE_PICTURE(config, m_input4);
+
+	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
+	m_screen->set_refresh_hz(60);
+	m_screen->set_size(VIDEO_WIDTH, VIDEO_HEIGHT);
+	m_screen->set_visarea(0, VIDEO_WIDTH-1, 0, VIDEO_HEIGHT-1);
+	m_screen->set_screen_update(FUNC(dfs500_state::screen_update));
 }
 
 ROM_START(dfs500)
