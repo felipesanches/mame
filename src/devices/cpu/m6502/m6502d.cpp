@@ -26,7 +26,7 @@ u32 m6502_base_disassembler::opcode_alignment() const
 	return 1;
 }
 
-offs_t m6502_base_disassembler::disassemble(std::ostream &stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params)
+offs_t m6502_base_disassembler::disassemble(std::ostream &stream, std::ostream &doc_stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params)
 {
 	const disasm_entry &e = table[opcodes.r8(pc) | get_instruction_bank()];
 	uint32_t flags = e.flags | SUPPORTED;

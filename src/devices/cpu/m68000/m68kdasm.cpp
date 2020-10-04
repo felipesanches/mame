@@ -3553,7 +3553,7 @@ u32 m68k_disassembler::opcode_alignment() const
 	return 2;
 }
 
-offs_t m68k_disassembler::disassemble(std::ostream &stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params)
+offs_t m68k_disassembler::disassemble(std::ostream &stream, std::ostream &doc_stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params)
 {
 	m_cpu_pc = pc;
 	m_buffer = &opcodes;

@@ -102,7 +102,7 @@ const m6x09_base_disassembler::opcodeinfo *m6x09_base_disassembler::fetch_opcode
 //  disassemble - core of the disassembler
 //-------------------------------------------------
 
-offs_t m6x09_base_disassembler::disassemble(std::ostream &stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params)
+offs_t m6x09_base_disassembler::disassemble(std::ostream &stream, std::ostream &doc_stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params)
 {
 	uint8_t pb;
 	unsigned int ea;

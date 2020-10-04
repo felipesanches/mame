@@ -107,7 +107,7 @@ template <typename T> std::string m6805_base_disassembler::address(T offset) con
 		return util::string_format("$%0*X", 2 * sizeof(T), offset);
 }
 
-offs_t m6805_base_disassembler::disassemble(std::ostream &stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params)
+offs_t m6805_base_disassembler::disassemble(std::ostream &stream, std::ostream &doc_stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params)
 {
 	u8 const code = opcodes.r8(pc);
 
