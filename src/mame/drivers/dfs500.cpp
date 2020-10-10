@@ -14,6 +14,7 @@
 #include "machine/pit8253.h"
 #include "machine/pic8259.h"
 #include "machine/i8251.h"
+#include "machine/upd7004.h"
 #include "sound/beep.h"
 #include "speaker.h"
 #include "imagedev/picture.h"
@@ -35,6 +36,7 @@ public:
 		, m_serial2(*this, "serial2")
 		, m_cpanel_serial(*this, "cpanel_serial")
 		, m_cpanel_pit(*this, "cpanel_pit")
+		, m_adc(*this, "adc")
 		, m_rombank1(*this, "rombank1")
 		, m_rombank2(*this, "rombank2")
 		, m_buzzer(*this, "buzzer")
@@ -73,7 +75,6 @@ private:
 	uint8_t RB1_r(offs_t offset);
 	uint8_t RB2_r(offs_t offset);
 	uint8_t cpanel_reg0_r(offs_t offset);
-	uint8_t cpanel_reg1_r(offs_t offset);
 	uint8_t cpanel_reg2_r(offs_t offset);
 	void cpanel_reg0_w(offs_t offset, uint8_t data);
 	void cpanel_reg1_w(offs_t offset, uint8_t data);
@@ -82,7 +83,9 @@ private:
 	IRQ_CALLBACK_MEMBER(irq_callback);
 
 	uint8_t m_int_vector;
-	uint8_t m_sel;
+	uint8_t m_sel10;
+	uint8_t m_sel32;
+	uint8_t m_sel54;
 	uint8_t m_input_sel_A;
 	uint8_t m_input_sel_B;
 	uint16_t m_maincpu_latch16;
@@ -90,6 +93,14 @@ private:
 	bool m_TOC;
 	bool m_TOE;
 	// TODO: bool m_BVS;
+	uint8_t m_trans_rate[2];
+	uint8_t m_pattern_number[3];
+	uint8_t m_userprogram_status;
+	uint8_t m_userprogram_edit;
+	uint8_t m_trail_duration;
+	uint8_t m_snapshot;
+	uint8_t m_dot_points1;
+	uint8_t m_dot_points2;
 
 	required_device<v20_device> m_cpanelcpu;
 	required_device<v30_device> m_maincpu;
@@ -100,6 +111,7 @@ private:
 	required_device<i8251_device> m_serial2;
 	required_device<i8251_device> m_cpanel_serial;
 	required_device<pit8254_device> m_cpanel_pit;
+	required_device<upd7004_device> m_adc;
 	required_memory_bank m_rombank1;
 	required_memory_bank m_rombank2;
 	required_device<beep_device> m_buzzer;
@@ -127,24 +139,34 @@ void dfs500_state::machine_start()
 	m_TOC = false;
 	m_TOE = false;
 	m_int_vector = 0x00;
-	m_sel = 0;
+	m_sel10 = 0;
+	m_sel32 = 0;
+	m_sel54 = 0;
 }
 
 u32 dfs500_state::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, rectangle const &cliprect)
 {
-	bitmap_argb32 *input1_bitmap = &m_input1->get_bitmap();
-	if (input1_bitmap)
+	bitmap_argb32 *input_bitmap;
+	switch(m_input_sel_A & 3)
+	{
+		case 0: input_bitmap = &m_input1->get_bitmap(); break;
+		case 1: input_bitmap = &m_input2->get_bitmap(); break;
+		case 2: input_bitmap = &m_input3->get_bitmap(); break;
+		case 3: input_bitmap = &m_input4->get_bitmap(); break;
+	}
+
+	if (input_bitmap)
 	{
 		// convert arbitrary sized ARGB32 image to a full-screen image
-		double stepx = (double)input1_bitmap->width() / VIDEO_WIDTH;
-		double stepy = (double)input1_bitmap->height() / VIDEO_HEIGHT;
+		double stepx = (double)input_bitmap->width() / VIDEO_WIDTH;
+		double stepy = (double)input_bitmap->height() / VIDEO_HEIGHT;
 
 		for (unsigned screen_y = screen.visible_area().min_y; screen_y <= screen.visible_area().max_y; screen_y++)
 		{
 			for (unsigned screen_x = screen.visible_area().min_x; screen_x <= screen.visible_area().max_x; screen_x++)
 			{
-				bitmap.pix(screen_y, screen_x) = input1_bitmap->pix((int)((double)(screen_y % VIDEO_HEIGHT) * stepy),
-				                                                    (int)((double)(screen_x % VIDEO_WIDTH) * stepx));
+				bitmap.pix(screen_y, screen_x) = input_bitmap->pix((int)((double)(screen_y % VIDEO_HEIGHT) * stepy),
+				                                                   (int)((double)(screen_x % VIDEO_WIDTH) * stepx));
 			}
 		}
 	}
@@ -261,20 +283,50 @@ uint8_t dfs500_state::RB2_r(offs_t offset)
 
 uint8_t dfs500_state::cpanel_reg0_r(offs_t offset)
 {
-	// FIXME!
-	return 0xFF;
-}
-
-uint8_t dfs500_state::cpanel_reg1_r(offs_t offset)
-{
-	// FIXME!
-	return 0xFF;
+	uint8_t data;
+	switch (offset & 0x0f)
+	{
+		case 0: // RD0
+			data = 0x00;
+			//TODO: if (m_RVD) data |= 0x02;
+			//TODO: if (m_adc->eoc_r()) data |= 0x01;
+			return data;
+		case 1: // RD1
+			return 0xFF; //FIXME!
+		case 2: // RD2
+			return 0xFF; //FIXME!
+		case 3: // RD3
+			return 0xFF; //FIXME!
+		case 4: // RD4
+			return 0xFF; //FIXME!
+		case 5: // RD5
+			return 0xFF; //FIXME!
+		case 6: // RD6
+			return 0xFF; //FIXME!
+		case 7: // RD7
+			return 0xFF; //FIXME!
+		case 8: // RD8
+			return 0xFF; //FIXME!
+		case 9: // RD9
+			return 0xFF; //FIXME!
+		default:
+			return 0xFF;
+	}
 }
 
 uint8_t dfs500_state::cpanel_reg2_r(offs_t offset)
 {
-	// FIXME!
-	return 0xFF;
+	switch (offset & 0x07)
+	{
+		case 0: // RD10
+			return 0xFF; //FIXME!
+		case 1: // RD11
+			return 0xFF; //FIXME!
+		case 2: // RD12
+			return 0xFF; //FIXME!
+		default:
+			return 0xFF;
+	}
 }
 
 void dfs500_state::cpanel_reg0_w(offs_t offset, uint8_t data)
@@ -285,46 +337,65 @@ void dfs500_state::cpanel_reg0_w(offs_t offset, uint8_t data)
 	switch (offset & 0x0f)
 	{
 		case 0: // WR0 on IC48 KY-223
-			// FIXME! Dot-points on the pattern_number digits
+			// Dot-points on 7seg digits:
+			// D7 = not connected
+			// D6 = LD206 = DP on trans_rate100
+			// D5 = LD198 = DP on trans_rate10
+			// D4 = LD190 = DP on trans_rate1
+			// D3 = LD182 = DP on pattern_number1000
+			// D2 = LD174 = DP on pattern_number100
+			// D1 = LD186 or LD168 (?) = DP on pattern_number10
+			// D0 = LD158 = DP on pattern_number1
+			m_dot_points2 = data;
+			output().set_value("trans_rate100", ls247_map[m_trans_rate[1] & 0x0F] | (BIT(data >> 6, 0) << 7));
+			output().set_value("trans_rate10", ls247_map[(m_trans_rate[0] >> 4) & 0x0F] | (BIT(data >> 5, 0) << 7));
+			output().set_value("trans_rate1", ls247_map[m_trans_rate[0] & 0x0F] | (BIT(data >> 4, 0) << 7));
+			output().set_value("pattern_number1000", (m_pattern_number[2] & 0x7F) | (BIT(data >> 3, 0) << 7));
+			output().set_value("pattern_number100", (m_pattern_number[1] & 0x7F) | (BIT(data >> 2, 0) << 7));
+			output().set_value("pattern_number10", ls247_map[(m_pattern_number[0] >> 4) & 0x0F] | (BIT(data >> 1, 0) << 7));
+			output().set_value("pattern_number1", ls247_map[m_pattern_number[0] & 0x0F] | (BIT(data >> 0, 0) << 7));
 			break;
 		case 1: // WR1 on IC50 KY-223
-			output().set_value("pattern_number1000", data & 0x7F);
+			m_pattern_number[2] = data;
+			output().set_value("pattern_number1000", (data & 0x7F) | (BIT(m_dot_points2 >> 3, 0) << 7));
 			break;
 		case 2: // WR2 on IC52 KY-223
-			output().set_value("pattern_number100", data & 0x7F);
+			m_pattern_number[1] = data;
+			output().set_value("pattern_number100", (data & 0x7F) | (BIT(m_dot_points2 >> 2, 0) << 7));
 			break;
 		case 3: // WR3 on IC53 KY-223
-			output().set_value("pattern_number10", ls247_map[(data >> 4) & 0x0F]);
-			output().set_value("pattern_number1", ls247_map[data & 0x0F]);
+			m_pattern_number[0] = data;
+			output().set_value("pattern_number10", ls247_map[(data >> 4) & 0x0F] | (BIT(m_dot_points2 >> 1, 0) << 7));
+			output().set_value("pattern_number1", ls247_map[data & 0x0F] | (BIT(m_dot_points2 >> 0, 0) << 7));
 			break;
 		case 4: // WR4 on IC56 KY-223
-			//TODO: output().set_value("", BIT(data, 6)); // LD63
-			//TODO: output().set_value("", BIT(data, 6)); // LD62
-			//TODO: output().set_value("", BIT(data, 5)); // LD64
-			//TODO: output().set_value("", BIT(data, 4)); // LD65
-			//TODO: output().set_value("", BIT(data, 3)); // LD66
-			//TODO: output().set_value("", BIT(data, 2)); // LD69
-			//TODO: output().set_value("", BIT(data, 1)); // LD68
-			//TODO: output().set_value("", BIT(data, 0)); // LD67
+			output().set_value("matte_copy", BIT(data, 7)); // LD63
+			output().set_value("mattes_col_bkgd", BIT(data, 6)); // LD62
+			output().set_value("pattern_number_set", BIT(data, 5)); // LD64
+			output().set_value("effect_ctrl_title", BIT(data, 4)); // LD65
+			output().set_value("effect_ctrl_dsk", BIT(data, 3)); // LD66
+			output().set_value("effect_ctrl_modify", BIT(data, 2)); // LD69
+			output().set_value("effect_ctrl_linear", BIT(data, 1)); // LD68
+			output().set_value("effect_ctrl_nonlin", BIT(data, 0)); // LD67
 			break;
 		case 5: // WR5 on IC58 KY-223
-			//TODO: output().set_value("bord_mat", BIT(data, 7)); // LD61
-			//TODO: output().set_value("shad_mat", BIT(data, 6)); // LD60
-			//TODO: output().set_value("dsk_mat", BIT(data, 5)); // LD59
-			//TODO: output().set_value("dsk_bord", BIT(data, 4)); // LD58
+			output().set_value("mattes_bord_mat", BIT(data, 7)); // LD61
+			output().set_value("mattes_shad_mat", BIT(data, 6)); // LD60
+			output().set_value("mattes_dsk_mat", BIT(data, 5)); // LD59
+			output().set_value("mattes_dsk_bord", BIT(data, 4)); // LD58
 			output().set_value("top_left",  BIT(data, 3)); // LD57
 			output().set_value("top_right", BIT(data, 2)); // LD56
 			output().set_value("btm_right", BIT(data, 1)); // LD55
 			output().set_value("btm_left",  BIT(data, 0)); // LD54
 			break;
 		case 6: // WR6 on IC60 KY-223
-			//TODO: output().set_value("", BIT(data, 6)); // LD53
-			//TODO: output().set_value("", BIT(data, 5)); // LD52
-			//TODO: output().set_value("", BIT(data, 4)); // LD51
-			//TODO: output().set_value("", BIT(data, 3)); // LD50
-			//TODO: output().set_value("", BIT(data, 2)); // LD48
-			//TODO: output().set_value("", BIT(data, 1)); // LD47
-			//TODO: output().set_value("", BIT(data, 0)); // LD46
+			output().set_value("wide_bord", BIT(data, 6)); // LD53
+			output().set_value("narw_bord", BIT(data, 5)); // LD52
+			output().set_value("drop_bord", BIT(data, 4)); // LD51
+			output().set_value("double", BIT(data, 3)); // LD50
+			output().set_value("dsk_fill_video", BIT(data, 2)); // LD48
+			output().set_value("dsk_fill_mat", BIT(data, 1)); // LD47
+			output().set_value("dsk_fill_none", BIT(data, 0)); // LD46
 			break;
 		case 7: // WR7 on IC82 KY-223
 			output().set_value("dsk_mask_normal", BIT(data, 7)); // LD42
@@ -349,37 +420,39 @@ void dfs500_state::cpanel_reg0_w(offs_t offset, uint8_t data)
 			//TODO: output().set_value("", BIT(data, 4) << 1 | BIT(data, 0)); // LD70
 			break;
 		case 10: // WR10 on IC68 KY-223
-			//TODO: output().set_value("", BIT(data, 7)); // LD34
-			//TODO: output().set_value("", BIT(data, 6)); // LD36
-			//TODO: output().set_value("", BIT(data, 5)); // LD33
-			//TODO: output().set_value("", BIT(data, 4)); // LD35
-			//TODO: output().set_value("", BIT(data, 3)); // LD37
+			output().set_value("mask_normal", BIT(data, 7)); // LD34
+			output().set_value("mask_invert", BIT(data, 6)); // LD36
+			output().set_value("key_inv", BIT(data, 5)); // LD33
+			output().set_value("ext_key", BIT(data, 4)); // LD35
+			output().set_value("title", BIT(data, 3)); // LD37
 			//TODO: output().set_value("", BIT(data, 2) << 1 | BIT(data, 1)); // LD79
 			break;
 		case 11: // WR11 on IC70 KY-223
-			//TODO: output().set_value("", BIT(data, 7)); // LD82
-			//TODO: output().set_value("", BIT(data, 6)); // LD81
-			//TODO: output().set_value("", BIT(data, 5)); // LD80
-			//TODO: output().set_value("", BIT(data, 4) << 1 | BIT(data, 3)); // LD74
-			//TODO: output().set_value("", BIT(data, 2)); // LD83
-			//TODO: output().set_value("", BIT(data, 1)); // LD84
-			//TODO: output().set_value("", BIT(data, 0)); // LD88
+			output().set_value("int_video_col_bkgd", BIT(data, 7)); // LD82
+			output().set_value("int_video_col_bar", BIT(data, 6)); // LD81
+			output().set_value("int_video_grid", BIT(data, 5)); // LD80
+			output().set_value("frgd_bus_int_video", BIT(data, 4) << 1 | BIT(data, 3)); // LD74
+			output().set_value("freeze_field", BIT(data, 2)); // LD83
+			output().set_value("freeze_frame", BIT(data, 1)); // LD84
+			output().set_value("trans_rate_dsk", BIT(data, 0)); // LD88
 			break;
 		case 12: // WR12 on IC72 KY-223
-			output().set_value("trans_rate10", ls247_map[(data >> 4) & 0x0F]);
-			output().set_value("trans_rate1", ls247_map[data & 0x0F]);
+			m_trans_rate[0] = data;
+			output().set_value("trans_rate10", ls247_map[(data >> 4) & 0x0F] | (BIT(m_dot_points2 >> 5, 0) << 7));
+			output().set_value("trans_rate1", ls247_map[data & 0x0F] | (BIT(m_dot_points2 >> 4, 0) << 7));
 			break;
 		case 13: // WR13 on IC75 KY-223
-			//TODO: output().set_value("", BIT(data, )); // LD235
-			//TODO: output().set_value("", BIT(data, )); // LD234
-			//TODO: output().set_value("", BIT(data, ) << 1 | BIT(data, )); // LD45
-			output().set_value("trans_rate100", ls247_map[data & 0x0F]);
+			m_trans_rate[0] = data & 0x0f;
+			output().set_value("effect_ctrl_shift", BIT(data, 5)); // LD234
+			output().set_value("effect_ctrl_mask", BIT(data, 4)); // LD235
+			//TODO: output().set_value("", BIT(data, 7) << 1 | BIT(data, 6)); // LD45
+			output().set_value("trans_rate100", (ls247_map[data & 0x0F]) | (BIT(m_dot_points2 >> 6, 0) << 7));
 			break;
 		case 14: // WR14 on IC77 KY-223
-			//TODO: output().set_value("", BIT(data, )); // LD85
-			//TODO: output().set_value("", BIT(data, )); // LD86
-			//TODO: output().set_value("", BIT(data, )); // LD87
-			//TODO: output().set_value("", BIT(data, )); // LD91
+			output().set_value("transition_effect", BIT(data, 7)); // LD85
+			output().set_value("trans_rate_effect", BIT(data, 6)); // LD86
+			output().set_value("transition_dsk", BIT(data, 5)); // LD87
+			output().set_value("transition_reverse", BIT(data, 4)); // LD91
 			output().set_value("transition_0", BIT(data, 3));
 			output().set_value("transition_1", BIT(data, 2));
 			output().set_value("transition_2", BIT(data, 1));
@@ -416,14 +489,14 @@ void dfs500_state::cpanel_reg1_w(offs_t offset, uint8_t data)
 			output().set_value("transition_19", BIT(data, 0));
 			break;
 		case 1: // WR17 on IC83 KY-223
-			//TODO: output().set_value("", BIT(data, 7)); // LD90
-			//TODO: output().set_value("", BIT(data, 6)); // LD89
-			//TODO: output().set_value("", BIT(data, 5)); // LD96
-			//TODO: output().set_value("", BIT(data, 4)); // LD97
-			//TODO: output().set_value("", BIT(data, 7)); // LD98
-			//TODO: output().set_value("", BIT(data, 6)); // LD99
-			//TODO: output().set_value("", BIT(data, 5)); // LD100
-			//TODO: output().set_value("", BIT(data, 4)); // LD101
+			output().set_value("trans_rate_norm_rev", BIT(data, 7)); // LD90
+			output().set_value("transition_auto_trans", BIT(data, 6)); // LD89
+			output().set_value("direct_pattern", BIT(data, 5)); // LD96
+			output().set_value("pad_0", BIT(data, 4)); // LD97
+			output().set_value("pad_1", BIT(data, 7)); // LD98
+			output().set_value("pad_2", BIT(data, 6)); // LD99
+			output().set_value("pad_3", BIT(data, 5)); // LD100
+			output().set_value("pad_rst", BIT(data, 4)); // LD101
 			break;
 		case 2: // WR18 on IC81 KY-223
 			//TODO: output().set_value("", BIT(data, 7)); // LD221
@@ -436,11 +509,15 @@ void dfs500_state::cpanel_reg1_w(offs_t offset, uint8_t data)
 			//TODO: output().set_value("", BIT(data, 4)); // LD214
 			break;
 		case 3: // WR19 on IC87 KY-223
-			//TODO: output().set_value("", BIT(data, 7)); // LD95
-			//TODO: output().set_value("", BIT(data, 6)); // LD94
-			//TODO: output().set_value("", BIT(data, 5)); // LD93
-			//TODO: output().set_value("", BIT(data, 4)); // LD92
-			m_sel = data & 0x0f;
+			output().set_value("mode_pattern", BIT(data, 7)); // LD95
+			output().set_value("mode_trans", BIT(data, 6)); // LD94
+			output().set_value("mode_user_pgm", BIT(data, 5)); // LD93
+			output().set_value("mode_snap_shot", BIT(data, 4)); // LD92
+
+			//Selectors for analog inputs to ADC:
+			m_sel10 = data & 0x03;
+			m_sel32 = (data >> 2) & 0x03;
+			break;
 		case 7: // WR20 on IC47 KY-223
 			// Here "data" holds the 8-bit value of the "interrupt vector number"
                         //  to be put on the data bus when the CPU asserts /INTAK (Interrupt Acknowledge)
@@ -461,8 +538,9 @@ void dfs500_state::cpanel_reg2_w(offs_t offset, uint8_t data)
 	switch (offset&7)
 	{
 		case 0: // WR21 on IC7 KY-225
-			output().set_value("snapshot10", ls247_map[(data >> 4) & 0x0F]);
-			output().set_value("snapshot1", ls247_map[data & 0x0F]);
+			m_snapshot = data;
+			output().set_value("snapshot10", ls247_map[(data >> 4) & 0x0F] | (BIT(m_dot_points1 >> 5, 0) << 7));
+			output().set_value("snapshot1", ls247_map[data & 0x0F] | (BIT(m_dot_points1 >> 4, 0) << 7));
 			break;
 		case 1: // WR22 on IC10 KY-225
 			output().set_value("editor_enable", BIT(data, 7)); // LD1
@@ -495,8 +573,9 @@ void dfs500_state::cpanel_reg2_w(offs_t offset, uint8_t data)
 			output().set_value("trail_drop_fill_rndm_mat", BIT(data, 0)); // LD21
 			break;
 		case 4: // WR25 on IC18 KY-225
-			output().set_value("trail_shadow_frames10", ls247_map[(data >> 4) & 0x0F]);
-			output().set_value("trail_shadow_frames1", ls247_map[data & 0x0F]);
+			m_trail_duration = data;
+			output().set_value("trail_shadow_frames10", ls247_map[(data >> 4) & 0x0F] | (BIT(m_dot_points1 >> 3, 0) << 7));
+			output().set_value("trail_shadow_frames1", ls247_map[data & 0x0F] | (BIT(m_dot_points1 >> 2, 0) << 7));
 			break;
 		case 5: // WR26 on IC16 KY-225
 			output().set_value("shadow", BIT(data, 7)); // LD25
@@ -509,12 +588,27 @@ void dfs500_state::cpanel_reg2_w(offs_t offset, uint8_t data)
 			output().set_value("location", BIT(data, 0)); // LD32
 			break;
 		case 6: // WR27 on IC21 KY-225
-			//FIXME: dot-points for snapshot, trail_shadow_frames and user_program status/edit
-			//FIXME: SEL4 and SEL5 signals to IC26
+			m_sel54 = (data >> 6) & 3; // D7/D6 = SEL5/SEL4 signals to IC26	
+			// Dot-points on 7seg digits:
+			// D5 = LD150 = DP on user program status 
+			// D4 = LD142 = DP on user program edit
+			// D3 = LD134 = DP on trail_duration10
+			// D2 = LD126 = DP on trail_duration1
+			// D1 = LD118 = DP on snap_shot10
+			// D0 = LD110 = DP on snap_/shot1
+			m_dot_points1 = data;
+			output().set_value("status", ls247_map[m_userprogram_status] | (BIT(data >> 5, 0) << 7));
+			output().set_value("edit", ls247_map[m_userprogram_edit] | (BIT(data >> 4, 0) << 7));
+			output().set_value("trail_shadow_frames10", ls247_map[(m_trail_duration >> 4) & 0x0F] | (BIT(data >> 3, 0) << 7));
+			output().set_value("trail_shadow_frames1", ls247_map[m_trail_duration & 0x0F] | (BIT(data >> 2, 0) << 7));
+			output().set_value("snapshot10", ls247_map[(m_snapshot >> 4) & 0x0F] | (BIT(data >> 1, 0) << 7));
+			output().set_value("snapshot1", ls247_map[m_snapshot & 0x0F] | (BIT(data >> 0, 0) << 7));
 			break;
 		case 7: // WR28 on IC23 KY-225
-			output().set_value("status", ls247_map[(data >> 4) & 0x0F]);
-			output().set_value("edit", ls247_map[data & 0x0F]);
+			m_userprogram_status = (data >> 4) & 0x0F;
+			m_userprogram_edit = data & 0x0F;
+			output().set_value("status", ls247_map[(data >> 4) & 0x0F] | (BIT(m_dot_points1 >> 5, 0) << 7));
+			output().set_value("edit", ls247_map[data & 0x0F] | (BIT(m_dot_points1 >> 4, 0) << 7));
 			break;
 		default:
 			break;
@@ -523,24 +617,16 @@ void dfs500_state::cpanel_reg2_w(offs_t offset, uint8_t data)
 
 void dfs500_state::cpanelcpu_mem_map(address_map &map)
 {
-	map(0x00000, 0x07fff).mirror(0xe8000).ram();                        // 32kb SRAM chip at IC15 
-	map(0x08000, 0x08000).mirror(0xe0ffd).rw(m_cpanel_serial, FUNC(i8251_device::data_r), FUNC(i8251_device::data_w));       // "IO" IC17
+	map(0x00000, 0x07fff).mirror(0xe0000).ram();                        // 32kb SRAM chip at IC15 on KY-223
+	map(0x08000, 0x08000).mirror(0xe0ffd).rw(m_cpanel_serial, FUNC(i8251_device::data_r), FUNC(i8251_device::data_w));       // "IO" IC17 on KY-223
 	map(0x08002, 0x08002).mirror(0xe0ffd).rw(m_cpanel_serial, FUNC(i8251_device::status_r), FUNC(i8251_device::control_w));
-	map(0x09000, 0x09007).mirror(0xe0ff8).rw(FUNC(dfs500_state::cpanel_pit_r), FUNC(dfs500_state::cpanel_pit_w));       // "TIMER" IC16
-	//map(0x0a000, 0x0a007).mirror(0xe0ff8).rw(FUNC(dfs500_state::cpanel_ad_r), FUNC(dfs500_state::cpanel_ad_w));       // "AD" IC??
+	map(0x09000, 0x09007).mirror(0xe0ff8).rw(FUNC(dfs500_state::cpanel_pit_r), FUNC(dfs500_state::cpanel_pit_w));       // "TIMER" IC16 on KY-223
+	map(0x0a000, 0x0a001).mirror(0xe0ffe).rw("adc", FUNC(upd7004_device::read), FUNC(upd7004_device::write));       // ADC at IC19 on KY-223
 	map(0x0b000, 0x0b00f).mirror(0xe0ff0).rw(FUNC(dfs500_state::cpanel_reg0_r), FUNC(dfs500_state::cpanel_reg0_w));       // "REG0" Switches(?) & LEDs on KY-223
-	map(0x0c000, 0x0c007).mirror(0xe0ff8).rw(FUNC(dfs500_state::cpanel_reg1_r), FUNC(dfs500_state::cpanel_reg1_w));       // "REG1" Switches(?) & LEDs on KY-223
+	map(0x0c000, 0x0c007).mirror(0xe0ff8).w(FUNC(dfs500_state::cpanel_reg1_w));       // "REG1" LEDs on KY-223
 	map(0x0d000, 0x0d007).mirror(0xe0ff8).rw(FUNC(dfs500_state::cpanel_reg2_r), FUNC(dfs500_state::cpanel_reg2_w));       // "REG2" Switches(?) & LEDs on KY-225
 	//map(0x0f000, 0x0f007).mirror(0xe0ff8).rw(FUNC(dfs500_state::cpanel_buzzer_r), FUNC(dfs500_state::cpanel_buzzer_w)); // "BUZZER" IC89
 	map(0x10000, 0x17fff).mirror(0xe8000).rom().region("cpanelcpu", 0); // 32kb EPROM at IC14
-
-// BUZZER: MEM A16=0 A15=1 A14..12=111 => xxx0 1111 0000 0000 0000 = 0x0f000 mirror(0xe0fff)
-// REG2:   MEM A16=0 A15=1 A14..12=101 
-// REG1:   MEM A16=0 A15=1 A14..12=100
-// REG0:   MEM A16=0 A15=1 A14..12=011
-// AD:     MEM A16=0 A15=1 A14..12=010
-// timer:  MEM A16=0 A15=1 A14..12=001
-// serial: MEM A16=0 A15=1 A14..12=000
 }
 
 void dfs500_state::cpanelcpu_io_map(address_map &map)
@@ -683,16 +769,27 @@ void dfs500_state::dfs500(machine_config &config)
 	m_cpanelcpu->set_irq_acknowledge_callback(FUNC(dfs500_state::irq_callback));
 
 	// CXQ71054P at IC16 (Programmable Timer / Counter)
-	pit8254_device &m_cpanel_pit(PIT8254(config, "cpanel_pit", 0));
-	m_cpanel_pit.set_clk<0>(8_MHz_XTAL);
-	m_cpanel_pit.set_clk<1>(8_MHz_XTAL/2);
-	m_cpanel_pit.out_handler<1>().set(m_cpanel_pit, FUNC(pit8254_device::write_clk2));
-	m_cpanel_pit.out_handler<0>().set(m_cpanel_serial, FUNC(i8251_device::write_txc));
-	m_cpanel_pit.out_handler<0>().append(m_cpanel_serial, FUNC(i8251_device::write_rxc));
+	PIT8254(config, m_cpanel_pit, 0);
+	m_cpanel_pit->set_clk<0>(8_MHz_XTAL);
+	m_cpanel_pit->set_clk<1>(8_MHz_XTAL/2);
+	m_cpanel_pit->out_handler<1>().set(m_cpanel_pit, FUNC(pit8254_device::write_clk2));
+	m_cpanel_pit->out_handler<0>().set(m_cpanel_serial, FUNC(i8251_device::write_txc));
+	m_cpanel_pit->out_handler<0>().append(m_cpanel_serial, FUNC(i8251_device::write_rxc));
 
 	// CXQ71051P at IC17 (Serial Interface Unit)
 	I8251(config, m_cpanel_serial, 8_MHz_XTAL/2);
 	m_cpanel_serial->txd_handler().set(m_serial1, FUNC(i8251_device::write_rxd));
+
+	UPD7004(config, m_adc, 8_MHz_XTAL/2);
+	// FIXME! m_adc->eoc_ff_callback(). [...] Set bit D0 on register RD0 IC35 KY223
+	// TODO: m_adc->in_callback<7>().set_ioport("XCOM");
+	// TODO: m_adc->in_callback<6>().set_ioport("YCOM");
+	// TODO: m_adc->in_callback<5>().set_ioport("XCOM1");
+	// TODO: m_adc->in_callback<4>().set_ioport("YCOM1");
+	// TODO: m_adc->in_callback<3>().set_ioport("XCOM0");
+	// TODO: m_adc->in_callback<2>().set_ioport("YCOM0");
+	// TODO: m_adc->in_callback<1>().set_ioport("TCLIP2");
+	// TODO: m_adc->in_callback<0>().set_ioport("TCLIP1");
 
 	//Buzzer		
 	SPEAKER(config, "mono").front_center();
@@ -710,14 +807,14 @@ void dfs500_state::dfs500(machine_config &config)
 	m_effectcpu->set_addrmap(AS_PROGRAM, &dfs500_state::effectcpu_mem_map);
 
 	// CXQ71054P at IC51 (Programmable Timer / Counter)
-	pit8254_device &m_pit(PIT8254(config, "pit", 0));
-	m_pit.set_clk<0>(8_MHz_XTAL);
-	m_pit.set_clk<1>(8_MHz_XTAL);
-	m_pit.out_handler<1>().set(m_pit, FUNC(pit8254_device::write_clk2));
-	m_pit.out_handler<0>().set(m_serial1, FUNC(i8251_device::write_txc));
-	m_pit.out_handler<0>().append(m_serial1, FUNC(i8251_device::write_rxc));
-	m_pit.out_handler<0>().append(m_serial2, FUNC(i8251_device::write_txc));
-	m_pit.out_handler<0>().append(m_serial2, FUNC(i8251_device::write_rxc));
+	PIT8254(config, m_pit, 0);
+	m_pit->set_clk<0>(8_MHz_XTAL);
+	m_pit->set_clk<1>(8_MHz_XTAL);
+	m_pit->out_handler<1>().set(m_pit, FUNC(pit8254_device::write_clk2));
+	m_pit->out_handler<0>().set(m_serial1, FUNC(i8251_device::write_txc));
+	m_pit->out_handler<0>().append(m_serial1, FUNC(i8251_device::write_rxc));
+	m_pit->out_handler<0>().append(m_serial2, FUNC(i8251_device::write_txc));
+	m_pit->out_handler<0>().append(m_serial2, FUNC(i8251_device::write_rxc));
 
 	// NEC D71059C at IC52 (Programmable Interruption Controller)
 	PIC8259(config, m_pic, 0);
