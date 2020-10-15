@@ -83,6 +83,15 @@ public:
 		, m_screen(*this, "screen")
 		, m_input(*this, "input%u", 1U)
 		, m_dipswitch(*this, {"DSW_S1", "DSW_S2", "DSW_S3"})
+		, m_transition(*this, "transition_%u", 0U)
+		, m_effect_ctrl(*this, {"effect_ctrl_shift", "effect_ctrl_mask"})
+		, m_7seg_status(*this, "status")
+		, m_7seg_edit(*this, "edit")
+		, m_7seg_trail_shadow_frames(*this, {"trail_shadow_frames10", "trail_shadow_frames1"})
+		, m_7seg_snapshot(*this, {"snapshot10", "snapshot1"})
+		, m_7seg_trans_rate(*this, {"trans_rate100", "trans_rate10", "trans_rate1"})
+		, m_7seg_pattern_number(*this, {"pattern_number1000", "pattern_number100", "pattern_number10", "pattern_number1"})
+		, m_LD(*this, {"-----", "editor_enable", "hold_input", "recall", "learn", "lighting", "lighting_plane", "lighting_line", "lighting_spot", "lighting_width_narrow", "lighting_width_medium",   "lighting_width_wide", "lighting_intensity_low", "lighting_intensity_medium", "lighting_intensity_high", "trail", "trail_drop_type_soft_star", "trail_drop_type_hard_star", "trail_drop_type_soft", "trail_drop_type_hard", "drop_border", "trail_drop_fill_rndm_mat", "trail_drop_fill_shad_mat", "trail_drop_fill_bord_mat", "trail_drop_fill_self", "shadow", "trail_frames_density", "trail_frames_wid_pos", "trail_frames_duration", "edge_border", "edge_soft", "edit_led", "location", "key_inv", "mask_normal", "ext_key", "mask_invert", "title", "title_shad_mat", "title_bord_mat", "title_frgd_bus", "dsk_key_inv", "dsk_mask_normal",  "dsk_ext_key", "dsk_mask_invert", "dsk_mix", "dsk_fill_none", "dsk_fill_mat", "dsk_fill_video", "border", "double", "drop_bord", "narw_bord", "wide_bord", "btm_right", "btm_left", "top_right", "top_left", "mattes_dsk_bord", "mattes_dsk_mat", "mattes_shad_mat", "mattes_bord_mat", "mattes_col_bkgd", "matte_copy", "pattern_number_set", "effect_ctrl_title", "effect_ctrl_dsk" "effect_ctrl_nonlin", "effect_ctrl_linear", "effect_ctrl_modify", "foreground_vtr_a", "foreground_vtr_b", "foreground_3", "foreground_4", "foreground_int_video", "background_vtr_a", "background_vtr_b", "background_3", "background_4", "background_int_video", "int_video_grid", "int_video_col_bar", "int_video_col_bkgd", "freeze_field", "freeze_frame", "transition_effect", "trans_rate_dsk", "transition_dsk", "trans_rate_effect", "transition_auto_trans", "trans_rate_norm_rev", "transition_reverse", "mode_snap_shot", "mode_user_pgm", "mode_trans", "mode_pattern", "direct_pattern", "keypad_0", "keypad_1", "keypad_2", "keypad_3", "keypad_rst", "keypad_4", "keypad_5", "keypad_6", "keypad_del", "keypad_7", "keypad_8", "keypad_9", "keypad_ins"})
 	{
 	}
 
@@ -160,6 +169,15 @@ private:
 	required_device<screen_device> m_screen;
 	required_device_array<picture_image_device, 4> m_input;
 	required_ioport_array<3> m_dipswitch;
+	output_finder<12> m_transition;
+	output_finder<2> m_effect_ctrl;
+	output_finder<1> m_7seg_status;
+	output_finder<1> m_7seg_edit;
+	output_finder<2> m_7seg_trail_shadow_frames;
+	output_finder<2> m_7seg_snapshot;
+	output_finder<3> m_7seg_trans_rate;
+	output_finder<4> m_7seg_pattern_number;
+	output_finder<110> m_LD;
 };
 
 IRQ_CALLBACK_MEMBER(dfs500_state::irq_callback)
@@ -377,128 +395,126 @@ void dfs500_state::cpanel_reg0_w(offs_t offset, uint8_t data)
 			// D1 = LD186 or LD168 (?) = DP on pattern_number10
 			// D0 = LD158 = DP on pattern_number1
 			m_dot_points2 = data;
-			output().set_value("trans_rate100", ls247_map[m_trans_rate[1] & 0x0f] | (BIT(data >> 6, 0) << 7));
-			output().set_value("trans_rate10", ls247_map[(m_trans_rate[0] >> 4) & 0x0f] | (BIT(data >> 5, 0) << 7));
-			output().set_value("trans_rate1", ls247_map[m_trans_rate[0] & 0x0f] | (BIT(data >> 4, 0) << 7));
-			output().set_value("pattern_number1000", (m_pattern_number[2] & 0x7f) | (BIT(data >> 3, 0) << 7));
-			output().set_value("pattern_number100", (m_pattern_number[1] & 0x7f) | (BIT(data >> 2, 0) << 7));
-			output().set_value("pattern_number10", ls247_map[(m_pattern_number[0] >> 4) & 0x0f] | (BIT(data >> 1, 0) << 7));
-			output().set_value("pattern_number1", ls247_map[m_pattern_number[0] & 0x0f] | (BIT(data >> 0, 0) << 7));
+			output().set_value(m_7seg_trans_rate[2], ls247_map[m_trans_rate[1] & 0x0f] | (BIT(data >> 6, 0) << 7));
+			output().set_value(m_7seg_trans_rate[1], ls247_map[(m_trans_rate[0] >> 4) & 0x0f] | (BIT(data >> 5, 0) << 7));
+			output().set_value(m_7seg_trans_rate[0], ls247_map[m_trans_rate[0] & 0x0f] | (BIT(data >> 4, 0) << 7));
+			output().set_value(m_7seg_pattern_number[3], (m_pattern_number[2] & 0x7f) | (BIT(data >> 3, 0) << 7));
+			output().set_value(m_7seg_pattern_number[2], (m_pattern_number[1] & 0x7f) | (BIT(data >> 2, 0) << 7));
+			output().set_value(m_7seg_pattern_number[1], ls247_map[(m_pattern_number[0] >> 4) & 0x0f] | (BIT(data >> 1, 0) << 7));
+			output().set_value(m_7seg_pattern_number[0], ls247_map[m_pattern_number[0] & 0x0f] | (BIT(data >> 0, 0) << 7));
 			break;
 		case 1: // WR1 on IC50 KY-223
 			m_pattern_number[2] = data;
-			output().set_value("pattern_number1000", (data & 0x7f) | (BIT(m_dot_points2 >> 3, 0) << 7));
+			output().set_value(m_7seg_pattern_number[3], (data & 0x7f) | (BIT(m_dot_points2 >> 3, 0) << 7));
 			break;
 		case 2: // WR2 on IC52 KY-223
 			m_pattern_number[1] = data;
-			output().set_value("pattern_number100", (data & 0x7f) | (BIT(m_dot_points2 >> 2, 0) << 7));
+			output().set_value(m_7seg_pattern_number[2], (data & 0x7f) | (BIT(m_dot_points2 >> 2, 0) << 7));
 			break;
 		case 3: // WR3 on IC53 KY-223
 			m_pattern_number[0] = data;
-			output().set_value("pattern_number10", ls247_map[(data >> 4) & 0x0f] | (BIT(m_dot_points2 >> 1, 0) << 7));
-			output().set_value("pattern_number1", ls247_map[data & 0x0f] | (BIT(m_dot_points2 >> 0, 0) << 7));
+			output().set_value(m_7seg_pattern_number[1], ls247_map[(data >> 4) & 0x0f] | (BIT(m_dot_points2 >> 1, 0) << 7));
+			output().set_value(m_7seg_pattern_number[0], ls247_map[data & 0x0f] | (BIT(m_dot_points2 >> 0, 0) << 7));
 			break;
 		case 4: // WR4 on IC56 KY-223
-			output().set_value("matte_copy", BIT(data, 7)); // LD63
-			output().set_value("mattes_col_bkgd", BIT(data, 6)); // LD62
-			output().set_value("pattern_number_set", BIT(data, 5)); // LD64
-			output().set_value("effect_ctrl_title", BIT(data, 4)); // LD65
-			output().set_value("effect_ctrl_dsk", BIT(data, 3)); // LD66
-			output().set_value("effect_ctrl_modify", BIT(data, 2)); // LD69
-			output().set_value("effect_ctrl_linear", BIT(data, 1)); // LD68
-			output().set_value("effect_ctrl_nonlin", BIT(data, 0)); // LD67
+			output().set_value(m_LD[63], BIT(data, 7)); // matte_copy
+			output().set_value(m_LD[62], BIT(data, 6)); // mattes_col_bkgd
+			output().set_value(m_LD[64], BIT(data, 5)); // pattern_number_set
+			output().set_value(m_LD[65], BIT(data, 4)); // effect_ctrl_title
+			output().set_value(m_LD[66], BIT(data, 3)); // effect_ctrl_dsk
+			output().set_value(m_LD[69], BIT(data, 2)); // effect_ctrl_modify
+			output().set_value(m_LD[68], BIT(data, 1)); // effect_ctrl_linear
+			output().set_value(m_LD[67], BIT(data, 0)); // effect_ctrl_nonlin
 			break;
 		case 5: // WR5 on IC58 KY-223
-			output().set_value("mattes_bord_mat", BIT(data, 7)); // LD61
-			output().set_value("mattes_shad_mat", BIT(data, 6)); // LD60
-			output().set_value("mattes_dsk_mat", BIT(data, 5)); // LD59
-			output().set_value("mattes_dsk_bord", BIT(data, 4)); // LD58
-			output().set_value("top_left",  BIT(data, 3)); // LD57
-			output().set_value("top_right", BIT(data, 2)); // LD56
-			output().set_value("btm_left", BIT(data, 1)); // LD55  //The service manual seems to be incorrect here.
-			output().set_value("btm_right",  BIT(data, 0)); // LD54  // It seems to mistakenly swap LD54 and LD55.
+			output().set_value(m_LD[61], BIT(data, 7)); // mattes_bord_mat
+			output().set_value(m_LD[60], BIT(data, 6)); // mattes_shad_mat
+			output().set_value(m_LD[59], BIT(data, 5)); // mattes_dsk_mat
+			output().set_value(m_LD[58], BIT(data, 4)); // mattes_dsk_bord
+			output().set_value(m_LD[57], BIT(data, 3)); // top_left
+			output().set_value(m_LD[56], BIT(data, 2)); // top_right
+			output().set_value(m_LD[55], BIT(data, 1)); // btm_left    // The service manual seems to be incorrect here.
+			output().set_value(m_LD[54], BIT(data, 0)); // btm_right  // It seems to mistakenly swap LD54 and LD55.
 			break;
 		case 6: // WR6 on IC60 KY-223
-			output().set_value("wide_bord", BIT(data, 6)); // LD53
-			output().set_value("narw_bord", BIT(data, 5)); // LD52
-			output().set_value("drop_bord", BIT(data, 4)); // LD51
-			output().set_value("double", BIT(data, 3)); // LD50
-			output().set_value("dsk_fill_video", BIT(data, 2)); // LD48
-			output().set_value("dsk_fill_mat", BIT(data, 1)); // LD47
-			output().set_value("dsk_fill_none", BIT(data, 0)); // LD46
+			output().set_value(m_LD[53], BIT(data, 6)); // wide_bord
+			output().set_value(m_LD[52], BIT(data, 5)); // narw_bord
+			output().set_value(m_LD[51], BIT(data, 4)); // drop_bord
+			output().set_value(m_LD[50], BIT(data, 3)); // double
+			output().set_value(m_LD[48], BIT(data, 2)); // dsk_fill_video
+			output().set_value(m_LD[47], BIT(data, 1)); // dsk_fill_mat
+			output().set_value(m_LD[46], BIT(data, 0)); // dsk_fill_none
 			break;
 		case 7: // WR7 on IC82 KY-223
-			output().set_value("dsk_mask_normal", BIT(data, 7)); // LD42
-			output().set_value("dsk_mask_invert", BIT(data, 6)); // LD44
-			output().set_value("dsk_key_inv", BIT(data, 5)); // LD41
-			output().set_value("dsk_ext_key", BIT(data, 4)); // LD43
-			output().set_value("border", BIT(data, 3)); // LD49
-			output().set_value("title_frgd_bus", BIT(data, 2)); // LD40
-			output().set_value("title_bord_mat", BIT(data, 1)); // LD39
-			output().set_value("title_shad_mat", BIT(data, 0)); // LD38
+			output().set_value(m_LD[42], BIT(data, 7)); // dsk_mask_normal
+			output().set_value(m_LD[44], BIT(data, 6)); // dsk_mask_invert
+			output().set_value(m_LD[41], BIT(data, 5)); // dsk_key_inv
+			output().set_value(m_LD[43], BIT(data, 4)); // dsk_ext_key
+			output().set_value(m_LD[49], BIT(data, 3)); // border
+			output().set_value(m_LD[40], BIT(data, 2)); // title_frgd_bus
+			output().set_value(m_LD[39], BIT(data, 1)); // title_bord_mat
+			output().set_value(m_LD[38], BIT(data, 0)); // title_shad_mat
 			break;
 		case 8: // WR8 on IC64 KY-223
-			output().set_value("background_4", BIT(data, 7) << 1 | BIT(data, 3)); // LD78
-			output().set_value("background_3", BIT(data, 6) << 1 | BIT(data, 2)); // LD77
-			output().set_value("background_vtr_b", BIT(data, 5) << 1 | BIT(data, 1)); // LD76
-			output().set_value("background_vtr_a", BIT(data, 4) << 1 | BIT(data, 0)); // LD75
+			output().set_value(m_LD[78], BIT(data, 7) << 1 | BIT(data, 3)); // background_4
+			output().set_value(m_LD[77], BIT(data, 6) << 1 | BIT(data, 2)); // background_3
+			output().set_value(m_LD[76], BIT(data, 5) << 1 | BIT(data, 1)); // background_vtr_b
+			output().set_value(m_LD[75], BIT(data, 4) << 1 | BIT(data, 0)); // background_vtr_a
 			break;
 		case 9: // WR9 on IC66 KY-223
-			output().set_value("foreground_4", BIT(data, 7) << 1 | BIT(data, 3)); // LD73
-			output().set_value("foreground_3", BIT(data, 6) << 1 | BIT(data, 2)); // LD72
-			output().set_value("foreground_vtr_b", BIT(data, 5) << 1 | BIT(data, 1)); // LD71
-			output().set_value("foreground_vtr_a", BIT(data, 4) << 1 | BIT(data, 0)); // LD70
+			output().set_value(m_LD[73], BIT(data, 7) << 1 | BIT(data, 3)); // foreground_4
+			output().set_value(m_LD[72], BIT(data, 6) << 1 | BIT(data, 2)); // foreground_3
+			output().set_value(m_LD[71], BIT(data, 5) << 1 | BIT(data, 1)); // foreground_vtr_b
+			output().set_value(m_LD[70], BIT(data, 4) << 1 | BIT(data, 0)); // foreground_vtr_a
 			break;
 		case 10: // WR10 on IC68 KY-223
-			output().set_value("mask_normal", BIT(data, 7)); // LD34
-			output().set_value("mask_invert", BIT(data, 6)); // LD36
-			output().set_value("key_inv", BIT(data, 5)); // LD33
-			output().set_value("ext_key", BIT(data, 4)); // LD35
-			output().set_value("title", BIT(data, 3)); // LD37
-			output().set_value("background_int_video", BIT(data, 2) << 1 | BIT(data, 1)); // LD79
+			output().set_value(m_LD[34], BIT(data, 7)); // mask_normal
+			output().set_value(m_LD[36], BIT(data, 6)); // mask_invert
+			output().set_value(m_LD[33], BIT(data, 5)); // key_inv
+			output().set_value(m_LD[35], BIT(data, 4)); // ext_key
+			output().set_value(m_LD[37], BIT(data, 3)); // title
+			output().set_value(m_LD[79], BIT(data, 2) << 1 | BIT(data, 1)); // background_int_video
 			break;
 		case 11: // WR11 on IC70 KY-223
-			output().set_value("int_video_col_bkgd", BIT(data, 7)); // LD82
-			output().set_value("int_video_col_bar", BIT(data, 6)); // LD81
-			output().set_value("int_video_grid", BIT(data, 5)); // LD80
-			output().set_value("foreground_int_video", BIT(data, 4) << 1 | BIT(data, 3)); // LD74
-			output().set_value("freeze_field", BIT(data, 2)); // LD83
-			output().set_value("freeze_frame", BIT(data, 1)); // LD84
-			output().set_value("trans_rate_effect", BIT(data, 0)); // LD88
+			output().set_value(m_LD[82], BIT(data, 7)); // int_video_col_bkgd
+			output().set_value(m_LD[81], BIT(data, 6)); // int_video_col_bar
+			output().set_value(m_LD[80], BIT(data, 5)); // int_video_grid
+			output().set_value(m_LD[74], BIT(data, 4) << 1 | BIT(data, 3)); // foreground_int_video
+			output().set_value(m_LD[83], BIT(data, 2)); // freeze_field
+			output().set_value(m_LD[84], BIT(data, 1)); // freeze_frame
+			output().set_value(m_LD[88], BIT(data, 0)); // trans_rate_effect
 			break;
 		case 12: // WR12 on IC72 KY-223
 			m_trans_rate[0] = data;
-			output().set_value("trans_rate10", ls247_map[(data >> 4) & 0x0f] | (BIT(m_dot_points2 >> 5, 0) << 7));
-			output().set_value("trans_rate1", ls247_map[data & 0x0f] | (BIT(m_dot_points2 >> 4, 0) << 7));
+			output().set_value(m_7seg_trans_rate[1], ls247_map[(data >> 4) & 0x0f] | (BIT(m_dot_points2 >> 5, 0) << 7));
+			output().set_value(m_7seg_trans_rate[0], ls247_map[data & 0x0f] | (BIT(m_dot_points2 >> 4, 0) << 7));
 			break;
 		case 13: // WR13 on IC75 KY-223
 			m_trans_rate[0] = data & 0x0f;
-			output().set_value("effect_ctrl_shift", BIT(data, 5)); // LD234
-			output().set_value("effect_ctrl_mask", BIT(data, 4)); // LD235
-			output().set_value("dsk_mix", BIT(data, 7) << 1 | BIT(data, 6)); // LD45
-			output().set_value("trans_rate100", (ls247_map[data & 0x0F]) | (BIT(m_dot_points2 >> 6, 0) << 7));
+			output().set_value(m_effect_ctrl[0], BIT(data, 5)); // LD234: m_effect_ctrl_shift
+			output().set_value(m_effect_ctrl[1], BIT(data, 4)); // LD235: m_effect_ctrl_mask
+			output().set_value(m_LD[45], BIT(data, 7) << 1 | BIT(data, 6)); // dsk_mix
+			output().set_value(m_7seg_trans_rate[2], (ls247_map[data & 0x0F]) | (BIT(m_dot_points2 >> 6, 0) << 7));
 			break;
 		case 14: // WR14 on IC77 KY-223
-			output().set_value("transition_effect", BIT(data, 7)); // LD85
-			output().set_value("trans_rate_dsk", BIT(data, 6)); // LD86
-			output().set_value("transition_dsk", BIT(data, 5)); // LD87
-			output().set_value("transition_reverse", BIT(data, 4)); // LD91
-			output().set_value("transition_0", BIT(data, 3));
-			output().set_value("transition_1", BIT(data, 2));
-			output().set_value("transition_2", BIT(data, 1));
-			output().set_value("transition_3", BIT(data, 0));
+			output().set_value(m_LD[85], BIT(data, 7)); // transition_effect
+			output().set_value(m_LD[86], BIT(data, 6)); // trans_rate_dsk
+			output().set_value(m_LD[87], BIT(data, 5)); // transition_dsk
+			output().set_value(m_LD[91], BIT(data, 4)); // transition_reverse
+			output().set_value(m_transition[0], BIT(data, 3)); // LD233
+			output().set_value(m_transition[1], BIT(data, 2)); // LD232
+			output().set_value(m_transition[2], BIT(data, 1)); // LD231
+			output().set_value(m_transition[3], BIT(data, 0)); // LD230
 			break;
 		case 15: // WR15 on IC79 KY-223
-			output().set_value("transition_4", BIT(data, 7));
-			output().set_value("transition_5", BIT(data, 6));
-			output().set_value("transition_6", BIT(data, 5));
-			output().set_value("transition_7", BIT(data, 4));
-			output().set_value("transition_8", BIT(data, 3));
-			output().set_value("transition_9", BIT(data, 2));
-			output().set_value("transition_10", BIT(data, 1));
-			output().set_value("transition_11", BIT(data, 0));
-			break;
-		default:
+			output().set_value(m_transition[4], BIT(data, 7)); // LD229
+			output().set_value(m_transition[5], BIT(data, 6)); // LD228
+			output().set_value(m_transition[6], BIT(data, 5)); // LD227
+			output().set_value(m_transition[7], BIT(data, 4)); // LD226
+			output().set_value(m_transition[8], BIT(data, 3)); // LD225
+			output().set_value(m_transition[9], BIT(data, 2)); // LD224
+			output().set_value(m_transition[10], BIT(data, 1)); // LD223
+			output().set_value(m_transition[11], BIT(data, 0)); // LD222
 			break;
 	}
 }
@@ -509,40 +525,40 @@ void dfs500_state::cpanel_reg1_w(offs_t offset, uint8_t data)
 	switch (offset & 7)
 	{
 		case 0: // WR16 on IC81 KY-223
-			output().set_value("transition_12", BIT(data, 7)); // LD221 ?
-			output().set_value("transition_13", BIT(data, 6)); // LD220 ?
-			output().set_value("transition_14", BIT(data, 5)); // LD219 ?
-			output().set_value("transition_15", BIT(data, 4)); // LD218 ?
-			output().set_value("transition_16", BIT(data, 3)); // LD217 ?
-			output().set_value("transition_17", BIT(data, 2)); // LD216 ?
-			output().set_value("transition_18", BIT(data, 1)); // LD215 ?
-			output().set_value("transition_19", BIT(data, 0)); // LD214 ?
+			output().set_value(m_transition[12], BIT(data, 7)); // LD221
+			output().set_value(m_transition[13], BIT(data, 6)); // LD220
+			output().set_value(m_transition[14], BIT(data, 5)); // LD219
+			output().set_value(m_transition[15], BIT(data, 4)); // LD218
+			output().set_value(m_transition[16], BIT(data, 3)); // LD217
+			output().set_value(m_transition[17], BIT(data, 2)); // LD216
+			output().set_value(m_transition[18], BIT(data, 1)); // LD215
+			output().set_value(m_transition[19], BIT(data, 0)); // LD214
 			break;
 		case 1: // WR17 on IC83 KY-223
-			output().set_value("trans_rate_norm_rev", BIT(data, 7)); // LD90
-			output().set_value("transition_auto_trans", BIT(data, 6)); // LD89
-			output().set_value("direct_pattern", BIT(data, 5)); // LD96
-			output().set_value("keypad_0", BIT(data, 4)); // LD97
-			output().set_value("keypad_1", BIT(data, 3)); // LD98
-			output().set_value("keypad_2", BIT(data, 2)); // LD99
-			output().set_value("keypad_3", BIT(data, 1)); // LD100
-			output().set_value("keypad_rst", BIT(data, 0)); // LD101
+			output().set_value(m_LD[90], BIT(data, 7)); // trans_rate_norm_rev
+			output().set_value(m_LD[89], BIT(data, 6)); // transition_auto_trans
+			output().set_value(m_LD[96], BIT(data, 5)); // direct_pattern
+			output().set_value(m_LD[97], BIT(data, 4)); // keypad_0
+			output().set_value(m_LD[98], BIT(data, 3)); // keypad_1
+			output().set_value(m_LD[99], BIT(data, 2)); // keypad_2
+			output().set_value(m_LD[100], BIT(data, 1)); // keypad_3
+			output().set_value(m_LD[101], BIT(data, 0)); // keypad_rst
 			break;
 		case 2: // WR18 on IC81 KY-223
-			output().set_value("keypad_4", BIT(data, 7)); // LD102
-			output().set_value("keypad_5", BIT(data, 6)); // LD103
-			output().set_value("keypad_6", BIT(data, 5)); // LD104
-			output().set_value("keypad_del", BIT(data, 4)); // LD105
-			output().set_value("keypad_7", BIT(data, 3)); // LD106
-			output().set_value("keypad_8", BIT(data, 2)); // LD107
-			output().set_value("keypad_9", BIT(data, 1)); // LD108
-			output().set_value("keypad_ins", BIT(data, 0)); // LD109
+			output().set_value(m_LD[102], BIT(data, 7)); // keypad_4
+			output().set_value(m_LD[103], BIT(data, 6)); // keypad_5
+			output().set_value(m_LD[104], BIT(data, 5)); // keypad_6
+			output().set_value(m_LD[105], BIT(data, 4)); // keypad_del
+			output().set_value(m_LD[106], BIT(data, 3)); // keypad_7
+			output().set_value(m_LD[107], BIT(data, 2)); // keypad_8
+			output().set_value(m_LD[108], BIT(data, 1)); // keypad_9
+			output().set_value(m_LD[109], BIT(data, 0)); // keypad_ins
 			break;
 		case 3: // WR19 on IC87 KY-223
-			output().set_value("mode_pattern", BIT(data, 7)); // LD95
-			output().set_value("mode_trans", BIT(data, 6)); // LD94
-			output().set_value("mode_user_pgm", BIT(data, 5)); // LD93
-			output().set_value("mode_snap_shot", BIT(data, 4)); // LD92
+			output().set_value(m_LD[95], BIT(data, 7)); // mode_pattern
+			output().set_value(m_LD[94], BIT(data, 6)); // mode_trans
+			output().set_value(m_LD[93], BIT(data, 5)); // mode_user_pgm
+			output().set_value(m_LD[92], BIT(data, 4)); // mode_snap_shot
 
 			//Selectors for analog inputs to ADC:
 			m_sel10 = data & 0x03;
@@ -569,53 +585,53 @@ void dfs500_state::cpanel_reg2_w(offs_t offset, uint8_t data)
 	{
 		case 0: // WR21 on IC7 KY-225
 			m_snapshot = data;
-			output().set_value("snapshot10", ls247_map[(data >> 4) & 0x0F] | (BIT(m_dot_points1 >> 5, 0) << 7));
-			output().set_value("snapshot1", ls247_map[data & 0x0F] | (BIT(m_dot_points1 >> 4, 0) << 7));
+			output().set_value(m_7seg_snapshot[1], ls247_map[(data >> 4) & 0x0F] | (BIT(m_dot_points1 >> 5, 0) << 7));
+			output().set_value(m_7seg_snapshot[0], ls247_map[data & 0x0F] | (BIT(m_dot_points1 >> 4, 0) << 7));
 			break;
 		case 1: // WR22 on IC10 KY-225
-			output().set_value("editor_enable", BIT(data, 7)); // LD1
-			output().set_value("learn", BIT(data, 6)); // LD4
-			output().set_value("recall", BIT(data, 5)); // LD3
-			output().set_value("hold_input", BIT(data, 4)); // LD2
-			output().set_value("lighting", BIT(data, 3)); // LD5
-			output().set_value("lighting_spot", BIT(data, 2)); // LD8
-			output().set_value("lighting_line", BIT(data, 1)); // LD7
-			output().set_value("lighting_plane", BIT(data, 0)); // LD6
+			output().set_value(m_LD[1], BIT(data, 7)); // editor_enable
+			output().set_value(m_LD[4], BIT(data, 6)); // learn
+			output().set_value(m_LD[3], BIT(data, 5)); // recall
+			output().set_value(m_LD[2], BIT(data, 4)); // hold_input
+			output().set_value(m_LD[5], BIT(data, 3)); // lighting
+			output().set_value(m_LD[8], BIT(data, 2)); // lighting_spot
+			output().set_value(m_LD[7], BIT(data, 1)); // lighting_line
+			output().set_value(m_LD[6], BIT(data, 0)); // lighting_plane
 			break;
 		case 2: // WR23 on IC12 KY-225
-			output().set_value("trail", BIT(data, 7)); // LD15
-			output().set_value("drop_border", BIT(data, 6)); // LD20
-			output().set_value("lighting_width_wide", BIT(data, 5)); // LD11
-			output().set_value("lighting_width_medium", BIT(data, 4)); // LD10
-			output().set_value("lighting_width_narrow", BIT(data, 3)); // LD9
-			output().set_value("lighting_intensity_high", BIT(data, 2)); // LD14
-			output().set_value("lighting_intensity_medium", BIT(data, 1)); // LD13
-			output().set_value("lighting_intensity_low", BIT(data, 0)); // LD12
+			output().set_value(m_LD[15], BIT(data, 7)); // trail
+			output().set_value(m_LD[20], BIT(data, 6)); // drop_border
+			output().set_value(m_LD[11], BIT(data, 5)); // lighting_width_wide
+			output().set_value(m_LD[10], BIT(data, 4)); // lighting_width_medium
+			output().set_value(m_LD[9],  BIT(data, 3)); // lighting_width_narrow
+			output().set_value(m_LD[14], BIT(data, 2)); // lighting_intensity_high
+			output().set_value(m_LD[13], BIT(data, 1)); // lighting_intensity_medium
+			output().set_value(m_LD[12], BIT(data, 0)); // lighting_intensity_low
 			break;
 		case 3: // WR24 on IC14 KY-225
-			output().set_value("trail_drop_type_hard", BIT(data, 7)); // LD19
-			output().set_value("trail_drop_type_soft", BIT(data, 6)); // LD18
-			output().set_value("trail_drop_type_hard_star", BIT(data, 5)); // LD17
-			output().set_value("trail_drop_type_soft_star", BIT(data, 4)); // LD16
-			output().set_value("trail_drop_fill_self", BIT(data, 3)); // LD24
-			output().set_value("trail_drop_fill_bord_mat", BIT(data, 2)); // LD23
-			output().set_value("trail_drop_fill_shad_mat", BIT(data, 1)); // LD22
-			output().set_value("trail_drop_fill_rndm_mat", BIT(data, 0)); // LD21
+			output().set_value(m_LD[19], BIT(data, 7)); // trail_drop_type_hard
+			output().set_value(m_LD[18], BIT(data, 6)); // trail_drop_type_soft
+			output().set_value(m_LD[17], BIT(data, 5)); // trail_drop_type_hard_star
+			output().set_value(m_LD[16], BIT(data, 4)); // trail_drop_type_soft_star
+			output().set_value(m_LD[24], BIT(data, 3)); // trail_drop_fill_self
+			output().set_value(m_LD[23], BIT(data, 2)); // trail_drop_fill_bord_mat
+			output().set_value(m_LD[22], BIT(data, 1)); // trail_drop_fill_shad_mat
+			output().set_value(m_LD[21], BIT(data, 0)); // trail_drop_fill_rndm_mat
 			break;
 		case 4: // WR25 on IC18 KY-225
 			m_trail_duration = data;
-			output().set_value("trail_shadow_frames10", ls247_map[(data >> 4) & 0x0F] | (BIT(m_dot_points1 >> 3, 0) << 7));
-			output().set_value("trail_shadow_frames1", ls247_map[data & 0x0F] | (BIT(m_dot_points1 >> 2, 0) << 7));
+			output().set_value(m_7seg_trail_shadow_frames[1], ls247_map[(data >> 4) & 0x0F] | (BIT(m_dot_points1 >> 3, 0) << 7));
+			output().set_value(m_7seg_trail_shadow_frames[0], ls247_map[data & 0x0F] | (BIT(m_dot_points1 >> 2, 0) << 7));
 			break;
 		case 5: // WR26 on IC16 KY-225
-			output().set_value("shadow", BIT(data, 7)); // LD25
-			output().set_value("trail_frames_duration", BIT(data, 6)); // LD28
-			output().set_value("trail_frames_wid_pos", BIT(data, 5)); // LD27
-			output().set_value("trail_frames_density", BIT(data, 4)); // LD26
-			output().set_value("edge_border", BIT(data, 3)); // LD29
-			output().set_value("edge_soft", BIT(data, 2)); // LD30
-			output().set_value("edit_led", BIT(data, 1)); // LD31
-			output().set_value("location", BIT(data, 0)); // LD32
+			output().set_value(m_LD[25], BIT(data, 7)); // shadow
+			output().set_value(m_LD[28], BIT(data, 6)); // trail_frames_duration
+			output().set_value(m_LD[27], BIT(data, 5)); // trail_frames_wid_pos
+			output().set_value(m_LD[26], BIT(data, 4)); // trail_frames_density
+			output().set_value(m_LD[29], BIT(data, 3)); // edge_border
+			output().set_value(m_LD[30], BIT(data, 2)); // edge_soft
+			output().set_value(m_LD[31], BIT(data, 1)); // edit_led
+			output().set_value(m_LD[32], BIT(data, 0)); // location
 			break;
 		case 6: // WR27 on IC21 KY-225
 			m_sel54 = (data >> 6) & 3; // D7/D6 = SEL5/SEL4 signals to IC26	
@@ -627,20 +643,18 @@ void dfs500_state::cpanel_reg2_w(offs_t offset, uint8_t data)
 			// D1 = LD118 = DP on snap_shot10
 			// D0 = LD110 = DP on snap_/shot1
 			m_dot_points1 = data;
-			output().set_value("status", ls247_map[m_userprogram_status] | (BIT(data >> 5, 0) << 7));
-			output().set_value("edit", ls247_map[m_userprogram_edit] | (BIT(data >> 4, 0) << 7));
-			output().set_value("trail_shadow_frames10", ls247_map[(m_trail_duration >> 4) & 0x0F] | (BIT(data >> 3, 0) << 7));
-			output().set_value("trail_shadow_frames1", ls247_map[m_trail_duration & 0x0F] | (BIT(data >> 2, 0) << 7));
-			output().set_value("snapshot10", ls247_map[(m_snapshot >> 4) & 0x0F] | (BIT(data >> 1, 0) << 7));
-			output().set_value("snapshot1", ls247_map[m_snapshot & 0x0F] | (BIT(data >> 0, 0) << 7));
+			output().set_value(m_7seg_status, ls247_map[m_userprogram_status] | (BIT(data >> 5, 0) << 7));
+			output().set_value(m_7seg_edit, ls247_map[m_userprogram_edit] | (BIT(data >> 4, 0) << 7));
+			output().set_value(m_7seg_trail_shadow_frames[1], ls247_map[(m_trail_duration >> 4) & 0x0F] | (BIT(data >> 3, 0) << 7));
+			output().set_value(m_7seg_trail_shadow_frames[0], ls247_map[m_trail_duration & 0x0F] | (BIT(data >> 2, 0) << 7));
+			output().set_value(m_7seg_snapshot[1], ls247_map[(m_snapshot >> 4) & 0x0F] | (BIT(data >> 1, 0) << 7));
+			output().set_value(m_7seg_snapshot[0], ls247_map[m_snapshot & 0x0F] | (BIT(data >> 0, 0) << 7));
 			break;
 		case 7: // WR28 on IC23 KY-225
 			m_userprogram_status = (data >> 4) & 0x0F;
 			m_userprogram_edit = data & 0x0F;
-			output().set_value("status", ls247_map[(data >> 4) & 0x0F] | (BIT(m_dot_points1 >> 5, 0) << 7));
-			output().set_value("edit", ls247_map[data & 0x0F] | (BIT(m_dot_points1 >> 4, 0) << 7));
-			break;
-		default:
+			output().set_value(m_7seg_status, ls247_map[(data >> 4) & 0x0F] | (BIT(m_dot_points1 >> 5, 0) << 7));
+			output().set_value(m_7seg_edit, ls247_map[data & 0x0F] | (BIT(m_dot_points1 >> 4, 0) << 7));
 			break;
 	}
 }
