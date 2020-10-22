@@ -2,7 +2,7 @@
 // copyright-holders:Felipe Sanches
 /*
     PenseBem (TecToy) / SmartStart (VTech)
-    driver by Felipe Correa da Silva Sanches <fsanches@metamaquina.com.br>
+    driver by Felipe Correa da Silva Sanches <juca@members.fsf.org>
 
 ---------------------------------------------------------------------------------------------
     The 2017 edition of TecToy's PenseBem has a 2x4 programming pin-header at position CN4:
@@ -25,16 +25,6 @@
     2017 OCT 07 [Felipe Sanches]:
         * Initial driver skeleton
 
-
-//Call-graph:
-
-1c94 -> call 1a56 OK
-1c98 -> call 18e4 OK
-1c9e -> call 2f94 ZICA! 
-
-2f94:
-FB2 -> call 1c78 ZICA!
-
 1c78:
 loop infinito ? volta pra 1c94... :-P
 
@@ -47,13 +37,13 @@ Investigar instrução RJMP no endereço F96. Comportamento difere dos parametro
 #include "emu.h"
 #include "cpu/avr8/avr8.h"
 #include "sound/dac.h"
-#include "sound/volt_reg.h"
 #include "rendlay.h"
 #include "screen.h"
 #include "speaker.h"
+#include "pbem2017.lh"
 
 #define MASTER_CLOCK    16000000
-#define LOG_PORTS 1
+#define LOG_PORTS 0
 
 class pensebem2017_state : public driver_device
 {
@@ -76,9 +66,12 @@ public:
 	required_device<dac_bit_interface> m_dac;
 	output_finder<8, 8> m_out_x;
 
-	DECLARE_READ8_MEMBER(port_r);
-	DECLARE_WRITE8_MEMBER(port_w);
-	DECLARE_DRIVER_INIT(pensebem2017);
+	uint8_t port_r(offs_t offset);
+	void port_w(offs_t offset, uint8_t value);
+	void prg_map(address_map &map);
+	void data_map(address_map &map);
+	void io_map(address_map &map);
+	void pensebem2017(machine_config &config);
 
 protected:
 	virtual void machine_start() override;
@@ -92,7 +85,7 @@ void pensebem2017_state::machine_start()
 }
 
 
-READ8_MEMBER(pensebem2017_state::port_r)
+uint8_t pensebem2017_state::port_r(offs_t offset)
 {
 	switch( offset )
 	{
@@ -136,7 +129,7 @@ READ8_MEMBER(pensebem2017_state::port_r)
 	return 0;
 }
 
-WRITE8_MEMBER(pensebem2017_state::port_w)
+void pensebem2017_state::port_w(offs_t offset, uint8_t data)
 {
 	switch( offset )
 	{
@@ -222,14 +215,16 @@ WRITE8_MEMBER(pensebem2017_state::port_w)
 * Address maps                                       *
 \****************************************************/
 
-static ADDRESS_MAP_START( pensebem2017_prg_map, AS_PROGRAM, 8, pensebem2017_state )
-	AM_RANGE(0x0000, 0x3FFF) AM_ROM /* 16 kbytes of Flash ROM */
-ADDRESS_MAP_END
+void pensebem2017_state::prg_map(address_map &map)
+{
+	map(0x0000, 0x3fff).rom().region("maincpu", 0); /* 16 kbytes of Flash ROM */
+}
 
-static ADDRESS_MAP_START( pensebem2017_data_map, AS_DATA, 8, pensebem2017_state )
-	AM_RANGE(0x0000, 0x03FF) AM_RAM  /* ATMEGA168PB Internal 1024 bytes of SRAM */
-	AM_RANGE(0x0400, 0xFFFF) AM_RAM  /* Some additional SRAM ? This is likely an exagerated amount ! */
-ADDRESS_MAP_END
+void pensebem2017_state::data_map(address_map &map)
+{
+	map(0x0000, 0x03ff).ram(); /* ATMEGA168PB Internal 1024 bytes of SRAM */
+	map(0x0400, 0xffff).ram(); /* Some additional SRAM ? This is likely an exagerated amount ! */
+}
 
 /*
 1 = output ?
@@ -264,9 +259,10 @@ PORTE_0 - seg_0 (R16)
 
 */
 
-static ADDRESS_MAP_START( pensebem2017_io_map, AS_IO, 8, pensebem2017_state )
-	AM_RANGE(AVR8_IO_PORTA, AVR8_IO_PORTE) AM_READWRITE( port_r, port_w )
-ADDRESS_MAP_END
+void pensebem2017_state::io_map(address_map &map)
+{
+	map(AVR8_IO_PORTA, AVR8_IO_PORTE).rw(FUNC(pensebem2017_state::port_r), FUNC(pensebem2017_state::port_w));
+}
 
 /****************************************************\
 * Input ports                                        *
@@ -285,10 +281,6 @@ INPUT_PORTS_END
 * Machine definition                                 *
 \****************************************************/
 
-DRIVER_INIT_MEMBER(pensebem2017_state, pensebem2017)
-{
-}
-
 void pensebem2017_state::machine_reset()
 {
 	m_port_a = 0;
@@ -299,33 +291,32 @@ void pensebem2017_state::machine_reset()
 }
 
 
-static MACHINE_CONFIG_START( pensebem2017 )
+void pensebem2017_state::pensebem2017(machine_config &config)
+{
+	/* CPU */
+	ATMEGA328(config, m_maincpu, MASTER_CLOCK); /* Atmel ATMEGA168PB with a 16MHz Crystal */
+	m_maincpu->set_addrmap(AS_PROGRAM, &pensebem2017_state::prg_map);
+	m_maincpu->set_addrmap(AS_DATA, &pensebem2017_state::data_map);
+	m_maincpu->set_addrmap(AS_IO, &pensebem2017_state::io_map);
 
-	MCFG_CPU_ADD("maincpu", ATMEGA88, MASTER_CLOCK) /* Atmel ATMEGA168PB with a 16MHz Crystal */
-	MCFG_CPU_PROGRAM_MAP(pensebem2017_prg_map)
-	MCFG_CPU_DATA_MAP(pensebem2017_data_map)
-	MCFG_CPU_IO_MAP(pensebem2017_io_map)
+	m_maincpu->set_eeprom_tag("eeprom");
+	m_maincpu->set_low_fuses(0xf7);
+	m_maincpu->set_high_fuses(0xdd);
+	m_maincpu->set_extended_fuses(0xf9);
+	m_maincpu->set_lock_bits(0x0f);
 
-	MCFG_CPU_AVR8_EEPROM("eeprom")
-	MCFG_CPU_AVR8_LFUSE(0xF7)
-	MCFG_CPU_AVR8_HFUSE(0xDD)
-	MCFG_CPU_AVR8_EFUSE(0xF9)
-	MCFG_CPU_AVR8_LOCK(0x0F)
-
-        /* video hardware */
-        MCFG_SCREEN_SVG_ADD("screen", "svg")
-        MCFG_SCREEN_REFRESH_RATE(50)
-        MCFG_SCREEN_SIZE(1490, 1080)
-        MCFG_SCREEN_VISIBLE_AREA(0, 1490-1, 0, 1080-1)
-        MCFG_DEFAULT_LAYOUT(layout_svg)
+	/* video hardware */
+	screen_device &screen(SCREEN(config, "screen", SCREEN_TYPE_SVG));
+	screen.set_refresh_hz(50);
+	screen.set_size(1490, 1080);
+	screen.set_visarea_full();
+	config.set_default_layout(layout_pbem2017);
 
 	/* sound hardware */
 	/* A piezo is connected to the PORT <?> bit <?> */
-	MCFG_SPEAKER_STANDARD_MONO("speaker")
-	MCFG_SOUND_ADD("dac", DAC_1BIT, 0) MCFG_SOUND_ROUTE(0, "speaker", 0.5)
-	MCFG_DEVICE_ADD("vref", VOLTAGE_REGULATOR, 0) MCFG_VOLTAGE_REGULATOR_OUTPUT(5.0)
-	MCFG_SOUND_ROUTE_EX(0, "dac", 1.0, DAC_VREF_POS_INPUT)
-MACHINE_CONFIG_END
+	SPEAKER(config, "speaker").front_center();
+	DAC_1BIT(config, m_dac, 0).add_route(0, "speaker", 0.5);
+}
 
 ROM_START( pbem2017 )
 	ROM_REGION( 0x20000, "maincpu", 0 )
@@ -333,14 +324,14 @@ ROM_START( pbem2017 )
 
 	/* September 2017 release */
 	ROM_SYSTEM_BIOS( 0, "sept2017", "SEPT/2017" )
-	ROMX_LOAD("pensebem-2017.bin", 0x0000, 0x35b6, CRC(d394279e) SHA1(5576599394231c1f83817dd55992e3b5838ab003), ROM_BIOS(1))
+	ROMX_LOAD("pensebem-2017.bin", 0x0000, 0x35b6, CRC(d394279e) SHA1(5576599394231c1f83817dd55992e3b5838ab003), ROM_BIOS(0))
 
 	/* on-die 4kbyte eeprom */
 	ROM_REGION( 0x1000, "eeprom", ROMREGION_ERASEFF )
 
-        ROM_REGION( 335874, "svg", 0)
+        ROM_REGION( 335874, "screen", 0)
         ROM_LOAD( "pensebem.svg", 0, 335874, CRC(8d57bfe8) SHA1(d3ab63a7b9c63579d2ec367e84fce95a26be18c0) )
 ROM_END
 
-/*   YEAR  NAME    PARENT    COMPAT    MACHINE        INPUT       STATE                INIT           COMPANY    FULLNAME */
-COMP(2017, pbem2017,    0,        0,   pensebem2017,  smartstart, pensebem2017_state,  pensebem2017,  "TecToy",  "PenseBem (2017)", MACHINE_NOT_WORKING)
+/*   YEAR  NAME    PARENT    COMPAT    MACHINE        INPUT       STATE                INIT         COMPANY    FULLNAME */
+COMP(2017, pbem2017,    0,        0,   pensebem2017,  smartstart, pensebem2017_state,  empty_init,  "TecToy",  "PenseBem (2017)", MACHINE_NOT_WORKING)
