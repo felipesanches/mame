@@ -22,15 +22,11 @@
 
     Changelog:
 
+    2020 OCT 23 [Felipe Sanches]:
+        * keyboard inputs + buzzer
+
     2017 OCT 07 [Felipe Sanches]:
         * Initial driver skeleton
-
-1c78:
-loop infinito ? volta pra 1c94... :-P
-
-Investigar instrução RJMP no endereço F96. Comportamento difere dos parametros do disasm.
-
-
 
 */
 
@@ -43,7 +39,6 @@ Investigar instrução RJMP no endereço F96. Comportamento difere dos parametro
 #include "pbem2017.lh"
 
 #define MASTER_CLOCK    16000000
-#define LOG_PORTS 0
 
 class pensebem2017_state : public driver_device
 {
@@ -52,11 +47,10 @@ public:
 		: driver_device(mconfig, type, tag),
 		m_maincpu(*this, "maincpu"),
 		m_dac(*this, "dac"),
-		m_out_x(*this, "%u.%u", 0U, 0U)
+		m_out_x(*this, "%u.%u", 0U, 0U),
+		m_keyb_rows(*this, "ROW%u", 0U)
 	{
 	}
-
-	uint8_t m_port_a;
 	uint8_t m_port_b;
 	uint8_t m_port_c;
 	uint8_t m_port_d;
@@ -65,6 +59,7 @@ public:
 	required_device<avr8_device> m_maincpu;
 	required_device<dac_bit_interface> m_dac;
 	output_finder<8, 8> m_out_x;
+	required_ioport_array<4> m_keyb_rows;
 
 	uint8_t port_r(offs_t offset);
 	void port_w(offs_t offset, uint8_t value);
@@ -72,6 +67,8 @@ public:
 	void data_map(address_map &map);
 	void io_map(address_map &map);
 	void pensebem2017(machine_config &config);
+	void update_display();
+	uint8_t read_selected_keyb_row();
 
 protected:
 	virtual void machine_start() override;
@@ -89,124 +86,90 @@ uint8_t pensebem2017_state::port_r(offs_t offset)
 {
 	switch( offset )
 	{
-		case AVR8_IO_PORTA:
-		{
-#if LOG_PORTS
-		printf("[%08X] Port A READ \n", m_maincpu->m_shifted_pc);
-#endif
-		return 0x00;
-		}
-		case AVR8_IO_PORTB:
-		{
-#if LOG_PORTS
-		printf("[%08X] Port B READ \n", m_maincpu->m_shifted_pc);
-#endif
-		return 0x00;
-		}
-		case AVR8_IO_PORTC:
-		{
-#if LOG_PORTS
-		printf("[%08X] Port C READ \n", m_maincpu->m_shifted_pc);
-#endif
-		return 0x00;
-		}
-		case AVR8_IO_PORTD:
-		{
-#if LOG_PORTS
-		printf("[%08X] Port D READ \n", m_maincpu->m_shifted_pc);
-#endif
-		return 0x00;
-		}
-		case AVR8_IO_PORTE:
-		{
-#if LOG_PORTS
-		printf("[%08X] Port E READ \n", m_maincpu->m_shifted_pc);
-		//return ioport("keypad")->read();
-#endif
-		return 0x00;
-		}
+		case AVR8_IO_PORTD: return read_selected_keyb_row() & 0xfc;
+		case AVR8_IO_PORTE: return read_selected_keyb_row() & 0x03;
+		default:
+			return 0xff;
 	}
-	return 0;
 }
 
 void pensebem2017_state::port_w(offs_t offset, uint8_t data)
 {
 	switch( offset )
 	{
-		case AVR8_IO_PORTA:
-		{
-			if (data == m_port_a) break;
-#if LOG_PORTS
-//			uint8_t old_port_a = m_port_a;
-//			uint8_t changed = data ^ old_port_a;
-
-			printf("[%08X] ", m_maincpu->m_shifted_pc);
-//			if(changed & A_AXIS_DIR) printf("[A] A_AXIS_DIR: %s\n", data & A_AXIS_DIR ? "HIGH" : "LOW");
-#endif
-			m_port_a = data;
-			break;
-		}
-		case AVR8_IO_PORTB:
-		{
-			if (data == m_port_b) break;
-#if LOG_PORTS
-//			uint8_t old_port_b = m_port_b;
-//			uint8_t changed = data ^ old_port_b;
-
-			printf("[%08X] ", m_maincpu->m_shifted_pc);
-//			if(changed & SD_CS) printf("[B] SD Card Chip Select: %s\n", data & SD_CS ? "HIGH" : "LOW");
-#endif
+		case AVR8_IO_PORTB: // buzzer + keyboard_select_rows
 			m_port_b = data;
+			m_dac->write(BIT(m_port_b, 1));
 			break;
-		}
-		case AVR8_IO_PORTC:
-		{
+		case AVR8_IO_PORTC: // display
 			m_port_c = data;
-			for (int digit=0; digit <= 5; digit++){
-				if (BIT(m_port_c, 5 - digit)){
-					for (int seg=0; seg<8; seg++){
-						bool value;
-						if (seg < 2){
-							value = BIT(m_port_e, seg);
-						} else {
-							value = BIT(m_port_d, seg);
-						}
-						m_out_x[digit][seg] = value;
-					}
-				}
-			}
+			update_display();
 			break;
-		}
-		case AVR8_IO_PORTD:
-		{
-			if (data == m_port_d) break;
-#if LOG_PORTS
-//			uint8_t old_port_d = m_port_d;
-//			uint8_t changed = data ^ old_port_d;
-
-			printf("[%08X] ", m_maincpu->m_shifted_pc);
-//			if(changed & PORTD_SCL) printf("[D] PORTD_SCL: %s\n", data & PORTD_SCL ? "HIGH" : "LOW");
-#endif
+		case AVR8_IO_PORTD: // display
 			m_port_d = data;
+			update_display();
 			break;
-		}
-		case AVR8_IO_PORTE:
-		{
+		case AVR8_IO_PORTE: // display
 			m_port_e = data;
-			for (int digit=6; digit <= 7; digit++){
-				if (BIT(m_port_e, 7 - digit + 2)){
-					for (int seg=0; seg<8; seg++){
-						bool value;
-						if (seg < 2){
-							value = BIT(m_port_e, seg);
-						} else {
-							value = BIT(m_port_d, seg);
-						}
-						m_out_x[digit][seg] = value;
-					}
-				}
-			}
+			update_display();
 			break;
+		default:
+			break;
+	}
+}
+
+/*
+select_rows:
+1   - PB5
+2   - PB3 
+12  - PB2
+13  - PB4
+
+read_cols:
+3   - PE0
+4   - PD2
+5   - PE1
+6   - PD7
+7   - PD6
+8   - PD5
+9   - PD4
+10  - PD3
+*/
+uint8_t pensebem2017_state::read_selected_keyb_row()
+{
+	if (BIT(m_port_b, 5)) return m_keyb_rows[0]->read();
+	if (BIT(m_port_b, 3)) return m_keyb_rows[1]->read();
+	if (BIT(m_port_b, 2)) return m_keyb_rows[2]->read();
+	if (BIT(m_port_b, 4)) return m_keyb_rows[3]->read();
+	return 0x00;
+}
+
+void pensebem2017_state::update_display()
+{
+	for (int digit=0; digit <= 5; digit++){
+		if (BIT(m_port_c, 5 - digit)){
+			for (int seg=0; seg<8; seg++){
+				bool value;
+				if (seg < 2){
+					value = BIT(m_port_e, seg);
+				} else {
+					value = BIT(m_port_d, seg);
+				}
+				m_out_x[digit][seg] = value;
+			}
+		}
+	}
+	for (int digit=6; digit <= 7; digit++){
+		if (BIT(m_port_e, 7 - digit + 2)){
+			for (int seg=0; seg<8; seg++){
+				bool value;
+				if (seg < 2){
+					value = BIT(m_port_e, seg);
+				} else {
+					value = BIT(m_port_d, seg);
+				}
+				m_out_x[digit][seg] = value;
+			}
 		}
 	}
 }
@@ -234,6 +197,10 @@ DDRC: ? ? 1 1   1 1 1 1
 DDRD: 1 1 1 1   1 1(0 1)
 DDRE: ? ? ? ?   1 1 1 1
 
+B: buzzer + keyboard_select_rows
+C: display
+D: display + keyboard_read_cols
+E: display + keyboard_read_cols
 
 digits:
 
@@ -257,6 +224,24 @@ PORTD_2 - seg_2 (R15)
 PORTE_1 - seg_1 (R18)
 PORTE_0 - seg_0 (R16)
 
+buzzer: PB1
+
+select_rows:
+1   - PB5
+2   - PB3 
+12  - PB2
+13  - PB4
+
+read_cols:
+3   - PE0
+4   - PD2
+5   - PE1
+6   - PD7
+7   - PD6
+8   - PD5
+9   - PD4
+10  - PD3
+
 */
 
 void pensebem2017_state::io_map(address_map &map)
@@ -269,13 +254,47 @@ void pensebem2017_state::io_map(address_map &map)
 \****************************************************/
 
 static INPUT_PORTS_START( smartstart )
-	PORT_START("keypad")
-	PORT_BIT(0x00000001, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("CENTER") PORT_CODE(KEYCODE_M)
-	PORT_BIT(0x00000002, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("RIGHT") PORT_CODE(KEYCODE_D)
-	PORT_BIT(0x00000004, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("LEFT") PORT_CODE(KEYCODE_A)
-	PORT_BIT(0x00000008, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("DOWN") PORT_CODE(KEYCODE_S)
-	PORT_BIT(0x00000010, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("UP") PORT_CODE(KEYCODE_W)
+	PORT_START("ROW0") // A B C D ENTER LIVRO DESLIGA
+	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("A") PORT_CODE(KEYCODE_A)
+	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("C") PORT_CODE(KEYCODE_C)
+	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("B") PORT_CODE(KEYCODE_B)
+	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Desliga") PORT_CODE(KEYCODE_MINUS)
+	PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Livro") PORT_CODE(KEYCODE_L)
+	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Enter") PORT_CODE(KEYCODE_ENTER)
+	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_UNUSED)
+	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("D") PORT_CODE(KEYCODE_D)
+
+	PORT_START("ROW1")
+	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("1") PORT_CODE(KEYCODE_1)
+	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Adicao") PORT_CODE(KEYCODE_Q)
+	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Subtracao") PORT_CODE(KEYCODE_W)
+	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("/") PORT_CODE(KEYCODE_SLASH_PAD)
+	PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("*") PORT_CODE(KEYCODE_ASTERISK)
+	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("-") PORT_CODE(KEYCODE_MINUS_PAD)
+	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("+") PORT_CODE(KEYCODE_PLUS_PAD)
+	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("0") PORT_CODE(KEYCODE_0)
+
+	PORT_START("ROW2")
+	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Multiplicacao") PORT_CODE(KEYCODE_E)
+	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Aritmetica") PORT_CODE(KEYCODE_T)
+	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Divisao") PORT_CODE(KEYCODE_R)
+	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Adivinhe o Número") PORT_CODE(KEYCODE_P)
+	PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Número do Meio") PORT_CODE(KEYCODE_O)
+	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Memória Tons") PORT_CODE(KEYCODE_I)
+	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Siga-me") PORT_CODE(KEYCODE_U)
+	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Operacao") PORT_CODE(KEYCODE_Y)
+
+	PORT_START("ROW3")
+	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("2") PORT_CODE(KEYCODE_2)
+	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("4") PORT_CODE(KEYCODE_4)
+	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("3") PORT_CODE(KEYCODE_3)
+	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("9") PORT_CODE(KEYCODE_9)
+	PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("8") PORT_CODE(KEYCODE_8)
+	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("7") PORT_CODE(KEYCODE_7)
+	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("6") PORT_CODE(KEYCODE_6)
+	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("5") PORT_CODE(KEYCODE_5)
 INPUT_PORTS_END
+
 
 /****************************************************\
 * Machine definition                                 *
@@ -283,7 +302,6 @@ INPUT_PORTS_END
 
 void pensebem2017_state::machine_reset()
 {
-	m_port_a = 0;
 	m_port_b = 0;
 	m_port_c = 0;
 	m_port_d = 0;
@@ -313,7 +331,7 @@ void pensebem2017_state::pensebem2017(machine_config &config)
 	config.set_default_layout(layout_pbem2017);
 
 	/* sound hardware */
-	/* A piezo is connected to the PORT <?> bit <?> */
+	/* A piezo is connected to the PORT B bit 1 */
 	SPEAKER(config, "speaker").front_center();
 	DAC_1BIT(config, m_dac, 0).add_route(0, "speaker", 0.5);
 }
