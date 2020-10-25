@@ -4,8 +4,10 @@
     PenseBem (TecToy) / SmartStart (VTech)
     driver by Felipe Correa da Silva Sanches <juca@members.fsf.org>
 
----------------------------------------------------------------------------------------------
-    The 2017 edition of TecToy's PenseBem has a 2x4 programming pin-header at position CN4:
+---------------------------------------------------------------------
+
+    The 2017 edition of TecToy's PenseBem has a 2x4 programming
+    pin-header at position CN4:
 
     CN4 - ATMEGA
       1 -  4 VCC
@@ -18,17 +20,65 @@
       8 - 29 RESET
  
     R34 is the pull-up resistor for the RESET signal
----------------------------------------------------------------------------------------------
+
+---------------------------------------------------------------------
 
     Changelog:
 
-    2020 OCT 23 [Felipe Sanches]:
-        * keyboard inputs + buzzer
+    2020 OCT 25 [Felipe Sanches]:
+        * Fixed keyboard inputs & display.
+        * Buzzer is still not emulated correctly.
 
     2017 OCT 07 [Felipe Sanches]:
         * Initial driver skeleton
 
-*/
+---------------------------------------------------------------------
+
+== Notes about the hardware: ==
+=== Select keypad rows: ===
+keypad pin 1 - PORT_B5
+keypad pin 2 - PORT_B3
+keypad pin 12 - PORT_B2
+keypad pin 13 - PORT_B4
+
+=== Read keypad Columns: ===
+keypad pin 3 - PORT_E0
+keypad pin 4 - PORT_D2
+keypad pin 5 - PORT_E1
+keypad pin 6 - PORT_D7
+keypad pin 7 - PORT_D6
+keypad pin 8 - PORT_D5
+keypad pin 9 - PORT_D4
+keypad pin 10 - PORT_D3
+
+=== Display digits: ===
+digit_0 - PORT_C5
+digit_1 - PORT_C4
+digit_2 - PORT_C3
+digit_3 - PORT_C2
+digit_4 - PORT_C1
+digit_5 - PORT_C0
+digit_6 - PORT_E3
+digit_7 - PORT_E2
+
+=== Display segments: ===
+In parentheses are the resistor reference numbers on
+the PCB for each of these signals.
+
+seg_7 (R11) - PORT_D7
+seg_6 (R12) - PORT_D6
+seg_5 (R17) - PORT_D5
+seg_4 (R13) - PORT_D4
+seg_3 (R14) - PORT_D3
+seg_2 (R15) - PORT_D2
+seg_1 (R18) - PORT_E1
+seg_0 (R16) - PORT_E0
+
+=== Piezo buzzer: ===
+It is not clear exactly how the speaker is hooked up,
+but it seems to involve Port B, bit 1 (at least)
+
+--------------------------------------------------------------------- */
 
 #include "emu.h"
 #include "cpu/avr8/avr8.h"
@@ -36,9 +86,6 @@
 #include "rendlay.h"
 #include "screen.h"
 #include "speaker.h"
-#include "pbem2017.lh"
-
-#define MASTER_CLOCK    16000000
 
 class pensebem2017_state : public driver_device
 {
@@ -80,10 +127,9 @@ void pensebem2017_state::machine_start()
 	m_out_x.resolve();
 }
 
-
 uint8_t pensebem2017_state::port_r(offs_t offset)
 {
-	uint8_t value = 0;
+	uint8_t value;
 	int bit;
 	for (bit=0; bit<8; bit++){
 		if (bit < 2 && !BIT(m_port_e, bit)) break;
@@ -93,6 +139,7 @@ uint8_t pensebem2017_state::port_r(offs_t offset)
 	switch( offset )
 	{
 		case AVR8_IO_PORTB:
+			value = m_port_b & 0xc3;
 			if (BIT(m_keyb_rows[0]->read(), bit)) value |= (1 << 5);
 			if (BIT(m_keyb_rows[1]->read(), bit)) value |= (1 << 3);
 			if (BIT(m_keyb_rows[2]->read(), bit)) value |= (1 << 2);
@@ -109,7 +156,7 @@ void pensebem2017_state::port_w(offs_t offset, uint8_t data)
 	{
 		case AVR8_IO_PORTB: // buzzer + keyboard_select_rows
 			m_port_b = data;
-			m_dac->write(BIT(data, 0));
+			m_dac->write(BIT(data, 1));
 			break;
 		case AVR8_IO_PORTC: // display
 			m_port_c = data;
@@ -127,24 +174,6 @@ void pensebem2017_state::port_w(offs_t offset, uint8_t data)
 	}
 }
 
-/*
-select_rows:
-1   - PB5
-2   - PB3 
-12  - PB2
-13  - PB4
-
-read_cols:
-3   - PE0
-4   - PD2
-5   - PE1
-6   - PD7
-7   - PD6
-8   - PD5
-9   - PD4
-10  - PD3
-*/
-
 void pensebem2017_state::update_display()
 {
 	for (int digit=0; digit <= 5; digit++){
@@ -158,6 +187,7 @@ void pensebem2017_state::update_display()
 			}
 		}
 	}
+
 	for (int digit=6; digit <= 7; digit++){
 		if (!BIT(m_port_e, 7 - digit + 2)){
 			for (int seg=0; seg<8; seg++){
@@ -171,10 +201,6 @@ void pensebem2017_state::update_display()
 	}
 }
 
-/****************************************************\
-* Address maps                                       *
-\****************************************************/
-
 void pensebem2017_state::prg_map(address_map &map)
 {
 	map(0x0000, 0x3fff).rom().region("maincpu", 0); /* 16 kbytes of Flash ROM */
@@ -186,72 +212,13 @@ void pensebem2017_state::data_map(address_map &map)
 	map(0x0400, 0xffff).ram(); /* Some additional SRAM ? This is likely an exagerated amount ! */
 }
 
-/*
-1 = output ?
-
-DDRB: ? ?(0 0   0 0)? ?
-DDRC: ? ? 1 1   1 1 1 1
-DDRD: 1 1 1 1   1 1(0 1)
-DDRE: ? ? ? ?   1 1 1 1
-
-B: buzzer + keyboard_select_rows
-C: display
-D: display + keyboard_read_cols
-E: display + keyboard_read_cols
-
-digits:
-
-PORTC_5 - digit_0
-PORTC_4 - digit_1
-PORTC_3 - digit_2
-PORTC_2 - digit_3
-PORTC_1 - digit_4
-PORTC_0 - digit_5
-PORTE_3 - digit_6
-PORTE_2 - digit_7
-
-segments:
-
-PORTD_7 - seg_7 (R11)
-PORTD_6 - seg_6 (R12)
-PORTD_5 - seg_5 (R17)
-PORTD_4 - seg_4 (R13)
-PORTD_3 - seg_3 (R14)
-PORTD_2 - seg_2 (R15)
-PORTE_1 - seg_1 (R18)
-PORTE_0 - seg_0 (R16)
-
-buzzer: PB1
-
-select_rows:
-1   - PB5
-2   - PB3 
-12  - PB2
-13  - PB4
-
-read_cols:
-3   - PE0
-4   - PD2
-5   - PE1
-6   - PD7
-7   - PD6
-8   - PD5
-9   - PD4
-10  - PD3
-
-*/
-
 void pensebem2017_state::io_map(address_map &map)
 {
 	map(AVR8_IO_PORTA, AVR8_IO_PORTE).rw(FUNC(pensebem2017_state::port_r), FUNC(pensebem2017_state::port_w));
 }
 
-/****************************************************\
-* Input ports                                        *
-\****************************************************/
-
 static INPUT_PORTS_START( smartstart )
-	PORT_START("ROW0") // A B C D ENTER LIVRO DESLIGA
+	PORT_START("ROW0")
 	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_KEYPAD) PORT_NAME("A") PORT_CODE(KEYCODE_A)
 	PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_KEYPAD) PORT_NAME("C") PORT_CODE(KEYCODE_C)
 	PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_KEYPAD) PORT_NAME("B") PORT_CODE(KEYCODE_B)
@@ -292,11 +259,6 @@ static INPUT_PORTS_START( smartstart )
 	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_KEYPAD) PORT_NAME("5") PORT_CODE(KEYCODE_5)
 INPUT_PORTS_END
 
-
-/****************************************************\
-* Machine definition                                 *
-\****************************************************/
-
 void pensebem2017_state::machine_reset()
 {
 	m_port_b = 0;
@@ -305,15 +267,13 @@ void pensebem2017_state::machine_reset()
 	m_port_e = 0;
 }
 
-
 void pensebem2017_state::pensebem2017(machine_config &config)
 {
 	/* CPU */
-	ATMEGA328(config, m_maincpu, MASTER_CLOCK); /* Atmel ATMEGA168PB with a 16MHz Crystal */
+	ATMEGA168(config, m_maincpu, 16_MHz_XTAL); /* Actual chip is an Atmel ATMEGA168PB */
 	m_maincpu->set_addrmap(AS_PROGRAM, &pensebem2017_state::prg_map);
 	m_maincpu->set_addrmap(AS_DATA, &pensebem2017_state::data_map);
 	m_maincpu->set_addrmap(AS_IO, &pensebem2017_state::io_map);
-
 	m_maincpu->set_eeprom_tag("eeprom");
 	m_maincpu->set_low_fuses(0xf7);
 	m_maincpu->set_high_fuses(0xdd);
@@ -325,28 +285,28 @@ void pensebem2017_state::pensebem2017(machine_config &config)
 	screen.set_refresh_hz(50);
 	screen.set_size(1490, 1080);
 	screen.set_visarea_full();
-	config.set_default_layout(layout_pbem2017);
 
 	/* sound hardware */
-	/* A piezo is connected to the PORT B bit 1 */
 	SPEAKER(config, "speaker").front_center();
-	DAC_1BIT(config, m_dac, 0).add_route(ALL_OUTPUTS, "speaker", 0.9);
+	DAC_1BIT(config, m_dac, 0).add_route(ALL_OUTPUTS, "speaker", 0.5);
 }
 
 ROM_START( pbem2017 )
-	ROM_REGION( 0x20000, "maincpu", 0 )
+	ROM_REGION(0x20000, "maincpu", 0)
 	ROM_DEFAULT_BIOS("sept2017")
 
 	/* September 2017 release */
-	ROM_SYSTEM_BIOS( 0, "sept2017", "SEPT/2017" )
+	ROM_SYSTEM_BIOS(0, "sept2017", "SEPT/2017")
 	ROMX_LOAD("pensebem-2017.bin", 0x0000, 0x35b6, CRC(d394279e) SHA1(5576599394231c1f83817dd55992e3b5838ab003), ROM_BIOS(0))
 
 	/* on-die 4kbyte eeprom */
-	ROM_REGION( 0x1000, "eeprom", ROMREGION_ERASEFF )
+	ROM_REGION(0x1000, "eeprom", ROMREGION_ERASEFF)
 
-        ROM_REGION( 335874, "screen", 0)
-        ROM_LOAD( "pensebem.svg", 0, 335874, CRC(8d57bfe8) SHA1(d3ab63a7b9c63579d2ec367e84fce95a26be18c0) )
+	ROM_REGION(0x42e1a, "screen", 0)
+	ROM_LOAD("pensebem.svg", 0, 0x42e1a, CRC(7146c0db) SHA1(966e95742acdda05028ee7b0c1352c88abb35041))
 ROM_END
 
 /*   YEAR  NAME    PARENT    COMPAT    MACHINE        INPUT       STATE                INIT         COMPANY    FULLNAME */
-COMP(2017, pbem2017,    0,        0,   pensebem2017,  smartstart, pensebem2017_state,  empty_init,  "TecToy",  "PenseBem (2017)", MACHINE_NOT_WORKING)
+//COMP(198?, smastart,    0,        0,   pensebem,      smartstart, pensebem_state,      empty_init,  "VTech",   "Smart Start", MACHINE_IS_SKELETON)
+//COMP(198?, pensebem,    0,        0,   pensebem,      smartstart, pensebem_state,      empty_init,  "TecToy",  "Pense Bem", MACHINE_IS_SKELETON)
+COMP(2017, pbem2017,    0,        0,   pensebem2017,  smartstart, pensebem2017_state,  empty_init,  "TecToy",  "Pense Bem (2017)", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND)

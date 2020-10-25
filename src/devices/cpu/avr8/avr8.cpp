@@ -593,6 +593,7 @@ static const char avr8_reg_name[4] = { 'A', 'B', 'C', 'D' };
 //**************************************************************************
 
 DEFINE_DEVICE_TYPE(ATMEGA88,   atmega88_device,   "atmega88",   "Atmel ATmega88")
+DEFINE_DEVICE_TYPE(ATMEGA168,  atmega168_device,  "atmega168",  "Atmel ATmega168")
 DEFINE_DEVICE_TYPE(ATMEGA328,  atmega328_device,  "atmega328",  "Atmel ATmega328")
 DEFINE_DEVICE_TYPE(ATMEGA644,  atmega644_device,  "atmega644",  "Atmel ATmega644")
 DEFINE_DEVICE_TYPE(ATMEGA1280, atmega1280_device, "atmega1280", "Atmel ATmega1280")
@@ -606,6 +607,11 @@ DEFINE_DEVICE_TYPE(ATTINY15,   attiny15_device,   "attiny15",   "Atmel ATtiny15"
 void atmega88_device::atmega88_internal_map(address_map &map)
 {
 	map(0x0000, 0x00ff).rw(FUNC(atmega88_device::regs_r), FUNC(atmega88_device::regs_w));
+}
+
+void atmega168_device::atmega168_internal_map(address_map &map)
+{
+	map(0x0000, 0x00ff).rw(FUNC(atmega168_device::regs_r), FUNC(atmega168_device::regs_w));
 }
 
 void atmega328_device::atmega328_internal_map(address_map &map)
@@ -639,6 +645,15 @@ void attiny15_device::attiny15_internal_map(address_map &map)
 
 atmega88_device::atmega88_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: avr8_device(mconfig, tag, owner, clock, ATMEGA88, 0x0fff, address_map_constructor(FUNC(atmega88_device::atmega88_internal_map), this), 3)
+{
+}
+
+//-------------------------------------------------
+//  atmega168_device - constructor
+//-------------------------------------------------
+
+atmega168_device::atmega168_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: avr8_device(mconfig, tag, owner, clock, ATMEGA168, 0x1fff, address_map_constructor(FUNC(atmega168_device::atmega168_internal_map), this), 3)
 {
 }
 
@@ -1091,6 +1106,23 @@ void avr8_device::update_interrupt(int source)
 		intstate = (m_r[condition.m_regindex] & condition.m_regmask) ? 1 : 0;
 
 	set_irq_line(condition.m_intindex, intstate);
+
+	if (intstate)
+	{
+		m_r[condition.m_regindex] &= ~condition.m_regmask;
+	}
+}
+
+//TODO: review this!
+void atmega168_device::update_interrupt(int source)
+{
+	const interrupt_condition &condition = s_int_conditions[source];
+
+	int intstate = 0;
+	if (m_r[condition.m_intreg] & condition.m_intmask)
+		intstate = (m_r[condition.m_regindex] & condition.m_regmask) ? 1 : 0;
+
+	set_irq_line(condition.m_intindex << 1, intstate);
 
 	if (intstate)
 	{
