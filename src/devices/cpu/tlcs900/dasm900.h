@@ -105,6 +105,7 @@ private:
 	static const char *const s_allreg16[256];
 	static const char *const s_allreg32[256];
 	static const char *const s_cond[16];
+	static const char *const s_SFR[128];
 
 };
 

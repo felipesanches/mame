@@ -3865,6 +3865,11 @@ files {
 	MAME_DIR .. "src/mame/video/comquest.cpp",
 }
 
+createMESSProjects(_target, _subtarget, "technics")
+files {
+	MAME_DIR .. "src/mame/drivers/kn1500.cpp"
+}
+
 createMESSProjects(_target, _subtarget, "tectoy")
 files {
 	MAME_DIR .. "src/mame/drivers/pensebem.cpp",

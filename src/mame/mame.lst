@@ -19085,6 +19085,9 @@ klaxd2                          // 136075           (c) 1989 (Germany)
 klaxj3                          // 136075           (c) 1989 (Japan)
 klaxj4                          // 136075           (c) 1989 (Japan)
 
+@source:kn1500.cpp
+kn1500                          // (c) 199? Technics SX KN-1500 PCM Keyboard
+
 @source:kncljoe.cpp
 bcrusher                        // bootleg
 kncljoe                         // (c) 1985 Taito Corporation

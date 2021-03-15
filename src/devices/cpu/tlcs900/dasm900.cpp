@@ -1369,6 +1369,25 @@ const char *const tlcs900_disassembler::s_cond[16] =
 	"F","LT","LE","ULE","PE/OV","M/MI","Z","C","T","GE","GT","UGT","PO/NOV","P/PL","NZ","NC"
 };
 
+// FIXME: The following names are specific to the TMP95C061 chip:
+const char *const tlcs900_disassembler::s_SFR[128] = {
+	"0x00",     "P1",       "0x02",     "0x03",     "P1CR",     "0x05",     "P2",       "0x07",
+	"0x08",     "P2FC",     "0x0a",     "0x0b",     "0x0c",     "P5",       "0x0e",     "0x0f",
+	"P5CR",     "P5FC",     "P6",       "P7",       "0x14",     "P6FC",     "P7CR",     "P7FC",
+	"P8",       "P9",       "P8CR",     "P8FC",     "0x1c",     "0x1d",     "PA",       "PB",
+	"TRUN",     "0x21",     "TR01_0",   "TR01_1",   "T01MOD",   "TFFCR",    "TREG23_0", "TREG23_1",
+	"T23MOD_0", "T23MOD_1", "0x2a",     "0x2b",     "PACR",     "PAFC",     "PBCR",     "PBFC",
+	"TREG45_0", "TREG45_1", "TREG45_2", "TREG45_3", "CAP12_0",  "CAP12_1",  "CAP12_2",  "CAP12_3",
+	"T4MOD",    "T4FFCR",   "T45CR",    "0x3b",     "MSAR0",    "MAMR0",    "MSAR1",    "MAMR1",
+	"TREG67_0", "TREG67_1", "TREG67_2", "TREG67_3", "CAP34_0",  "CAP34_1",  "CAP34_2",  "CAP34_3",
+	"T5MOD",    "T5FFCR",   "0x4a",     "0x4b",     "PGREG_0",  "PGREG_1",  "PG01CR",   "0x4f",
+	"SC0BUF",   "SC0CR",    "SC0MOD",   "BR0CR",    "SC1BUF",   "SC1CR",    "SC1MOD",   "BR1CR",
+	"ODE",      "0x59",     "DREFCR",   "DMEMCR",   "MSAR2",    "MAMR2",    "MSAR3",    "MAMR3",
+	"ADREG_0",  "ADREG_1",  "ADREG_2",  "ADREG_3",  "ADREG_4",  "ADREG_5",  "ADREG_6",  "ADREG_7",
+	"B0CS",     "B1CS",     "B2CS",     "B3CS",     "BEXCS",    "ADMOD",    "WDMOD",    "WDCR",
+	"INTE_0",   "INTE_1",   "INTE_2",   "INTE_3",   "INTE_4",   "INTE_5",   "INTE_6",   "INTE_7",
+	"INTE_8",   "INTE_9",   "INTE_A",   "IIMC",     "DMAV_0",   "DMAV_1",   "DMAV_2",   "DMAV_3"
+};
 
 u32 tlcs900_disassembler::opcode_alignment() const
 {
@@ -1992,13 +2011,21 @@ offs_t tlcs900_disassembler::disassemble(std::ostream &stream, offs_t pc, const 
 
 	case O_M8:
 		imm = opcodes.r8( pos++ );
-		util::stream_format(stream, " (0x%02x)", imm);
+		if (imm < 0x80){
+			util::stream_format(stream, " (%s)", s_SFR[imm]);
+		} else {
+			util::stream_format(stream, " (0x%02x)", imm);
+		}
 		break;
 
 	case O_M16:
 		imm = opcodes.r8( pos++ );
 		imm = imm | (opcodes.r8( pos++ ) << 8);
-		util::stream_format(stream, " (0x%04x)", imm);
+		if (imm < 0x80){
+			util::stream_format(stream, " (%s)", s_SFR[imm]);
+		} else {
+			util::stream_format(stream, " (0x%04x)", imm);
+		}
 		break;
 
 	case O_R:
@@ -2178,13 +2205,21 @@ offs_t tlcs900_disassembler::disassemble(std::ostream &stream, offs_t pc, const 
 
 	case O_M8:
 		imm = opcodes.r8( pos++ );
-		util::stream_format(stream, ",(0x%02x)", imm);
+		if (imm < 0x80){
+			util::stream_format(stream, " (%s)", s_SFR[imm]);
+		} else {
+			util::stream_format(stream, " (0x%02x)", imm);
+		}
 		break;
 
 	case O_M16:
 		imm = opcodes.r8( pos++ );
 		imm = imm | (opcodes.r8( pos++ ) << 8);
-		util::stream_format(stream, ",(0x%04x)", imm);
+		if (imm < 0x80){
+			util::stream_format(stream, " (%s)", s_SFR[imm]);
+		} else {
+			util::stream_format(stream, " (0x%04x)", imm);
+		}
 		break;
 
 	case O_R:
