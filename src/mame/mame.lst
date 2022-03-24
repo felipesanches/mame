@@ -1402,6 +1402,9 @@ amust                           //
 @source:anes.cpp
 tonpuu                          // 200?, ANES
 
+@source:another_world_jamma.cpp
+awjamma                         // Prototyping of a JAMMA board for the Another World VM
+
 @source:angelkds.cpp
 angelkds                        // 833-6599 (c) 1988 Sega / Nasco?
 spcpostn                        // (c) 1986 Sega / Nasco

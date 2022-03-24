@@ -1995,6 +1995,12 @@ files {
 	MAME_DIR .. "src/mame/drivers/f-32.cpp",
 }
 
+createMESSProjects(_target, _subtarget, "fsanches")
+files {
+    MAME_DIR .. "src/mame/drivers/another_world_jamma.cpp",
+    MAME_DIR .. "src/mame/includes/another_world_jamma.h",
+}
+
 createMAMEProjects(_target, _subtarget, "funworld")
 files {
 	MAME_DIR .. "src/mame/drivers/4roses.cpp",
