@@ -22,10 +22,6 @@
     of the original Z8 code, but further research would be needed
     to be sure.
 
-    As of October 2020, there's still no successfull ROM dump of the
-    original Pense Bem's Z8 ROM code, so this driver only emulates
-    the 2017 re-release.
-
 ---------------------------------------------------------------------
 
     The 2017 edition of TecToy's Pense Bem has a 2x4 programming
@@ -46,6 +42,9 @@
 ---------------------------------------------------------------------
 
     Changelog:
+
+    2024 MAY 21 [Felipe Sanches]:
+        * Z8-based emulation.
 
     2020 OCT 27 [Felipe Sanches]:
         * Fixed keyboard inputs, display & buzzer.
@@ -105,6 +104,7 @@ Port B, bit 1
 
 #include "emu.h"
 #include "cpu/avr8/avr8.h"
+#include "cpu/z8/z8.h"
 #include "video/pwm.h"
 #include "sound/dac.h"
 #include "screen.h"
@@ -112,6 +112,43 @@ Port B, bit 1
 
 
 namespace {
+
+class smartstart_state : public driver_device
+{
+public:
+	smartstart_state(const machine_config &mconfig, device_type type, const char *tag) :
+		driver_device(mconfig, type, tag),
+		m_maincpu(*this, "maincpu"),
+		m_display(*this, "display"),
+		m_dac(*this, "dac")
+	{ }
+
+	// machine configs
+	void smartstart(machine_config &config);
+
+protected:
+	virtual void machine_start() override;
+	virtual void machine_reset() override;
+
+private:
+	// devices/pointers
+	required_device<z8601_device> m_maincpu;
+	required_device<pwm_display_device> m_display;
+	required_device<dac_bit_interface> m_dac;
+	//required_ioport m_inputs;
+
+//	u8 m_... = 0;
+
+	// address maps
+	void main_map(address_map &map);
+
+	// I/O handlers
+//	void update_display();
+//	u8 rom_r(offs_t offset);
+
+//	u8 read_inputs();
+};
+
 
 class pensebem2017_state : public driver_device
 {
@@ -153,6 +190,23 @@ protected:
 	virtual void machine_start() override;
 	virtual void machine_reset() override;
 };
+
+void smartstart_state::machine_start()
+{
+//	save_item(NAME(m_port_0));
+//	save_item(NAME(m_port_1));
+//	save_item(NAME(m_port_2));
+//	save_item(NAME(m_port_3));
+}
+
+void smartstart_state::machine_reset()
+{
+//	m_port_0 = 0;
+//	m_port_1 = 0;
+//	m_port_2 = 0;
+//	m_port_3 = 0;
+}
+
 
 void pensebem2017_state::machine_start()
 {
@@ -217,6 +271,21 @@ void pensebem2017_state::update_display()
 	);
 }
 
+/*
+void smartstart_state::update_display()
+{
+	m_display->matrix(
+		~((m_port_0 << 2 & 0xfc) | (m_port_3 >> 2 & 0x03)),
+		~(m_port_2)
+	);
+}
+*/
+
+void smartstart_state::main_map(address_map &map)
+{
+	map(0x0000, 0x07ff).rom();
+}
+
 void pensebem2017_state::prg_map(address_map &map)
 {
 	map(0x0000, 0x3fff).rom().region("maincpu", 0); /* 16 kbytes of Flash ROM */
@@ -228,7 +297,7 @@ void pensebem2017_state::data_map(address_map &map)
 	map(0x0400, 0xffff).ram(); /* Some additional SRAM ? This is likely an exagerated amount ! */
 }
 
-static INPUT_PORTS_START( pensebem2017 )
+static INPUT_PORTS_START( smartstart )
 	PORT_START("ROW0")
 	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_KEYPAD) PORT_NAME("A") PORT_CODE(KEYCODE_A)
 	PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_KEYPAD) PORT_NAME("C") PORT_CODE(KEYCODE_C)
@@ -270,6 +339,31 @@ static INPUT_PORTS_START( pensebem2017 )
 	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_KEYPAD) PORT_NAME("5") PORT_CODE(KEYCODE_5)
 INPUT_PORTS_END
 
+
+void smartstart_state::smartstart(machine_config &config)
+{
+	/* CPU */
+	Z8601(config, m_maincpu, 8_MHz_XTAL);
+	m_maincpu->set_addrmap(AS_PROGRAM, &smartstart_state::main_map);
+//	m_maincpu->p0_in_cb().set(FUNC(smartstart_state::input_hi_r));
+//	m_maincpu->p2_out_cb().set(FUNC(smartstart_state::mux_w));
+//	m_maincpu->p3_in_cb().set(FUNC(smartstart_state::input_lo_r));
+//	m_maincpu->p3_out_cb().set(FUNC(smartstart_state::control_w));
+
+	/* video hardware */
+	screen_device &screen(SCREEN(config, "screen", SCREEN_TYPE_SVG));
+	screen.set_refresh_hz(50);
+	screen.set_size(1490, 1080);
+	screen.set_visarea_full();
+	PWM_DISPLAY(config, m_display).set_size(8, 8);
+	m_display->set_segmask(0xff, 0xff);
+
+	/* sound hardware */
+	SPEAKER(config, "speaker").front_center();
+	DAC_1BIT(config, m_dac, 0).add_route(ALL_OUTPUTS, "speaker", 0.5);
+}
+
+
 void pensebem2017_state::pensebem2017(machine_config &config)
 {
 	/* CPU */
@@ -300,6 +394,18 @@ void pensebem2017_state::pensebem2017(machine_config &config)
 	DAC_1BIT(config, m_dac, 0).add_route(ALL_OUTPUTS, "speaker", 0.5);
 }
 
+ROM_START( smartstart )
+//	ROM_REGION(0x40, "testmode", 0)
+//	ROM_LOAD("smartstart-testrom.bin", 0x00, 0x40, CRC(0b63f823) SHA1(8501e8d6792f5ae07815bb4c53d4d9e0ce643d30))
+
+	ROM_REGION(0x800, "maincpu", 0)
+	ROM_LOAD("smartstart.bin", 0x000, 0x800, CRC(500fcdba) SHA1(1f6ec93883a7a7532ebdda724d0befc57a3a4084))
+
+	ROM_REGION(0x42e1a, "screen", 0)
+	ROM_LOAD("pensebem.svg", 0, 0x42e1a, CRC(7146c0db) SHA1(966e95742acdda05028ee7b0c1352c88abb35041))
+ROM_END
+
+
 ROM_START( pbem2017 )
 	ROM_REGION(0x20000, "maincpu", 0)
 	ROM_DEFAULT_BIOS("sept2017")
@@ -319,4 +425,5 @@ ROM_END
 
 
 /*   YEAR  NAME    PARENT    COMPAT    MACHINE        INPUT         STATE                INIT         COMPANY    FULLNAME */
-COMP(2017, pbem2017,    0,        0,   pensebem2017,  pensebem2017, pensebem2017_state,  empty_init,  "TecToy",  "Pense Bem (2017)", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND)
+COMP(198?, smartstart,    0,      0, smartstart,  smartstart, smartstart_state,  empty_init,  "VTech",  "Smart Start", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND)
+COMP(2017, pbem2017,    0,        0,   pensebem2017,  smartstart, pensebem2017_state,  empty_init,  "TecToy",  "Pense Bem (2017)", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND)
