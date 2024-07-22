@@ -120,6 +120,7 @@ public:
 		driver_device(mconfig, type, tag),
 		m_maincpu(*this, "maincpu"),
 		m_display(*this, "display"),
+		m_keyb_rows(*this, "ROW%u", 0U),
 		m_dac(*this, "dac")
 	{ }
 
@@ -134,19 +135,26 @@ private:
 	// devices/pointers
 	required_device<z8601_device> m_maincpu;
 	required_device<pwm_display_device> m_display;
+	required_ioport_array<4> m_keyb_rows;
 	required_device<dac_bit_interface> m_dac;
-	//required_ioport m_inputs;
 
-//	u8 m_... = 0;
+	u8 m_port_0 = 0;
+	u8 m_port_1 = 0;
+	u8 m_port_2 = 0;
+	u8 m_port_3 = 0;
 
 	// address maps
 	void main_map(address_map &map);
 
 	// I/O handlers
-//	void update_display();
-//	u8 rom_r(offs_t offset);
+	uint8_t port_2_r();
+	uint8_t port_3_r();
+	void port_0_w(uint8_t data);
+	void port_1_w(uint8_t data);
+	void port_2_w(uint8_t data);
+	void port_3_w(uint8_t data);
 
-//	u8 read_inputs();
+	void update_display();
 };
 
 
@@ -193,18 +201,18 @@ protected:
 
 void smartstart_state::machine_start()
 {
-//	save_item(NAME(m_port_0));
-//	save_item(NAME(m_port_1));
-//	save_item(NAME(m_port_2));
-//	save_item(NAME(m_port_3));
+	save_item(NAME(m_port_0));
+	save_item(NAME(m_port_1));
+	save_item(NAME(m_port_2));
+	save_item(NAME(m_port_3));
 }
 
 void smartstart_state::machine_reset()
 {
-//	m_port_0 = 0;
-//	m_port_1 = 0;
-//	m_port_2 = 0;
-//	m_port_3 = 0;
+	m_port_0 = 0;
+	m_port_1 = 0;
+	m_port_2 = 0;
+	m_port_3 = 0;
 }
 
 
@@ -240,6 +248,32 @@ uint8_t pensebem2017_state::port_b_r()
 	return value;
 }
 
+uint8_t smartstart_state::port_2_r()
+{
+	uint8_t value = m_port_2 & 0xF1;
+	int bit;
+	for (bit=0; bit<8; bit++)
+	{
+		if (!BIT(m_port_1, bit)) break;
+	}
+	if (BIT(m_keyb_rows[3]->read(), bit)) value |= (1 << 1);
+	if (BIT(m_keyb_rows[2]->read(), bit)) value |= (1 << 2);
+	if (BIT(m_keyb_rows[1]->read(), bit)) value |= (1 << 3);
+	return value;
+}
+
+uint8_t smartstart_state::port_3_r()
+{
+	uint8_t value = m_port_3 & 0xFD;
+	int bit;
+	for (bit=0; bit<8; bit++)
+	{
+		if (!BIT(m_port_1, bit)) break;
+	}
+	if (BIT(m_keyb_rows[0]->read(), bit)) value |= (1 << 1);
+	return value;
+}
+
 void pensebem2017_state::port_b_w(uint8_t data) // buzzer + keyboard select rows
 {
 	m_port_b = data;
@@ -271,15 +305,37 @@ void pensebem2017_state::update_display()
 	);
 }
 
-/*
+
+void smartstart_state::port_0_w(uint8_t data) // display
+{
+	m_port_0 = data;
+	update_display();
+}
+
+void smartstart_state::port_1_w(uint8_t data) // display
+{
+	m_port_1 = data;
+}
+
+void smartstart_state::port_2_w(uint8_t data) // buzzer
+{
+	m_port_2 = data;
+	m_dac->write(BIT(data, 5));
+}
+
+void smartstart_state::port_3_w(uint8_t data) // display
+{
+	m_port_3 = data;
+	update_display();
+}
+
 void smartstart_state::update_display()
 {
 	m_display->matrix(
 		~((m_port_0 << 2 & 0xfc) | (m_port_3 >> 2 & 0x03)),
-		~(m_port_2)
+		~(m_port_1)
 	);
 }
-*/
 
 void smartstart_state::main_map(address_map &map)
 {
@@ -345,10 +401,12 @@ void smartstart_state::smartstart(machine_config &config)
 	/* CPU */
 	Z8601(config, m_maincpu, 8_MHz_XTAL);
 	m_maincpu->set_addrmap(AS_PROGRAM, &smartstart_state::main_map);
-//	m_maincpu->p0_in_cb().set(FUNC(smartstart_state::input_hi_r));
-//	m_maincpu->p2_out_cb().set(FUNC(smartstart_state::mux_w));
-//	m_maincpu->p3_in_cb().set(FUNC(smartstart_state::input_lo_r));
-//	m_maincpu->p3_out_cb().set(FUNC(smartstart_state::control_w));
+	m_maincpu->p0_out_cb().set(FUNC(smartstart_state::port_0_w));
+	m_maincpu->p1_out_cb().set(FUNC(smartstart_state::port_1_w));
+	m_maincpu->p2_in_cb().set(FUNC(smartstart_state::port_2_r));
+	m_maincpu->p2_out_cb().set(FUNC(smartstart_state::port_2_w));
+	m_maincpu->p3_in_cb().set(FUNC(smartstart_state::port_3_r));
+	m_maincpu->p3_out_cb().set(FUNC(smartstart_state::port_3_w));
 
 	/* video hardware */
 	screen_device &screen(SCREEN(config, "screen", SCREEN_TYPE_SVG));
@@ -395,8 +453,8 @@ void pensebem2017_state::pensebem2017(machine_config &config)
 }
 
 ROM_START( smartstart )
-//	ROM_REGION(0x40, "testmode", 0)
-//	ROM_LOAD("smartstart-testrom.bin", 0x00, 0x40, CRC(0b63f823) SHA1(8501e8d6792f5ae07815bb4c53d4d9e0ce643d30))
+	ROM_REGION(0x40, "testmode", 0)
+	ROM_LOAD("smartstart-testrom.bin", 0x00, 0x40, CRC(0b63f823) SHA1(8501e8d6792f5ae07815bb4c53d4d9e0ce643d30))
 
 	ROM_REGION(0x800, "maincpu", 0)
 	ROM_LOAD("smartstart.bin", 0x000, 0x800, CRC(500fcdba) SHA1(1f6ec93883a7a7532ebdda724d0befc57a3a4084))
