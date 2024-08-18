@@ -10,7 +10,7 @@
 #include "sed1330.h"
 #include "screen.h"
 
-//#define VERBOSE 1
+#define VERBOSE 1
 #include "logmacro.h"
 
 
