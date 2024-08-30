@@ -98,6 +98,7 @@ public:
 		, m_fdc(*this, "fdc")
 		, m_extension(*this, "extension")
 		, m_extension_view(*this, "extension_view")
+		, m_com_select(*this, "COM_SELECT")
 		, m_CPL_SEG(*this, "CPL_SEG%u", 0U)
 		, m_CPR_SEG(*this, "CPR_SEG%u", 0U)
 		, m_checking_device_led_cn11(*this, "checking_device_led_cn11")
@@ -120,6 +121,7 @@ private:
 	required_device<kn5000_extension_device> m_extension;
 	memory_view m_extension_view;
 
+	required_ioport m_com_select;
 	required_ioport_array<11> m_CPL_SEG; // buttons on "Control Panel Left" PCB
 	required_ioport_array<11> m_CPR_SEG; // buttons on "Control Panel Right" PCB
 	output_finder<> m_checking_device_led_cn11;
@@ -617,7 +619,7 @@ void kn5000_state::machine_start()
 	save_item(NAME(m_mstat));
 	save_item(NAME(m_sstat));
 
-	if(m_extension)
+	if (m_extension)
 	{
 		m_extension->rom_map(m_extension_view[1], 0x280000, 0x2fffff);
 		m_extension_view.select(1);
@@ -657,7 +659,7 @@ void kn5000_state::kn5000(machine_config &config)
 
 	// MAINCPU PORT 7:
 	//   bit 5 (~BUSRQ pin): RY/~BY pin of maincpu ROMs
-	m_maincpu->port7_read().set([] { return (1 << 5); }); // checked at EF3735 (v10 ROM)
+	m_maincpu->port7_read().set_constant(1 << 5); // checked at EF3735 (v10 ROM)
 
 
 	// MAINCPU PORT 8:
@@ -674,14 +676,16 @@ void kn5000_state::kn5000(machine_config &config)
 	// MAINCPU PORT C:
 	//   bit 0 (input) = "check terminal" switch
 	//   bit 1 (output) = "check terminal" LED
-	m_maincpu->portc_read().set([this] { return ioport("CN11")->read(); });
-	m_maincpu->portc_write().set([this] (u8 data) { m_checking_device_led_cn11 = (BIT(data, 1) == 0); });
+	m_maincpu->portc_read().set_ioport("CN11");
+	m_maincpu->portc_write().set([this] (u8 data) {
+		m_checking_device_led_cn11 = (BIT(data, 1) == 0);
+	});
 
 
 	// MAINCPU PORT D:
 	//   bit 0 (output) = FDCRST
 	//   bit 6 (input) = FD.I/O
-	m_maincpu->portd_write().set([this] (u8 data) { m_fdc->reset_w(BIT(data, 0)); });
+	m_maincpu->portd_write().set(m_fdc, FUNC(upd72067_device::reset_w)).bit(0);
 	// TODO: bit 6!
 
 
@@ -689,7 +693,7 @@ void kn5000_state::kn5000(machine_config &config)
 	//   bit 0 (input) = +5v
 	//   bit 2 (input) = HDDRDY
 	//   bit 4 (?) = MICSNS
-	m_maincpu->porte_read().set([] { return 1; }); //checked at EF05A6 (v10 ROM)
+	m_maincpu->porte_read().set_constant(1); //checked at EF05A6 (v10 ROM)
 	// FIXME: Bit 0 should only be 1 if the
 	// optional hard-drive extension board is disabled;
 
@@ -709,7 +713,7 @@ void kn5000_state::kn5000(machine_config &config)
 
 	// MAINCPU PORT H:
 	//   bit 1 = TC1 Terminal count - microDMA
-	m_maincpu->porth_read().set([] { return 2; }); // area/region detection: checked at EF083E (v10 ROM)
+	m_maincpu->porth_read().set_constant(2); // area/region detection: checked at EF083E (v10 ROM)
 	// FIXME: These are resistors on the pcb, but could be declared
 	// in the driver as a 2 bit DIP-Switch for area/region selection.
 
@@ -724,7 +728,7 @@ void kn5000_state::kn5000(machine_config &config)
 	//   bit 6 = (input) COM.MAC
 	//   bit 7 = (input) COM.MIDI
 	m_maincpu->portz_read().set([this] {
-		return ioport("COM_SELECT")->read() | (m_sstat << 2);
+		return m_com_select->read() | (m_sstat << 2);
 	});
 	m_maincpu->portz_write().set([this] (u8 data) {
 		m_mstat = data & 3;
@@ -746,8 +750,10 @@ void kn5000_state::kn5000(machine_config &config)
 	// SUBCPU PORT C:
 	//   bit 0 (input) = "check terminal" switch
 	//   bit 1 (output) = "check terminal" LED
-	m_subcpu->portc_read().set([this] { return ioport("CN12")->read(); });
-	m_subcpu->portc_write().set([this] (u8 data) { m_checking_device_led_cn12 = (BIT(data, 1) == 0); });
+	m_subcpu->portc_read().set_ioport("CN12");
+	m_subcpu->portc_write().set([this] (u8 data) {
+		m_checking_device_led_cn12 = (BIT(data, 1) == 0);
+	});
 
 
 	// SUBCPU PORT D:

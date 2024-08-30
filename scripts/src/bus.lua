@@ -2579,7 +2579,7 @@ end
 
 ---------------------------------------------------
 --
---@src/devices/bus/technics/hdae5000.h,BUSES["TECHNICS"] = true
+--@src/devices/bus/technics/kn5000_extension.h,BUSES["TECHNICS"] = true
 ---------------------------------------------------
 
 if (BUSES["TECHNICS"]~=null) then

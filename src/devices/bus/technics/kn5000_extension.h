@@ -18,9 +18,7 @@ public:
 	virtual void rom_map(address_map &map) = 0;
 	virtual void io_map(address_map &map) = 0;
 
-// FIXME: do we need these?
 //protected:
-//	DECLARE_WRITE_LINE_MEMBER(firq_w);
 //	DECLARE_WRITE_LINE_MEMBER(irq_w);
 
 private:
