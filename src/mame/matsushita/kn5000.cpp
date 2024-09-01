@@ -791,8 +791,7 @@ void kn5000_state::kn5000(machine_config &config)
 
     /* extension port */
 	KN5000_EXTENSION(config, m_extension, 16_MHz_XTAL / 16); //FIXME: which clock signal should be passed to the extension port?
-//	m_extension->firq_callback().set("mainfirq", FUNC(input_merger_device::in_w<3>)); // FIXME: do we need something like this?
-//	m_extension->irq_callback().set("mainirq", FUNC(input_merger_device::in_w<3>)); // FIXME: do we need something like this?
+	m_extension->irq_callback().set_inputline(m_maincpu, TLCS900_INT9);
 	m_extension->option_add("hdae5000", HDAE5000);
 
 	/* sound hardware */
