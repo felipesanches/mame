@@ -11,10 +11,8 @@ DEFINE_DEVICE_TYPE(KN5000_EXTENSION, kn5000_extension_device, "kn5000_extension"
 
 kn5000_extension_device::kn5000_extension_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock) :
 	device_t(mconfig, KN5000_EXTENSION, tag, owner, clock),
-	device_single_card_slot_interface<kn5000_extension_interface>(mconfig, *this)
-// FIXME: do we need these?
-//	m_firq_callback(*this),
-//	m_irq_callback(*this)
+	device_single_card_slot_interface<kn5000_extension_interface>(mconfig, *this),
+	m_write_irq(*this)
 {
 }
 

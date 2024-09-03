@@ -35,9 +35,12 @@ public:
 
 	void rom_map(address_space_installer &space, offs_t start, offs_t end);
 	void io_map(address_space_installer &space, offs_t start, offs_t end);
+	auto irq_callback() { return m_write_irq.bind(); }
+	void irq_w(int state) { m_write_irq(state); }
 
 protected:
 	virtual void device_start() override;
+	devcb_write_line   m_write_irq;
 };
 
 DECLARE_DEVICE_TYPE(KN5000_EXTENSION, kn5000_extension_device)
