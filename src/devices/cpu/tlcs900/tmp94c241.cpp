@@ -30,16 +30,6 @@ DEFINE_DEVICE_TYPE(TMP94C241, tmp94c241_device, "tmp94c241", "Toshiba TMP94C241"
 #define SFR_T8FFCR	m_ffcr[3]
 #define SFR_TAFFCR	m_ffcr[4]
 
-#define TIMER_0_IS_RUNNING	BIT(m_t8run, 0)
-#define TIMER_1_IS_RUNNING	BIT(m_t8run, 1)
-#define TIMER_2_IS_RUNNING	BIT(m_t8run, 2)
-#define TIMER_3_IS_RUNNING	BIT(m_t8run, 3)
-#define TIMER_4_IS_RUNNING	BIT(m_t16run, 0)
-#define TIMER_6_IS_RUNNING	BIT(m_t16run, 1)
-#define TIMER_8_IS_RUNNING	BIT(m_t16run, 2)
-#define TIMER_A_IS_RUNNING	BIT(m_t16run, 3)
-#define PRESCALER_IS_ACTIVE	BIT(m_t16run, 7)
-
 #define T0_INPUT_CLOCK			((SFR_T01MOD >> 0) & 0x03)
 #define T1_INPUT_CLOCK			((SFR_T01MOD >> 2) & 0x03)
 #define PWM1_INTERVAL_SELECTION	((SFR_T01MOD >> 4) & 0x03)
@@ -595,22 +585,22 @@ void tmp94c241_device::t8run_w(uint8_t data)
 {
 	m_t8run = data;
 
-	if ( !TIMER_0_IS_RUNNING )
+	if ( !BIT(m_t8run, 0) ) /* Timer 0 isn't running */
 	{
 		UPCOUNTER_0 = 0;
 		TIMER_CHANGE_0 = 0;
 	}
-	if ( !TIMER_1_IS_RUNNING )
+	if ( !BIT(m_t8run, 1) ) /* Timer 1 isn't running */
 	{
 		UPCOUNTER_1 = 0;
 		TIMER_CHANGE_1 = 0;
 	}
-	if ( !TIMER_2_IS_RUNNING )
+	if ( !BIT(m_t8run, 2) ) /* Timer 2 isn't running */
 	{
 		UPCOUNTER_2 = 0;
 		TIMER_CHANGE_2 = 0;
 	}
-	if ( !TIMER_3_IS_RUNNING )
+	if ( !BIT(m_t8run, 3) ) /* Timer 3 isn't running */
 	{
 		UPCOUNTER_3 = 0;
 		TIMER_CHANGE_3 = 0;
@@ -868,22 +858,22 @@ void tmp94c241_device::t16run_w(uint8_t data)
 {
 	m_t16run = data;
 
-	if ( !TIMER_4_IS_RUNNING )
+	if ( !BIT(m_t16run, 0) ) /* Timer 4 isn't running */
 	{
 		UPCOUNTER_4 = 0;
 		TIMER_CHANGE_4 = 0;
 	}
-	if ( !TIMER_6_IS_RUNNING )
+	if ( !BIT(m_t16run, 1) ) /* Timer 6 isn't running */
 	{
 		UPCOUNTER_6 = 0;
 		TIMER_CHANGE_6 = 0;
 	}
-	if ( !TIMER_8_IS_RUNNING )
+	if ( !BIT(m_t16run, 2) ) /* Timer 8 isn't running */
 	{
 		UPCOUNTER_8 = 0;
 		TIMER_CHANGE_8 = 0;
 	}
-	if ( !TIMER_A_IS_RUNNING )
+	if ( !BIT(m_t16run, 3) ) /* Timer A isn't running */
 	{
 		UPCOUNTER_A = 0;
 		TIMER_CHANGE_A = 0;
@@ -1356,11 +1346,10 @@ void tmp94c241_device::tlcs900_handle_timers()
 {
 	uint32_t  old_pre = m_timer_pre;
 
-	if ( PRESCALER_IS_ACTIVE )
+	if ( BIT(m_t16run, 7) ) /* prescaler is active */
 		m_timer_pre += m_cycles;
 
-	/* Timer 0 */
-	if ( TIMER_0_IS_RUNNING )
+	if ( BIT(m_t8run, 0) ) /* Timer 0 is running */
 	{
 		switch( T0_INPUT_CLOCK )
 		{
@@ -1399,8 +1388,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 		}
 	}
 
-	/* Timer 1 */
-	if ( TIMER_1_IS_RUNNING )
+	if ( BIT(m_t8run, 1) ) /* Timer 1 is running */
 	{
 		switch( T1_INPUT_CLOCK )
 		{
@@ -1436,8 +1424,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 		}
 	}
 
-	/* Timer 2 */
-	if ( TIMER_2_IS_RUNNING )
+	if ( BIT(m_t8run, 2) ) /* Timer 2 is running */
 	{
 		switch( T2_INPUT_CLOCK )
 		{
@@ -1475,8 +1462,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 		}
 	}
 
-	/* Timer 3 */
-	if ( TIMER_3_IS_RUNNING )
+	if ( BIT(m_t8run, 3) ) /* Timer 3 is running */
 	{
 		switch( T3_INPUT_CLOCK )
 		{
@@ -1512,8 +1498,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 		}
 	}
 
-	/* Timer 4 */
-	if ( TIMER_4_IS_RUNNING )
+	if ( BIT(m_t16run, 0) ) /* Timer 4 is running */
 	{
 		switch( T4_INPUT_CLOCK )
 		{
@@ -1546,8 +1531,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 	}
 
 
-	/* Timer 6 */
-	if ( TIMER_6_IS_RUNNING )
+	if ( BIT(m_t16run, 1) ) /* Timer 6 is running */
 	{
 		switch( T6_INPUT_CLOCK )
 		{
@@ -1580,8 +1564,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 	}
 
 
-	/* Timer 8 */
-	if ( TIMER_8_IS_RUNNING )
+	if ( BIT(m_t16run, 2) ) /* Timer 8 is running */
 	{
 		switch( T8_INPUT_CLOCK )
 		{
@@ -1613,9 +1596,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 		}
 	}
 
-
-	/* Timer A */
-	if ( TIMER_A_IS_RUNNING )
+	if ( BIT(m_t16run, 3) ) /* Timer A is running */
 	{
 		switch( TA_INPUT_CLOCK )
 		{
