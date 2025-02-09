@@ -1793,11 +1793,12 @@ void tmp94c241_device::execute_set_input(int input, int level)
 	{
 	case INPUT_LINE_NMI:
 	case TLCS900_NMI:
-		if ( m_level[TLCS900_NMI] == CLEAR_LINE && level == ASSERT_LINE )
+		if ( level != m_level[TLCS900_NMI])
 		{
-			m_nmi_state = level;
+			m_level[TLCS900_NMI] = level;
+			if (level == ASSERT_LINE)
+				m_nmi_state = ASSERT_LINE;
 		}
-		m_level[TLCS900_NMI] = level;
 		break;
 
 	case TLCS900_INTWD:
@@ -1810,7 +1811,7 @@ void tmp94c241_device::execute_set_input(int input, int level)
 			if (m_iimc & 0x02)
 			{
 				/* Rising edge detect */
-				if (m_level[TLCS900_INT0] == CLEAR_LINE && level == ASSERT_LINE)
+				if (level != m_level[TLCS900_INT0] && level == ASSERT_LINE)
 				{
 					/* Leave HALT state */
 					m_halted = 0;
@@ -1830,99 +1831,83 @@ void tmp94c241_device::execute_set_input(int input, int level)
 		break;
 
 	case TLCS900_INT4:
-		if (m_level[TLCS900_INT4] == CLEAR_LINE && level == ASSERT_LINE)
-		{
-			m_int_reg[INTE45] |= 0x08;
+		if (level != m_level[TLCS900_INT4]) {
+			m_level[TLCS900_INT4] = level;
+			if (level == ASSERT_LINE)
+				m_int_reg[INTE45] |= 0x08;
+			else
+				m_int_reg[INTE45] &= ~0x08;
 		}
-		else if (m_level[TLCS900_INT4] == ASSERT_LINE && level == CLEAR_LINE)
-		{
-			m_int_reg[INTE45] &= ~0x08;
-		}
-		m_level[TLCS900_INT4] = level;
 		break;
 
 	case TLCS900_INT5:
-		if (m_level[TLCS900_INT5] == CLEAR_LINE && level == ASSERT_LINE)
-		{
-			m_int_reg[INTE45] |= 0x80;
+		if (level != m_level[TLCS900_INT5]) {
+			m_level[TLCS900_INT5] = level;
+			if (level == ASSERT_LINE)
+				m_int_reg[INTE45] |= 0x80;
+			else
+				m_int_reg[INTE45] &= ~0x80;
 		}
-		else if (m_level[TLCS900_INT5] == ASSERT_LINE && level == CLEAR_LINE)
-		{
-			m_int_reg[INTE45] &= ~0x80;
-		}
-		m_level[TLCS900_INT5] = level;
 		break;
 
 	case TLCS900_INT6:
-		if (m_level[TLCS900_INT6] == CLEAR_LINE && level == ASSERT_LINE)
-		{
-			m_int_reg[INTE67] |= 0x08;
+		if (level != m_level[TLCS900_INT6]) {
+			m_level[TLCS900_INT6] = level;
+			if (level == ASSERT_LINE)
+				m_int_reg[INTE67] |= 0x08;
+			else
+				m_int_reg[INTE67] &= ~0x08;
 		}
-		else if (m_level[TLCS900_INT6] == ASSERT_LINE && level == CLEAR_LINE)
-		{
-			m_int_reg[INTE67] &= ~0x08;
-		}
-		m_level[TLCS900_INT3] = level;
 		break;
 
 	case TLCS900_INT7:
-		if (m_level[TLCS900_INT7] == CLEAR_LINE && level == ASSERT_LINE)
-		{
-			m_int_reg[INTE67] |= 0x80;
+		if (level != m_level[TLCS900_INT7]) {
+			m_level[TLCS900_INT7] = level;
+			if (level == ASSERT_LINE)
+				m_int_reg[INTE67] |= 0x80;
+			else
+				m_int_reg[INTE67] &= ~0x80;
 		}
-		else if (m_level[TLCS900_INT7] == ASSERT_LINE && level == CLEAR_LINE)
-		{
-			m_int_reg[INTE67] &= ~0x80;
-		}
-		m_level[TLCS900_INT7] = level;
 		break;
 
 	case TLCS900_INT8:
-		if (m_level[TLCS900_INT8] == CLEAR_LINE && level == ASSERT_LINE)
-		{
-			m_int_reg[INTE89] |= 0x08;
+		if (level != m_level[TLCS900_INT8]) {
+			m_level[TLCS900_INT8] = level;
+			if (level == ASSERT_LINE)
+				m_int_reg[INTE89] |= 0x08;
+			else
+				m_int_reg[INTE89] &= ~0x08;
 		}
-		else if (m_level[TLCS900_INT8] == ASSERT_LINE && level == CLEAR_LINE)
-		{
-			m_int_reg[INTE89] &= ~0x08;
-		}
-		m_level[TLCS900_INT8] = level;
 		break;
 
 	case TLCS900_INT9:
-		if (m_level[TLCS900_INT9] == CLEAR_LINE && level == ASSERT_LINE)
-		{
-			m_int_reg[INTE89] |= 0x80;
+		if (level != m_level[TLCS900_INT9]) {
+			m_level[TLCS900_INT9] = level;
+			if (level == ASSERT_LINE)
+				m_int_reg[INTE89] |= 0x80;
+			else
+				m_int_reg[INTE89] &= ~0x80;
 		}
-		else if (m_level[TLCS900_INT9] == ASSERT_LINE && level == CLEAR_LINE)
-		{
-			m_int_reg[INTE89] &= ~0x80;
-		}
-		m_level[TLCS900_INT9] = level;
 		break;
 
 	case TLCS900_INTA:
-		if (m_level[TLCS900_INTA] == CLEAR_LINE && level == ASSERT_LINE)
-		{
-			m_int_reg[INTEAB] |= 0x08;
+		if (level != m_level[TLCS900_INTA]) {
+			m_level[TLCS900_INTA] = level;
+			if (level == ASSERT_LINE)
+				m_int_reg[INTEAB] |= 0x08;
+			else
+				m_int_reg[INTEAB] &= ~0x08;
 		}
-		else if (m_level[TLCS900_INTA] == ASSERT_LINE && level == CLEAR_LINE)
-		{
-			m_int_reg[INTEAB] &= ~0x08;
-		}
-		m_level[TLCS900_INTA] = level;
 		break;
 
 	case TLCS900_INTB:
-		if (m_level[TLCS900_INTB] == CLEAR_LINE && level == ASSERT_LINE)
-		{
-			m_int_reg[INTEAB] |= 0x80;
+		if (level != m_level[TLCS900_INTB]) {
+			m_level[TLCS900_INTB] = level;
+			if (level == ASSERT_LINE)
+				m_int_reg[INTEAB] |= 0x80;
+			else
+				m_int_reg[INTEAB] &= ~0x80;
 		}
-		else if (m_level[TLCS900_INTB] == ASSERT_LINE && level == CLEAR_LINE)
-		{
-			m_int_reg[INTEAB] &= ~0x80;
-		}
-		m_level[TLCS900_INTB] = level;
 		break;
 	}
 	m_check_irqs = 1;
