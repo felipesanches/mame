@@ -228,26 +228,40 @@ private:
 	// I/O Ports
 	devcb_read8::array<NUM_PORTS> m_port_read;
 	devcb_write8::array<NUM_PORTS> m_port_write;
-	uint8_t   m_port_latch[NUM_PORTS];
-	uint8_t   m_port_control[NUM_PORTS];
-	uint8_t   m_port_function[NUM_PORTS];
+	uint8_t m_port_latch[NUM_PORTS];
+	uint8_t m_port_control[NUM_PORTS];
+	uint8_t m_port_function[NUM_PORTS];
 
 	// Timer Control
-	uint8_t   m_t8run;
-	uint8_t   m_t8_reg[8];
-	uint8_t   m_t01mod;
-	uint8_t   m_t23mod;
-	uint8_t   m_t4mod;
-	uint8_t   m_t6mod;
-	uint8_t   m_t8mod;
-	uint8_t   m_tamod;
-	uint8_t   m_t02ffcr;
-	uint8_t   m_t4ffcr;
-	uint8_t   m_t6ffcr;
-	uint8_t   m_t8ffcr;
-	uint8_t   m_taffcr;
-	uint8_t   m_trdc;
-	uint16_t  m_t16_reg[8];
+	uint8_t m_t8run;
+	uint8_t m_t8_reg[8];
+	uint8_t m_t01mod;
+	uint8_t m_t23mod;
+	uint8_t m_t4mod;
+	uint8_t m_t6mod;
+	uint8_t m_t8mod;
+	uint8_t m_tamod;
+	uint8_t m_t02ffcr;
+	uint8_t m_t4ffcr;
+	uint8_t m_t6ffcr;
+	uint8_t m_t8ffcr;
+	uint8_t m_taffcr;
+	uint8_t m_trdc;
+
+	uint8_t m_treg0;
+	uint8_t m_treg1;
+	uint8_t m_treg2;
+	uint8_t m_treg3;
+
+	uint16_t m_treg4;
+	uint16_t m_treg5;
+	uint16_t m_treg6;
+	uint16_t m_treg7;
+	uint16_t m_treg8;
+	uint16_t m_treg9;
+	uint16_t m_tregA;
+	uint16_t m_tregB;
+
 	uint16_t  m_t16_cap[8];
 	uint8_t   m_t16run;
 	uint16_t  m_timer16[4];

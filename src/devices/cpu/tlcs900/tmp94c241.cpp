@@ -17,19 +17,6 @@
 // device type definition
 DEFINE_DEVICE_TYPE(TMP94C241, tmp94c241_device, "tmp94c241", "Toshiba TMP94C241")
 
-#define SFR_TREG0	m_t8_reg[0]
-#define SFR_TREG1	m_t8_reg[1]
-#define SFR_TREG2	m_t8_reg[2]
-#define SFR_TREG3	m_t8_reg[3]
-#define SFR_TREG4	m_t16_reg[0]
-#define SFR_TREG5	m_t16_reg[1]
-#define SFR_TREG6	m_t16_reg[2]
-#define SFR_TREG7	m_t16_reg[3]
-#define SFR_TREG8	m_t16_reg[4]
-#define SFR_TREG9	m_t16_reg[5]
-#define SFR_TREGA	m_t16_reg[6]
-#define SFR_TREGB	m_t16_reg[7]
-
 enum
 {
 	INTE45,
@@ -129,7 +116,18 @@ tmp94c241_device::tmp94c241_device(const machine_config &mconfig, const char *ta
 	m_t8ffcr(0),
 	m_taffcr(0),
 	m_trdc(0),
-	m_t16_reg{ 0, 0, 0, 0, 0, 0, 0, 0 },
+	m_treg0(0),
+	m_treg1(0),
+	m_treg2(0),
+	m_treg3(0),
+	m_treg4(0),
+	m_treg5(0),
+	m_treg6(0),
+	m_treg7(0),
+	m_treg8(0),
+	m_treg9(0),
+	m_tregA(0),
+	m_tregB(0),
 	m_t16_cap{ 0, 0, 0, 0, 0, 0, 0, 0 },
 	m_t16run(0),
 	m_timer16{ 0, 0, 0, 0 },
@@ -179,7 +177,6 @@ void tmp94c241_device::device_start()
 	save_item(NAME(m_port_control));
 	save_item(NAME(m_port_function));
 	save_item(NAME(m_t8run));
-	save_item(NAME(m_t8_reg));
 	save_item(NAME(m_t01mod));
 	save_item(NAME(m_t23mod));
 	save_item(NAME(m_t4mod));
@@ -187,7 +184,18 @@ void tmp94c241_device::device_start()
 	save_item(NAME(m_t8mod));
 	save_item(NAME(m_tamod));
 	save_item(NAME(m_trdc));
-	save_item(NAME(m_t16_reg));
+	save_item(NAME(m_treg0));
+	save_item(NAME(m_treg1));
+	save_item(NAME(m_treg2));
+	save_item(NAME(m_treg3));
+	save_item(NAME(m_treg4));
+	save_item(NAME(m_treg5));
+	save_item(NAME(m_treg6));
+	save_item(NAME(m_treg7));
+	save_item(NAME(m_treg8));
+	save_item(NAME(m_treg9));
+	save_item(NAME(m_tregA));
+	save_item(NAME(m_tregB));
 	save_item(NAME(m_t16_cap));
 	save_item(NAME(m_t02ffcr));
 	save_item(NAME(m_t4ffcr));
@@ -563,9 +571,9 @@ void tmp94c241_device::treg01_w(offs_t offset, uint8_t data)
 {
 
     if (BIT(offset, 0))
-		SFR_TREG1 = data;
+		m_treg1 = data;
 	else
-		SFR_TREG0 = data;
+		m_treg0 = data;
 }
 
 uint8_t tmp94c241_device::t01mod_r()
@@ -649,9 +657,9 @@ void tmp94c241_device::treg23_w(offs_t offset, uint8_t data)
 {
 
     if (BIT(offset, 0))
-		SFR_TREG3 = data;
+		m_treg3 = data;
 	else
-		SFR_TREG2 = data;
+		m_treg2 = data;
 }
 
 uint8_t tmp94c241_device::t23mod_r()
@@ -679,33 +687,33 @@ void tmp94c241_device::trdc_w(uint8_t data)
 void tmp94c241_device::treg45_w(offs_t offset, uint16_t data)
 {
 	if (offset < 2)
-		SFR_TREG4 = data;
+		m_treg4 = data;
 	else
-		SFR_TREG5 = data;
+		m_treg5 = data;
 }
 
 void tmp94c241_device::treg67_w(offs_t offset, uint16_t data)
 {
 	if (offset < 2)
-		SFR_TREG6 = data;
+		m_treg6 = data;
 	else
-		SFR_TREG7 = data;
+		m_treg7 = data;
 }
 
 void tmp94c241_device::treg89_w(offs_t offset, uint16_t data)
 {
 	if (offset < 2)
-		SFR_TREG8 = data;
+		m_treg8 = data;
 	else
-		SFR_TREG9 = data;
+		m_treg9 = data;
 }
 
 void tmp94c241_device::tregab_w(offs_t offset, uint16_t data)
 {
 	if (offset < 2)
-		SFR_TREGA = data;
+		m_tregA = data;
 	else
-		SFR_TREGB = data;
+		m_tregB = data;
 }
 
 uint8_t tmp94c241_device::t4mod_r()
@@ -1312,7 +1320,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; m_timer_change[0] > 0; m_timer_change[0]-- )
 		{
 			m_timer[0]++; /* UPCOUNTER_0 */
-			if ( m_timer[0] == SFR_TREG0 )
+			if ( m_timer[0] == m_treg0 )
 			{
 				if ( ((m_t01mod >> 6) & 3) == 0 ) /* TO1_OPERATING_MODE == MODE_8BIT_TIMER */
 					m_timer_change[1]++;
@@ -1351,7 +1359,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; m_timer_change[1] > 0; m_timer_change[1]-- )
 		{
 			m_timer[1] += 1; /* UPCOUNTER_1 */
-			if ( m_timer[1] == SFR_TREG1 )
+			if ( m_timer[1] == m_treg1 )
 			{
 				m_timer[1] = 0;
 				m_int_reg[INTET01] |= 0x80;
@@ -1388,7 +1396,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; m_timer_change[2] > 0; m_timer_change[2]-- )
 		{
 			m_timer[2]++; /* UPCOUNTER_2 */
-			if ( m_timer[2] == SFR_TREG2 )
+			if ( m_timer[2] == m_treg2 )
 			{
 				if ( ((m_t23mod >> 6) & 3) == 0 ) /* T23_OPERATING_MODE == MODE_8BIT_TIMER */
 					m_timer_change[3]++;
@@ -1427,7 +1435,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; m_timer_change[3] > 0; m_timer_change[3]-- )
 		{
 			m_timer[3]++; /* UPCOUNTER_3 */
-			if ( m_timer[3] == SFR_TREG3 )
+			if ( m_timer[3] == m_treg3 )
 			{
 				m_timer[3] = 0;
 				m_int_reg[INTET23] |= 0x80;
@@ -1464,8 +1472,8 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; m_timer_change[4] > 0; m_timer_change[4]-- )
 		{
 			m_timer16[0]++; /* UPCOUNTER_4 */
-			if ( ((m_timer16[0] == SFR_TREG5) && BIT(m_t4ffcr, 3)) ||
-				((m_timer16[0] == SFR_TREG4) && BIT(m_t4ffcr, 2)) )
+			if ( ((m_timer16[0] == m_treg5) && BIT(m_t4ffcr, 3)) ||
+				((m_timer16[0] == m_treg4) && BIT(m_t4ffcr, 2)) )
 			{
 				change_timer_flipflop( 4, FF_INVERT );
 				m_timer16[0] = 0;
@@ -1499,8 +1507,8 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; m_timer_change[5] > 0; m_timer_change[5]-- )
 		{
 			m_timer16[1]++; /* UPCOUNTER_6 */
-			if ( ((m_timer16[1] == SFR_TREG7) && BIT(m_t6ffcr, 3)) ||
-				((m_timer16[1] == SFR_TREG6) && BIT(m_t6ffcr, 2)) )
+			if ( ((m_timer16[1] == m_treg7) && BIT(m_t6ffcr, 3)) ||
+				((m_timer16[1] == m_treg6) && BIT(m_t6ffcr, 2)) )
 			{
 				change_timer_flipflop( 6, FF_INVERT );
 				m_timer16[1] = 0;
@@ -1534,8 +1542,8 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; m_timer_change[6] > 0; m_timer_change[6]-- )
 		{
 			m_timer16[2]++; /* UPCOUNTER_8 */
-			if ( ((m_timer16[2] == SFR_TREG9) && BIT(m_t8ffcr, 3)) ||
-				((m_timer16[2] == SFR_TREG8) && BIT(m_t8ffcr, 2)) )
+			if ( ((m_timer16[2] == m_treg9) && BIT(m_t8ffcr, 3)) ||
+				((m_timer16[2] == m_treg8) && BIT(m_t8ffcr, 2)) )
 			{
 				change_timer_flipflop( 8, FF_INVERT );
 				m_timer16[2] = 0;
@@ -1568,8 +1576,8 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; m_timer_change[7] > 0; m_timer_change[7]-- )
 		{
 			m_timer16[3]++; /* UPCOUNTER_A */
-			if ( ((m_timer16[3] == SFR_TREGA) && BIT(m_taffcr, 2)) ||
-				((m_timer16[3] == SFR_TREGB) && BIT(m_taffcr, 3)) )
+			if ( ((m_timer16[3] == m_tregA) && BIT(m_taffcr, 2)) ||
+				((m_timer16[3] == m_tregB) && BIT(m_taffcr, 3)) )
 			{
 				change_timer_flipflop( 0xa, FF_INVERT );
 				m_timer16[3] = 0;
