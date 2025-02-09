@@ -583,7 +583,6 @@ uint8_t tmp94c241_device::t01mod_r()
 
 void tmp94c241_device::t01mod_w(uint8_t data)
 {
-	logerror("T01MOD = %02X\n", data);
 	m_t01mod = data;
 }
 
@@ -668,8 +667,6 @@ uint8_t tmp94c241_device::t23mod_r()
 
 void tmp94c241_device::t23mod_w(uint8_t data)
 {
-	logerror("T23MOD = %02X\n", data);
-
 	m_t23mod = data;
 }
 
@@ -722,7 +719,6 @@ uint8_t tmp94c241_device::t4mod_r()
 
 void tmp94c241_device::t4mod_w(uint8_t data)
 {
-	logerror("T4MOD = %02X\n", data);
 	m_t4mod = data;
 }
 
@@ -733,7 +729,6 @@ uint8_t tmp94c241_device::t6mod_r()
 
 void tmp94c241_device::t6mod_w(uint8_t data)
 {
-	logerror("T6MOD = %02X\n", data);
 	m_t6mod = data;
 }
 
@@ -744,7 +739,6 @@ uint8_t tmp94c241_device::t8mod_r()
 
 void tmp94c241_device::t8mod_w(uint8_t data)
 {
-	logerror("T8MOD = %02X\n", data);
 	m_t8mod = data;
 }
 
@@ -755,10 +749,8 @@ uint8_t tmp94c241_device::tamod_r()
 
 void tmp94c241_device::tamod_w(uint8_t data)
 {
-	logerror("TAMOD = %02X\n", data);
 	m_tamod = data;
 }
-
 
 uint8_t tmp94c241_device::t4ffcr_r()
 {
