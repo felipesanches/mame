@@ -265,8 +265,8 @@ private:
 	// Chip Select/Wait Control
 	uint16_t   m_block_cs[6];
 	uint8_t   m_external_cs;
-	uint8_t   m_mem_start_reg[6];
-	uint8_t   m_mem_start_mask[6];
+	uint8_t   m_msar[6];
+	uint8_t   m_mamr[6];
 
 	// DRAM Control
 	uint8_t   m_dram_refresh[2];

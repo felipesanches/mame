@@ -23,35 +23,22 @@ DEFINE_DEVICE_TYPE(TMP94C241, tmp94c241_device, "tmp94c241", "Toshiba TMP94C241"
 #define SFR_T6MOD	m_tmod[3]
 #define SFR_T8MOD	m_tmod[4]
 #define SFR_TAMOD	m_tmod[5]
-#define SFR_T8RUN	m_t8run
-#define SFR_T16RUN	m_t16run
+
 #define SFR_T02FFCR	m_ffcr[0]
 #define SFR_T4FFCR	m_ffcr[1]
 #define SFR_T6FFCR	m_ffcr[2]
 #define SFR_T8FFCR	m_ffcr[3]
 #define SFR_TAFFCR	m_ffcr[4]
-#define SFR_MSAR0 m_mem_start_reg[0]
-#define SFR_MSAR1 m_mem_start_reg[1]
-#define SFR_MSAR2 m_mem_start_reg[2]
-#define SFR_MSAR3 m_mem_start_reg[3]
-#define SFR_MSAR4 m_mem_start_reg[4]
-#define SFR_MSAR5 m_mem_start_reg[5]
-#define SFR_MAMR0 m_mem_start_mask[0]
-#define SFR_MAMR1 m_mem_start_mask[1]
-#define SFR_MAMR2 m_mem_start_mask[2]
-#define SFR_MAMR3 m_mem_start_mask[3]
-#define SFR_MAMR4 m_mem_start_mask[4]
-#define SFR_MAMR5 m_mem_start_mask[5]
 
-#define TIMER_0_IS_RUNNING	BIT(SFR_T8RUN, 0)
-#define TIMER_1_IS_RUNNING	BIT(SFR_T8RUN, 1)
-#define TIMER_2_IS_RUNNING	BIT(SFR_T8RUN, 2)
-#define TIMER_3_IS_RUNNING	BIT(SFR_T8RUN, 3)
-#define TIMER_4_IS_RUNNING	BIT(SFR_T16RUN, 0)
-#define TIMER_6_IS_RUNNING	BIT(SFR_T16RUN, 1)
-#define TIMER_8_IS_RUNNING	BIT(SFR_T16RUN, 2)
-#define TIMER_A_IS_RUNNING	BIT(SFR_T16RUN, 3)
-#define PRESCALER_IS_ACTIVE	BIT(SFR_T16RUN, 7)
+#define TIMER_0_IS_RUNNING	BIT(m_t8run, 0)
+#define TIMER_1_IS_RUNNING	BIT(m_t8run, 1)
+#define TIMER_2_IS_RUNNING	BIT(m_t8run, 2)
+#define TIMER_3_IS_RUNNING	BIT(m_t8run, 3)
+#define TIMER_4_IS_RUNNING	BIT(m_t16run, 0)
+#define TIMER_6_IS_RUNNING	BIT(m_t16run, 1)
+#define TIMER_8_IS_RUNNING	BIT(m_t16run, 2)
+#define TIMER_A_IS_RUNNING	BIT(m_t16run, 3)
+#define PRESCALER_IS_ACTIVE	BIT(m_t16run, 7)
 
 #define T0_INPUT_CLOCK			((SFR_T01MOD >> 0) & 0x03)
 #define T1_INPUT_CLOCK			((SFR_T01MOD >> 2) & 0x03)
@@ -219,8 +206,8 @@ tmp94c241_device::tmp94c241_device(const machine_config &mconfig, const char *ta
 	m_dma_vector{ 0, 0, 0, 0 },
 	m_block_cs{ 0, 0, 0, 0 },
 	m_external_cs(0),
-	m_mem_start_reg{ 0, 0, 0, 0 },
-	m_mem_start_mask{ 0, 0, 0, 0 },
+	m_msar{ 0, 0, 0, 0, 0, 0 },
+	m_mamr{ 0, 0, 0, 0, 0, 0 },
 	m_dram_refresh{ 0, 0 },
 	m_dram_access{ 0, 0 },
 	m_da_drive(0)
@@ -272,8 +259,8 @@ void tmp94c241_device::device_start()
 	save_item(NAME(m_dma_vector));
 	save_item(NAME(m_block_cs));
 	save_item(NAME(m_external_cs));
-	save_item(NAME(m_mem_start_reg));
-	save_item(NAME(m_mem_start_mask));
+	save_item(NAME(m_msar));
+	save_item(NAME(m_mamr));
 	save_item(NAME(m_dram_refresh));
 	save_item(NAME(m_dram_access));
 	save_item(NAME(m_da_drive));
@@ -368,8 +355,8 @@ void tmp94c241_device::device_reset()
 	m_block_cs[4] = 0x0000;
 	m_block_cs[5] = 0x0000;
 	m_external_cs = 0x0000;
-	std::fill_n(&m_mem_start_reg[0], 6, 0xff);
-	std::fill_n(&m_mem_start_mask[0], 6, 0xff);
+	std::fill_n(&m_msar[0], 6, 0xff);
+	std::fill_n(&m_mamr[0], 6, 0xff);
 	std::fill_n(&m_dram_refresh[0], 2, 0x00);
 	std::fill_n(&m_dram_access[0], 2, 0x80);
 	m_da_drive = 0x00;
@@ -481,132 +468,132 @@ void tmp94c241_device::b5cs_w(offs_t offset, uint8_t data)
 
 void tmp94c241_device::mamr0_w(offs_t offset, uint8_t data)
 {
-	SFR_MAMR0 = data;
+	m_mamr[0] = data;
 }
 
 void tmp94c241_device::msar0_w(offs_t offset, uint8_t data)
 {
-	SFR_MSAR0 = data;
+	m_msar[0] = data;
 }
 
 uint8_t tmp94c241_device::mamr0_r()
 {
-	return SFR_MAMR0;
+	return m_mamr[0];
 }
 
 uint8_t tmp94c241_device::msar0_r()
 {
-	return SFR_MSAR0;
+	return m_msar[0];
 }
 
 void tmp94c241_device::mamr1_w(offs_t offset, uint8_t data)
 {
-	SFR_MAMR1 = data;
+	m_mamr[1] = data;
 }
 
 void tmp94c241_device::msar1_w(offs_t offset, uint8_t data)
 {
-	SFR_MSAR1 = data;
+	m_msar[1] = data;
 }
 
 uint8_t tmp94c241_device::mamr1_r()
 {
-	return SFR_MAMR1;
+	return m_mamr[1];
 }
 
 uint8_t tmp94c241_device::msar1_r()
 {
-	return SFR_MSAR1;
+	return m_msar[1];
 }
 
 void tmp94c241_device::mamr2_w(offs_t offset, uint8_t data)
 {
-	SFR_MAMR2 = data;
+	m_mamr[2] = data;
 }
 
 void tmp94c241_device::msar2_w(offs_t offset, uint8_t data)
 {
-	SFR_MSAR2 = data;
+	m_msar[2] = data;
 }
 
 uint8_t tmp94c241_device::mamr2_r()
 {
-	return SFR_MAMR2;
+	return m_mamr[2];
 }
 
 uint8_t tmp94c241_device::msar2_r()
 {
-	return SFR_MSAR2;
+	return m_msar[2];
 }
 
 void tmp94c241_device::mamr3_w(offs_t offset, uint8_t data)
 {
-	SFR_MAMR3 = data;
+	m_mamr[3] = data;
 }
 
 void tmp94c241_device::msar3_w(offs_t offset, uint8_t data)
 {
-	SFR_MSAR3 = data;
+	m_msar[3] = data;
 }
 
 uint8_t tmp94c241_device::mamr3_r()
 {
-	return SFR_MAMR3;
+	return m_mamr[3];
 }
 
 uint8_t tmp94c241_device::msar3_r()
 {
-	return SFR_MSAR3;
+	return m_msar[3];
 }
 
 void tmp94c241_device::mamr4_w(offs_t offset, uint8_t data)
 {
-	SFR_MAMR4 = data;
+	m_mamr[4] = data;
 }
 
 void tmp94c241_device::msar4_w(offs_t offset, uint8_t data)
 {
-	SFR_MSAR4 = data;
+	m_msar[4] = data;
 }
 
 uint8_t tmp94c241_device::mamr4_r()
 {
-	return SFR_MAMR4;
+	return m_mamr[4];
 }
 
 uint8_t tmp94c241_device::msar4_r()
 {
-	return SFR_MSAR4;
+	return m_msar[4];
 }
 
 void tmp94c241_device::mamr5_w(offs_t offset, uint8_t data)
 {
-	SFR_MAMR5 = data;
+	m_mamr[5] = data;
 }
 
 void tmp94c241_device::msar5_w(offs_t offset, uint8_t data)
 {
-	SFR_MSAR5 = data;
+	m_msar[5] = data;
 }
 
 uint8_t tmp94c241_device::mamr5_r()
 {
-	return SFR_MAMR5;
+	return m_mamr[5];
 }
 
 uint8_t tmp94c241_device::msar5_r()
 {
-	return SFR_MSAR5;
+	return m_msar[5];
 }
 
 uint8_t tmp94c241_device::t8run_r()
 {
-	return SFR_T8RUN;
+	return m_t8run;
 }
 
 void tmp94c241_device::t8run_w(uint8_t data)
 {
-	SFR_T8RUN = data;
+	m_t8run = data;
 
 	if ( !TIMER_0_IS_RUNNING )
 	{
@@ -874,12 +861,12 @@ void tmp94c241_device::taffcr_w(uint8_t data)
 
 uint8_t tmp94c241_device::t16run_r()
 {
-	return SFR_T16RUN;
+	return m_t16run;
 }
 
 void tmp94c241_device::t16run_w(uint8_t data)
 {
-	SFR_T16RUN = data;
+	m_t16run = data;
 
 	if ( !TIMER_4_IS_RUNNING )
 	{
