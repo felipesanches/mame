@@ -23,29 +23,13 @@ DEFINE_DEVICE_TYPE(TMP94C241, tmp94c241_device, "tmp94c241", "Toshiba TMP94C241"
 #define SFR_T8FFCR	m_ffcr[3]
 #define SFR_TAFFCR	m_ffcr[4]
 
-#define T0_INPUT_CLOCK			((m_t01mod >> 0) & 3)
-#define T1_INPUT_CLOCK			((m_t01mod >> 2) & 3)
 #define PWM1_INTERVAL_SELECTION	((m_t01mod >> 4) & 3)
 #define TO1_OPERATING_MODE		((m_t01mod >> 6) & 3)
-#define T2_INPUT_CLOCK			((m_t23mod >> 0) & 3)
-#define T3_INPUT_CLOCK			((m_t23mod >> 2) & 3)
 #define PWM2_INTERVAL_SELECTION	((m_t23mod >> 4) & 3)
 #define T23_OPERATING_MODE		((m_t23mod >> 6) & 3)
-#define T4_INPUT_CLOCK			(m_t4mod & 3)
 #define UC4_CLEAR				((m_t4mod >> 2) & 1)
 #define T4_CAPTURE_TIMING		((m_t4mod >> 3) & 3)
 #define CAP4IN					((m_t4mod >> 5) & 1)
-#define T6_INPUT_CLOCK			(m_t6mod & 3)
-#define T8_INPUT_CLOCK			(m_t8mod & 3)
-#define TA_INPUT_CLOCK			(m_tamod & 3)
-#define EQ4T4 BIT(SFR_T4FFCR, 2)
-#define EQ5T4 BIT(SFR_T4FFCR, 3)
-#define EQ6T6 BIT(SFR_T6FFCR, 2)
-#define EQ7T6 BIT(SFR_T6FFCR, 3)
-#define EQ8T8 BIT(SFR_T8FFCR, 2)
-#define EQ9T8 BIT(SFR_T8FFCR, 3)
-#define EQATA BIT(SFR_TAFFCR, 2)
-#define EQBTA BIT(SFR_TAFFCR, 3)
 
 // Field values for timer mode selection on TnMOD SFRs:
 #define MODE_8BIT_TIMER		0
@@ -1359,7 +1343,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 
 	if ( BIT(m_t8run, 0) ) /* Timer 0 is running */
 	{
-		switch( T0_INPUT_CLOCK )
+		switch( m_t01mod & 3 ) /* T0_INPUT_CLOCK */
 		{
 		case 0:  /* TIO */
 			break;
@@ -1398,17 +1382,17 @@ void tmp94c241_device::tlcs900_handle_timers()
 
 	if ( BIT(m_t8run, 1) ) /* Timer 1 is running */
 	{
-		switch( T1_INPUT_CLOCK )
+		switch( (m_t01mod >> 2) & 3 ) /* T1_INPUT_CLOCK */
 		{
-		case 0x00:  /* TO0TRG */
+		case 0:  /* TO0TRG */
 			break;
-		case 0x01:  /* T1 */
+		case 1:  /* T1 */
 			TIMER_CHANGE_1 += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
 			break;
-		case 0x02:  /* T16 */
+		case 2:  /* T16 */
 			TIMER_CHANGE_1 += ( m_timer_pre >> 7 ) - ( old_pre >> 7 );
 			break;
-		case 0x03:  /* T256 */
+		case 3:  /* T256 */
 			TIMER_CHANGE_1 += ( m_timer_pre >> 11 ) - ( old_pre >> 11 );
 			break;
 		}
@@ -1434,7 +1418,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 
 	if ( BIT(m_t8run, 2) ) /* Timer 2 is running */
 	{
-		switch( T2_INPUT_CLOCK )
+		switch( m_t23mod & 3 ) /* T2_INPUT_CLOCK */
 		{
 		case 0: /* invalid */
 		case 1: /* T1 */
@@ -1472,7 +1456,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 
 	if ( BIT(m_t8run, 3) ) /* Timer 3 is running */
 	{
-		switch( T3_INPUT_CLOCK )
+		switch( (m_t23mod >> 2) & 3 ) /* T3_INPUT_CLOCK */
 		{
 		case 0: /* TO2TRG */
 			break;
@@ -1508,18 +1492,18 @@ void tmp94c241_device::tlcs900_handle_timers()
 
 	if ( BIT(m_t16run, 0) ) /* Timer 4 is running */
 	{
-		switch( T4_INPUT_CLOCK )
+		switch( m_t4mod & 3 ) /* T4_INPUT_CLOCK */
 		{
-		case 0x00:  /* TIA */
+		case 0:  /* TIA */
 			// TODO: implement-me!
 			break;
-		case 0x01:  /* T1 */
+		case 1:  /* T1 */
 			TIMER_CHANGE_4 += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
 			break;
-		case 0x02:  /* T4 */
+		case 2:  /* T4 */
 			TIMER_CHANGE_4 += ( m_timer_pre >> 5 ) - ( old_pre >> 5 );
 			break;
-		case 0x03:  /* T16 */
+		case 3:  /* T16 */
 			TIMER_CHANGE_4 += ( m_timer_pre >> 7 ) - ( old_pre >> 7 );
 			break;
 		}
@@ -1527,8 +1511,8 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; TIMER_CHANGE_4 > 0; TIMER_CHANGE_4-- )
 		{
 			UPCOUNTER_4++;
-			if ( ((UPCOUNTER_4 == SFR_TREG5) && EQ5T4) ||
-				((UPCOUNTER_4 == SFR_TREG4) && EQ4T4) )
+			if ( ((UPCOUNTER_4 == SFR_TREG5) && BIT(SFR_T4FFCR, 3)) ||
+				((UPCOUNTER_4 == SFR_TREG4) && BIT(SFR_T4FFCR, 2)) )
 			{
 				change_timer_flipflop( 4, FF_INVERT );
 				UPCOUNTER_4 = 0;
@@ -1541,7 +1525,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 
 	if ( BIT(m_t16run, 1) ) /* Timer 6 is running */
 	{
-		switch( T6_INPUT_CLOCK )
+		switch( m_t6mod & 3 ) /* T6_INPUT_CLOCK */
 		{
 		case 0: /* TIA */
 			// TODO: implement-me!
@@ -1560,8 +1544,8 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; TIMER_CHANGE_6 > 0; TIMER_CHANGE_6-- )
 		{
 			UPCOUNTER_6++;
-			if ( ((UPCOUNTER_6 == SFR_TREG7) && EQ7T6) ||
-				((UPCOUNTER_6 == SFR_TREG6) && EQ6T6) )
+			if ( ((UPCOUNTER_6 == SFR_TREG7) && BIT(SFR_T6FFCR, 3)) ||
+				((UPCOUNTER_6 == SFR_TREG6) && BIT(SFR_T6FFCR, 2)) )
 			{
 				change_timer_flipflop( 6, FF_INVERT );
 				UPCOUNTER_6 = 0;
@@ -1574,18 +1558,18 @@ void tmp94c241_device::tlcs900_handle_timers()
 
 	if ( BIT(m_t16run, 2) ) /* Timer 8 is running */
 	{
-		switch( T8_INPUT_CLOCK )
+		switch( m_t8mod & 3 ) /* T8_INPUT_CLOCK */
 		{
-		case 0x00:  /* TIA */
+		case 0:  /* TIA */
 			// TODO: implement-me!
 			break;
-		case 0x01:  /* T1 */
+		case 1:  /* T1 */
 			TIMER_CHANGE_8 += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
 			break;
-		case 0x02:  /* T4 */
+		case 2:  /* T4 */
 			TIMER_CHANGE_8 += ( m_timer_pre >> 5 ) - ( old_pre >> 5 );
 			break;
-		case 0x03:  /* T16 */
+		case 3:  /* T16 */
 			TIMER_CHANGE_8 += ( m_timer_pre >> 7 ) - ( old_pre >> 7 );
 			break;
 		}
@@ -1593,8 +1577,8 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; TIMER_CHANGE_8 > 0; TIMER_CHANGE_8-- )
 		{
 			UPCOUNTER_8++;
-			if ( ((UPCOUNTER_8 == SFR_TREG9) && EQ9T8) ||
-				((UPCOUNTER_8 == SFR_TREG8) && EQ8T8) )
+			if ( ((UPCOUNTER_8 == SFR_TREG9) && BIT(SFR_T8FFCR, 3)) ||
+				((UPCOUNTER_8 == SFR_TREG8) && BIT(SFR_T8FFCR, 2)) )
 			{
 				change_timer_flipflop( 8, FF_INVERT );
 				UPCOUNTER_8 = 0;
@@ -1606,7 +1590,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 
 	if ( BIT(m_t16run, 3) ) /* Timer A is running */
 	{
-		switch( TA_INPUT_CLOCK )
+		switch( m_tamod & 3 ) /* TA_INPUT_CLOCK */
 		{
 		case 0: /* TIA */
 			// TODO: implement-me!
@@ -1625,8 +1609,8 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; TIMER_CHANGE_A > 0; TIMER_CHANGE_A-- )
 		{
 			UPCOUNTER_A++;
-			if ( ((UPCOUNTER_A == SFR_TREGA) && EQATA) ||
-				((UPCOUNTER_A == SFR_TREGB) && EQBTA) )
+			if ( ((UPCOUNTER_A == SFR_TREGA) && BIT(SFR_TAFFCR, 2)) ||
+				((UPCOUNTER_A == SFR_TREGB) && BIT(SFR_TAFFCR, 3)) )
 			{
 				change_timer_flipflop( 0xa, FF_INVERT );
 				UPCOUNTER_A = 0;
