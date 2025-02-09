@@ -1687,27 +1687,23 @@ void tmp94c241_device::execute_set_input(int input, int level)
 		break;
 
 	case TLCS900_INT0:
-		/* Is INT0 functionality enabled? */
-		if (m_iimc & 0x04)
+		if (m_iimc & 0x02)
 		{
-			if (m_iimc & 0x02)
+			/* Rising edge detect */
+			if (level != m_level[TLCS900_INT0] && level == ASSERT_LINE)
 			{
-				/* Rising edge detect */
-				if (level != m_level[TLCS900_INT0] && level == ASSERT_LINE)
-				{
-					/* Leave HALT state */
-					m_halted = 0;
-					m_int_reg[INTE0AD] |= 0x08;
-				}
+				/* Leave HALT state */
+				m_halted = 0;
+				m_int_reg[INTE0AD] |= 0x08;
 			}
+		}
+		else
+		{
+			/* Level detect */
+			if (level == ASSERT_LINE)
+				m_int_reg[INTE0AD] |= 0x08;
 			else
-			{
-				/* Level detect */
-				if (level == ASSERT_LINE)
-					m_int_reg[INTE0AD] |= 0x08;
-				else
-					m_int_reg[INTE0AD] &= ~ 0x08;
-			}
+				m_int_reg[INTE0AD] &= ~0x08;
 		}
 		m_level[TLCS900_INT0] = level;
 		break;
