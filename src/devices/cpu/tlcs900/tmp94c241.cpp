@@ -110,7 +110,7 @@ tmp94c241_device::tmp94c241_device(const machine_config &mconfig, const char *ta
 	m_t6mod(0),
 	m_t8mod(0),
 	m_tamod(0),
-	m_t02ffcr(0),
+	m_tffcr(0),
 	m_t4ffcr(0),
 	m_t6ffcr(0),
 	m_t8ffcr(0),
@@ -197,7 +197,7 @@ void tmp94c241_device::device_start()
 	save_item(NAME(m_tregA));
 	save_item(NAME(m_tregB));
 	save_item(NAME(m_t16_cap));
-	save_item(NAME(m_t02ffcr));
+	save_item(NAME(m_tffcr));
 	save_item(NAME(m_t4ffcr));
 	save_item(NAME(m_t6ffcr));
 	save_item(NAME(m_t8ffcr));
@@ -286,7 +286,7 @@ void tmp94c241_device::device_reset()
 	m_t6mod = 0x00;
 	m_t8mod = 0x00;
 	m_tamod = 0x00;
-	m_t02ffcr = 0x00;
+	m_tffcr = 0x00;
 	m_t4ffcr = 0x00;
 	m_t6ffcr = 0x00;
 	m_t8ffcr = 0x00;
@@ -587,9 +587,9 @@ void tmp94c241_device::t01mod_w(uint8_t data)
 	m_t01mod = data;
 }
 
-uint8_t tmp94c241_device::t02ffcr_r()
+uint8_t tmp94c241_device::tffcr_r()
 {
-	return m_t02ffcr;
+	return m_tffcr;
 }
 
 enum
@@ -646,16 +646,15 @@ void tmp94c241_device::change_timer_flipflop(uint8_t flipflop, uint8_t operation
 	}
 }
 
-void tmp94c241_device::t02ffcr_w(uint8_t data)
+void tmp94c241_device::tffcr_w(uint8_t data)
 {
 	change_timer_flipflop( 1, (data >> 2) & 3 );
 	change_timer_flipflop( 3, (data >> 6) & 3 );
-	m_t02ffcr = data | 0xcc;
+	m_tffcr = data | 0xcc;
 }
 
 void tmp94c241_device::treg23_w(offs_t offset, uint8_t data)
 {
-
     if (BIT(offset, 0))
 		m_treg3 = data;
 	else
@@ -1126,7 +1125,7 @@ void tmp94c241_device::internal_mem(address_map &map)
 	map(0x00006a, 0x00006a).w(FUNC(tmp94c241_device::port_cr_w<PORT_Z>));
 	map(0x000080, 0x000080).rw(FUNC(tmp94c241_device::t8run_r), FUNC(tmp94c241_device::t8run_w));
 	map(0x000081, 0x000081).rw(FUNC(tmp94c241_device::trdc_r), FUNC(tmp94c241_device::trdc_w));
-	map(0x000082, 0x000082).rw(FUNC(tmp94c241_device::t02ffcr_r), FUNC(tmp94c241_device::t02ffcr_w));
+	map(0x000082, 0x000082).rw(FUNC(tmp94c241_device::tffcr_r), FUNC(tmp94c241_device::tffcr_w));
 	map(0x000084, 0x000084).rw(FUNC(tmp94c241_device::t01mod_r), FUNC(tmp94c241_device::t01mod_w));
 	map(0x000085, 0x000085).rw(FUNC(tmp94c241_device::t23mod_r), FUNC(tmp94c241_device::t23mod_w));
 	map(0x000088, 0x000089).w(FUNC(tmp94c241_device::treg01_w));
@@ -1325,7 +1324,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 				if ( ((m_t01mod >> 6) & 3) == 0 ) /* TO1_OPERATING_MODE == MODE_8BIT_TIMER */
 					m_timer_change[1]++;
 
-				if ( (m_t02ffcr & 3) == 2 ) /* todo: doc */
+				if ( (m_tffcr & 3) == 2 ) /* todo: doc */
 					change_timer_flipflop( 1, FF_INVERT );
 
 				/* In 16bit timer mode the timer should not be reset */
@@ -1365,7 +1364,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 				m_int_reg[INTET01] |= 0x80;
 				m_check_irqs = 1;
 
-				if ( (m_t02ffcr & 3) == 3 ) /* todo: doc */
+				if ( (m_tffcr & 3) == 3 ) /* todo: doc */
 					change_timer_flipflop( 1, FF_INVERT );
 
 				/* In 16bit timer mode also reset timer 0 */
@@ -1401,7 +1400,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 				if ( ((m_t23mod >> 6) & 3) == 0 ) /* T23_OPERATING_MODE == MODE_8BIT_TIMER */
 					m_timer_change[3]++;
 
-				if ( ((m_t02ffcr >> 4) & 3) == 2 ) /* todo: doc */
+				if ( ((m_tffcr >> 4) & 3) == 2 ) /* todo: doc */
 					change_timer_flipflop( 3, FF_INVERT );
 
 				/* In 16bit timer mode the timer should not be reset */
@@ -1441,7 +1440,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 				m_int_reg[INTET23] |= 0x80;
 				m_check_irqs = 1;
 
-				if ( ((m_t02ffcr >> 4) & 3) == 3 ) /* todo: doc */
+				if ( ((m_tffcr >> 4) & 3) == 3 ) /* todo: doc */
 					change_timer_flipflop( 3, FF_INVERT );
 
 				/* In 16bit timer mode also reset timer 2 */

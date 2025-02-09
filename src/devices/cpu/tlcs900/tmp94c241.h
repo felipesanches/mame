@@ -113,8 +113,8 @@ private:
 	void treg23_w(offs_t offset, uint8_t data);
 	uint8_t t01mod_r();
 	void t01mod_w(uint8_t data);
-	uint8_t t02ffcr_r();
-	void t02ffcr_w(uint8_t data);
+	uint8_t tffcr_r();
+	void tffcr_w(uint8_t data);
 	uint8_t t23mod_r();
 	void t23mod_w(uint8_t data);
 	uint8_t trdc_r();
@@ -241,7 +241,7 @@ private:
 	uint8_t m_t6mod;
 	uint8_t m_t8mod;
 	uint8_t m_tamod;
-	uint8_t m_t02ffcr;
+	uint8_t m_tffcr;
 	uint8_t m_t4ffcr;
 	uint8_t m_t6ffcr;
 	uint8_t m_t8ffcr;
