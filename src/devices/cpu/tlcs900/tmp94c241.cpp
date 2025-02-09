@@ -1396,11 +1396,6 @@ void tmp94c241_device::tlcs900_check_hdma()
 
 void tmp94c241_device::tlcs900_check_irqs()
 {
-	int irq_vectors[8] = { -1, -1, -1, -1, -1, -1, -1, -1 };
-	int level = 0;
-	int irq = -1;
-	int i;
-
 	/* Check for NMI */
 	if ( m_nmi_state == ASSERT_LINE )
 	{
@@ -1416,9 +1411,10 @@ void tmp94c241_device::tlcs900_check_irqs()
 		return;
 	}
 
-	/* Check regular irqs */
-	// the smaller the vector value, the higher the priority
-	for( i = NUM_MASKABLE_IRQS - 1; i >= 0; i-- )
+	/* Check regular irqs
+	   The smaller the vector value, the higher the priority. */
+	int irq_vectors[8] = { -1, -1, -1, -1, -1, -1, -1, -1 };
+	for( int i = NUM_MASKABLE_IRQS - 1; i >= 0; i-- )
 	{
 		if ( m_int_reg[tmp94c241_irq_vector_map[i].reg] & tmp94c241_irq_vector_map[i].iff )
 		{
@@ -1435,7 +1431,9 @@ void tmp94c241_device::tlcs900_check_irqs()
 	}
 
 	/* Check highest allowed priority irq */
-	for( i = std::max( 1, ( ( m_sr.b.h & 0x70 ) >> 4 ) ); i < 7; i++ )
+	int irq = -1;
+	int level = 0;
+	for( int i = std::max( 1, ( ( m_sr.b.h & 0x70 ) >> 4 ) ); i < 7; i++ )
 	{
 		if ( irq_vectors[i] >= 0 )
 		{
