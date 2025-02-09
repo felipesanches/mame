@@ -559,8 +559,8 @@ void tmp94c241_device::t8run_w(uint8_t data)
 	for ( int i = 0; i < 4; i++ )
 	{
 		/*
-			These correspond to UP_COUNTER and TIMER_CHANGE
-			for 8-bit timers 0, 1, 2 and 3
+		    These correspond to UP_COUNTER and TIMER_CHANGE
+		    for 8-bit timers 0, 1, 2 and 3
 		*/
 		if ( !BIT(m_t8run, i) ) /* Timer isn't running */
 		{
@@ -573,7 +573,7 @@ void tmp94c241_device::t8run_w(uint8_t data)
 void tmp94c241_device::treg01_w(offs_t offset, uint8_t data)
 {
 
-    if (BIT(offset, 0))
+	if (BIT(offset, 0))
 		m_treg1 = data;
 	else
 		m_treg0 = data;
@@ -625,7 +625,7 @@ void tmp94c241_device::change_timer_flipflop(uint8_t flipflop, uint8_t operation
 
 	/* The value of the flipflop is only exposed to a pin in certain modes of operation
 	   determined by fields of the port function registers.
-	   
+
 	   So here we bail out if the flipflop is not routed to its corresponding port bit:
 	*/
 	switch( flipflop )
@@ -707,7 +707,7 @@ void tmp94c241_device::tffcr_w(uint8_t data)
 
 void tmp94c241_device::treg23_w(offs_t offset, uint8_t data)
 {
-    if (BIT(offset, 0))
+	if (BIT(offset, 0))
 		m_treg3 = data;
 	else
 		m_treg2 = data;
@@ -866,8 +866,8 @@ void tmp94c241_device::t16run_w(uint8_t data)
 		if ( !BIT(m_t16run, i) ) /* Timer isn't running */
 		{
 			/*
-				These correspond to UP_COUNTER and TIMER_CHANGE
-				for 16-bit timers 4, 6, 8 and A
+			    These correspond to UP_COUNTER and TIMER_CHANGE
+			    for 16-bit timers 4, 6, 8 and A
 			*/
 			m_timer16[i] = 0;
 			m_timer_change[4 + i] = 0;
