@@ -711,31 +711,8 @@ void tmp94c241_device::change_timer_flipflop(uint8_t flipflop, uint8_t operation
 
 void tmp94c241_device::t02ffcr_w(uint8_t data)
 {
-	switch( data & 0x0c )
-	{
-	case 0x00:
-		change_timer_flipflop( 1, FF_INVERT );
-		break;
-	case 0x04:
-		change_timer_flipflop( 1, FF_SET );
-		break;
-	case 0x08:
-		change_timer_flipflop( 1, FF_CLEAR );
-		break;
-	}
-	switch( data & 0xc0 )
-	{
-	case 0x00:
-		change_timer_flipflop( 3, FF_INVERT );
-		break;
-	case 0x40:
-		change_timer_flipflop( 3, FF_SET );
-		break;
-	case 0x80:
-		change_timer_flipflop( 3, FF_CLEAR );
-		break;
-	}
-
+	change_timer_flipflop( 1, (data >> 2) & 3 );
+	change_timer_flipflop( 3, (data >> 6) & 3 );
 	SFR_T02FFCR = data | 0xcc;
 }
 
@@ -854,32 +831,21 @@ uint8_t tmp94c241_device::t4ffcr_r()
 
 void tmp94c241_device::t4ffcr_w(uint8_t data)
 {
-	switch( data & 0x03 )
-	{
-	case 0x00:
-		change_timer_flipflop( 4, FF_INVERT );
-		break;
-	case 0x01:
-		change_timer_flipflop( 4, FF_SET );
-		break;
-	case 0x02:
-		change_timer_flipflop( 4, FF_CLEAR );
-		break;
-	}
-	switch( data & 0xc0 )
-	{
-	case 0x00:
-		change_timer_flipflop( 5, FF_INVERT );
-		break;
-	case 0x40:
-		change_timer_flipflop( 5, FF_SET );
-		break;
-	case 0x80:
-		change_timer_flipflop( 5, FF_CLEAR );
-		break;
-	}
-
+	change_timer_flipflop( 4, data & 3 );
+	change_timer_flipflop( 5, (data >> 6) & 3 );
 	SFR_T4FFCR = data | 0xc3;
+}
+
+uint8_t tmp94c241_device::t6ffcr_r()
+{
+	return SFR_T6FFCR;
+}
+
+void tmp94c241_device::t6ffcr_w(uint8_t data)
+{
+	change_timer_flipflop( 6, data & 3 );
+	change_timer_flipflop( 7, (data >> 6) & 3 );
+	SFR_T6FFCR = data | 0xc3;
 }
 
 uint8_t tmp94c241_device::t8ffcr_r()
@@ -889,68 +855,9 @@ uint8_t tmp94c241_device::t8ffcr_r()
 
 void tmp94c241_device::t8ffcr_w(uint8_t data)
 {
-	switch( data & 0x03 )
-	{
-	case 0x00:
-		change_timer_flipflop( 8, FF_INVERT );
-		break;
-	case 0x01:
-		change_timer_flipflop( 8, FF_SET );
-		break;
-	case 0x02:
-		change_timer_flipflop( 8, FF_CLEAR );
-		break;
-	}
-	switch( data & 0xc0 )
-	{
-	case 0x00:
-		change_timer_flipflop( 9, FF_INVERT );
-		break;
-	case 0x40:
-		change_timer_flipflop( 9, FF_SET );
-		break;
-	case 0x80:
-		change_timer_flipflop( 9, FF_CLEAR );
-		break;
-	}
-
+	change_timer_flipflop( 8, data & 3 );
+	change_timer_flipflop( 9, (data >> 6) & 3 );
 	SFR_T8FFCR = data | 0xc3;
-}
-
-
-uint8_t tmp94c241_device::t6ffcr_r()
-{
-	return SFR_T6FFCR;
-}
-
-void tmp94c241_device::t6ffcr_w(uint8_t data)
-{
-	switch( data & 0x03 )
-	{
-	case 0x00:
-		change_timer_flipflop( 6, FF_INVERT );
-		break;
-	case 0x01:
-		change_timer_flipflop( 6, FF_SET );
-		break;
-	case 0x02:
-		change_timer_flipflop( 6, FF_CLEAR );
-		break;
-	}
-	switch( data & 0xc0 )
-	{
-	case 0x00:
-		change_timer_flipflop( 7, FF_INVERT );
-		break;
-	case 0x40:
-		change_timer_flipflop( 7, FF_SET );
-		break;
-	case 0x80:
-		change_timer_flipflop( 7, FF_CLEAR );
-		break;
-	}
-
-	SFR_T6FFCR = data | 0xc3;
 }
 
 uint8_t tmp94c241_device::taffcr_r()
@@ -960,31 +867,8 @@ uint8_t tmp94c241_device::taffcr_r()
 
 void tmp94c241_device::taffcr_w(uint8_t data)
 {
-	switch( data & 0x03 )
-	{
-	case 0x00:
-		change_timer_flipflop( 0xa, FF_INVERT );
-		break;
-	case 0x01:
-		change_timer_flipflop( 0xa, FF_SET );
-		break;
-	case 0x02:
-		change_timer_flipflop( 0xa, FF_CLEAR );
-		break;
-	}
-	switch( data & 0xc0 )
-	{
-	case 0x00:
-		change_timer_flipflop( 0xb, FF_INVERT );
-		break;
-	case 0x40:
-		change_timer_flipflop( 0xb, FF_SET );
-		break;
-	case 0x80:
-		change_timer_flipflop( 0xb, FF_CLEAR );
-		break;
-	}
-
+	change_timer_flipflop( 0xa, data & 3 );
+	change_timer_flipflop( 0xb, (data >> 6) & 3 );
 	SFR_TAFFCR = data | 0xc3;
 }
 
