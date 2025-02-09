@@ -17,14 +17,6 @@
 // device type definition
 DEFINE_DEVICE_TYPE(TMP94C241, tmp94c241_device, "tmp94c241", "Toshiba TMP94C241")
 
-#define UPCOUNTER_0		m_timer[0]
-#define UPCOUNTER_1		m_timer[1]
-#define UPCOUNTER_2		m_timer[2]
-#define UPCOUNTER_3		m_timer[3]
-#define UPCOUNTER_4		m_timer16[0]
-#define UPCOUNTER_6		m_timer16[1]
-#define UPCOUNTER_8		m_timer16[2]
-#define UPCOUNTER_A		m_timer16[3]
 #define SFR_TREG0	m_t8_reg[0]
 #define SFR_TREG1	m_t8_reg[1]
 #define SFR_TREG2	m_t8_reg[2]
@@ -37,14 +29,6 @@ DEFINE_DEVICE_TYPE(TMP94C241, tmp94c241_device, "tmp94c241", "Toshiba TMP94C241"
 #define SFR_TREG9	m_t16_reg[5]
 #define SFR_TREGA	m_t16_reg[6]
 #define SFR_TREGB	m_t16_reg[7]
-#define TIMER_CHANGE_0	m_timer_change[0]
-#define TIMER_CHANGE_1	m_timer_change[1]
-#define TIMER_CHANGE_2	m_timer_change[2]
-#define TIMER_CHANGE_3	m_timer_change[3]
-#define TIMER_CHANGE_4	m_timer_change[4]
-#define TIMER_CHANGE_6	m_timer_change[5]
-#define TIMER_CHANGE_8	m_timer_change[6]
-#define TIMER_CHANGE_A	m_timer_change[7]
 
 enum
 {
@@ -248,14 +232,6 @@ void tmp94c241_device::device_reset()
 
 	m_ad_cycles_left = 0;
 	m_timer_pre = 0;
-	TIMER_CHANGE_0 = 0;
-	TIMER_CHANGE_1 = 0;
-	TIMER_CHANGE_2 = 0;
-	TIMER_CHANGE_3 = 0;
-	TIMER_CHANGE_4 = 0;
-	TIMER_CHANGE_6 = 0;
-	TIMER_CHANGE_8 = 0;
-	TIMER_CHANGE_A = 0;
 
 	m_port_latch[PORT_0] = 0x00;
 	m_port_latch[PORT_1] = 0x00;
@@ -307,6 +283,7 @@ void tmp94c241_device::device_reset()
 	m_t6ffcr = 0x00;
 	m_t8ffcr = 0x00;
 	m_taffcr = 0x00;
+	std::fill_n(&m_timer_change[0], 8, 0x00);
 	std::fill_n(&m_timer[0], 4, 0x00);
 	std::fill_n(&m_timer16[0], 4, 0x00);
 	m_watchdog_mode = 0x80;
@@ -568,26 +545,17 @@ uint8_t tmp94c241_device::t8run_r()
 void tmp94c241_device::t8run_w(uint8_t data)
 {
 	m_t8run = data;
-
-	if ( !BIT(m_t8run, 0) ) /* Timer 0 isn't running */
+	for ( int i = 0; i < 4; i++ )
 	{
-		UPCOUNTER_0 = 0;
-		TIMER_CHANGE_0 = 0;
-	}
-	if ( !BIT(m_t8run, 1) ) /* Timer 1 isn't running */
-	{
-		UPCOUNTER_1 = 0;
-		TIMER_CHANGE_1 = 0;
-	}
-	if ( !BIT(m_t8run, 2) ) /* Timer 2 isn't running */
-	{
-		UPCOUNTER_2 = 0;
-		TIMER_CHANGE_2 = 0;
-	}
-	if ( !BIT(m_t8run, 3) ) /* Timer 3 isn't running */
-	{
-		UPCOUNTER_3 = 0;
-		TIMER_CHANGE_3 = 0;
+		/*
+			These correspond to UP_COUNTER and TIMER_CHANGE
+			for 8-bit timers 0, 1, 2 and 3
+		*/
+		if ( !BIT(m_t8run, i) ) /* Timer isn't running */
+		{
+			m_timer[i] = 0;
+			m_timer_change[i] = 0;
+		}
 	}
 }
 
@@ -841,26 +809,17 @@ uint8_t tmp94c241_device::t16run_r()
 void tmp94c241_device::t16run_w(uint8_t data)
 {
 	m_t16run = data;
-
-	if ( !BIT(m_t16run, 0) ) /* Timer 4 isn't running */
+	for ( int i = 0; i < 4; i++ )
 	{
-		UPCOUNTER_4 = 0;
-		TIMER_CHANGE_4 = 0;
-	}
-	if ( !BIT(m_t16run, 1) ) /* Timer 6 isn't running */
-	{
-		UPCOUNTER_6 = 0;
-		TIMER_CHANGE_6 = 0;
-	}
-	if ( !BIT(m_t16run, 2) ) /* Timer 8 isn't running */
-	{
-		UPCOUNTER_8 = 0;
-		TIMER_CHANGE_8 = 0;
-	}
-	if ( !BIT(m_t16run, 3) ) /* Timer A isn't running */
-	{
-		UPCOUNTER_A = 0;
-		TIMER_CHANGE_A = 0;
+		if ( !BIT(m_t16run, i) ) /* Timer isn't running */
+		{
+			/*
+				These correspond to UP_COUNTER and TIMER_CHANGE
+				for 16-bit timers 4, 6, 8 and A
+			*/
+			m_timer16[i] = 0;
+			m_timer_change[4 + i] = 0;
+		}
 	}
 }
 
@@ -1340,23 +1299,23 @@ void tmp94c241_device::tlcs900_handle_timers()
 		case 0:  /* TIO */
 			break;
 		case 1:  /* T1 */
-			TIMER_CHANGE_0 += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
+			m_timer_change[0] += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
 			break;
 		case 2:  /* T4 */
-			TIMER_CHANGE_0 += ( m_timer_pre >> 5 ) - ( old_pre >> 5 );
+			m_timer_change[0] += ( m_timer_pre >> 5 ) - ( old_pre >> 5 );
 			break;
 		case 3:  /* T16 */
-			TIMER_CHANGE_0 += ( m_timer_pre >> 7 ) - ( old_pre >> 7 );
+			m_timer_change[0] += ( m_timer_pre >> 7 ) - ( old_pre >> 7 );
 			break;
 		}
 
-		for( ; TIMER_CHANGE_0 > 0; TIMER_CHANGE_0-- )
+		for( ; m_timer_change[0] > 0; m_timer_change[0]-- )
 		{
-			UPCOUNTER_0++;
-			if ( UPCOUNTER_0 == SFR_TREG0 )
+			m_timer[0]++; /* UPCOUNTER_0 */
+			if ( m_timer[0] == SFR_TREG0 )
 			{
 				if ( ((m_t01mod >> 6) & 3) == 0 ) /* TO1_OPERATING_MODE == MODE_8BIT_TIMER */
-					TIMER_CHANGE_1++;
+					m_timer_change[1]++;
 
 				if ( (m_t02ffcr & 3) == 2 ) /* todo: doc */
 					change_timer_flipflop( 1, FF_INVERT );
@@ -1364,7 +1323,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 				/* In 16bit timer mode the timer should not be reset */
 				if ( ((m_t01mod >> 6) & 3) != 1 ) /* TO1_OPERATING_MODE != MODE_16BIT_TIMER */
 				{
-					UPCOUNTER_0 = 0;
+					m_timer[0] = 0;
 					m_int_reg[INTET01] |= 0x08;
 					m_check_irqs = 1;
 				}
@@ -1379,22 +1338,22 @@ void tmp94c241_device::tlcs900_handle_timers()
 		case 0:  /* TO0TRG */
 			break;
 		case 1:  /* T1 */
-			TIMER_CHANGE_1 += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
+			m_timer_change[1] += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
 			break;
 		case 2:  /* T16 */
-			TIMER_CHANGE_1 += ( m_timer_pre >> 7 ) - ( old_pre >> 7 );
+			m_timer_change[1] += ( m_timer_pre >> 7 ) - ( old_pre >> 7 );
 			break;
 		case 3:  /* T256 */
-			TIMER_CHANGE_1 += ( m_timer_pre >> 11 ) - ( old_pre >> 11 );
+			m_timer_change[1] += ( m_timer_pre >> 11 ) - ( old_pre >> 11 );
 			break;
 		}
 
-		for( ; TIMER_CHANGE_1 > 0; TIMER_CHANGE_1-- )
+		for( ; m_timer_change[1] > 0; m_timer_change[1]-- )
 		{
-			UPCOUNTER_1 += 1;
-			if ( UPCOUNTER_1 == SFR_TREG1 )
+			m_timer[1] += 1; /* UPCOUNTER_1 */
+			if ( m_timer[1] == SFR_TREG1 )
 			{
-				UPCOUNTER_1 = 0;
+				m_timer[1] = 0;
 				m_int_reg[INTET01] |= 0x80;
 				m_check_irqs = 1;
 
@@ -1403,7 +1362,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 
 				/* In 16bit timer mode also reset timer 0 */
 				if ( ((m_t01mod >> 6) & 3) == 1 ) /* TO1_OPERATING_MODE == MODE_16BIT_TIMER */
-					UPCOUNTER_1 = 0;
+					m_timer[1] = 0;
 			}
 		}
 	}
@@ -1416,23 +1375,23 @@ void tmp94c241_device::tlcs900_handle_timers()
 			// Not sure yet how this case would be handled...
 			break;
 		case 1: /* T1 */
-			TIMER_CHANGE_2 += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
+			m_timer_change[2] += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
 			break;
 		case 2: /* T4 */
-			TIMER_CHANGE_2 += ( m_timer_pre >> 5 ) - ( old_pre >> 5 );
+			m_timer_change[2] += ( m_timer_pre >> 5 ) - ( old_pre >> 5 );
 			break;
 		case 3: /* T16 */
-			TIMER_CHANGE_2 += ( m_timer_pre >> 7 ) - ( old_pre >> 7 );
+			m_timer_change[2] += ( m_timer_pre >> 7 ) - ( old_pre >> 7 );
 			break;
 		}
 
-		for( ; TIMER_CHANGE_2 > 0; TIMER_CHANGE_2-- )
+		for( ; m_timer_change[2] > 0; m_timer_change[2]-- )
 		{
-			UPCOUNTER_2++;
-			if ( UPCOUNTER_2 == SFR_TREG2 )
+			m_timer[2]++; /* UPCOUNTER_2 */
+			if ( m_timer[2] == SFR_TREG2 )
 			{
 				if ( ((m_t23mod >> 6) & 3) == 0 ) /* T23_OPERATING_MODE == MODE_8BIT_TIMER */
-					TIMER_CHANGE_3++;
+					m_timer_change[3]++;
 
 				if ( ((m_t02ffcr >> 4) & 3) == 2 ) /* todo: doc */
 					change_timer_flipflop( 3, FF_INVERT );
@@ -1440,7 +1399,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 				/* In 16bit timer mode the timer should not be reset */
 				if ( ((m_t23mod >> 6) & 3) != 1 ) /* T23_OPERATING_MODE != MODE_16BIT_TIMER */
 				{
-					UPCOUNTER_2 = 0;
+					m_timer[2] = 0;
 					m_int_reg[INTET23] |= 0x08;
 					m_check_irqs = 1;
 				}
@@ -1455,22 +1414,22 @@ void tmp94c241_device::tlcs900_handle_timers()
 		case 0: /* TO2TRG */
 			break;
 		case 1: /* T1 */
-			TIMER_CHANGE_3 += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
+			m_timer_change[3] += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
 			break;
 		case 2: /* T16 */
-			TIMER_CHANGE_3 += ( m_timer_pre >> 7 ) - ( old_pre >> 7 );
+			m_timer_change[3] += ( m_timer_pre >> 7 ) - ( old_pre >> 7 );
 			break;
 		case 3: /* T256 */
-			TIMER_CHANGE_3 += ( m_timer_pre >> 11 ) - ( old_pre >> 11 );
+			m_timer_change[3] += ( m_timer_pre >> 11 ) - ( old_pre >> 11 );
 			break;
 		}
 
-		for( ; TIMER_CHANGE_3 > 0; TIMER_CHANGE_3-- )
+		for( ; m_timer_change[3] > 0; m_timer_change[3]-- )
 		{
-			UPCOUNTER_3++;
-			if ( UPCOUNTER_3 == SFR_TREG3 )
+			m_timer[3]++; /* UPCOUNTER_3 */
+			if ( m_timer[3] == SFR_TREG3 )
 			{
-				UPCOUNTER_3 = 0;
+				m_timer[3] = 0;
 				m_int_reg[INTET23] |= 0x80;
 				m_check_irqs = 1;
 
@@ -1479,7 +1438,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 
 				/* In 16bit timer mode also reset timer 2 */
 				if ( ((m_t23mod >> 6) & 3) == 1 ) /* T23_OPERATING_MODE == MODE_16BIT_TIMER */
-					UPCOUNTER_2 = 0;
+					m_timer[2] = 0;
 			}
 		}
 	}
@@ -1492,24 +1451,24 @@ void tmp94c241_device::tlcs900_handle_timers()
 			// TODO: implement-me!
 			break;
 		case 1:  /* T1 */
-			TIMER_CHANGE_4 += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
+			m_timer_change[4] += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
 			break;
 		case 2:  /* T4 */
-			TIMER_CHANGE_4 += ( m_timer_pre >> 5 ) - ( old_pre >> 5 );
+			m_timer_change[4] += ( m_timer_pre >> 5 ) - ( old_pre >> 5 );
 			break;
 		case 3:  /* T16 */
-			TIMER_CHANGE_4 += ( m_timer_pre >> 7 ) - ( old_pre >> 7 );
+			m_timer_change[4] += ( m_timer_pre >> 7 ) - ( old_pre >> 7 );
 			break;
 		}
 
-		for( ; TIMER_CHANGE_4 > 0; TIMER_CHANGE_4-- )
+		for( ; m_timer_change[4] > 0; m_timer_change[4]-- )
 		{
-			UPCOUNTER_4++;
-			if ( ((UPCOUNTER_4 == SFR_TREG5) && BIT(m_t4ffcr, 3)) ||
-				((UPCOUNTER_4 == SFR_TREG4) && BIT(m_t4ffcr, 2)) )
+			m_timer16[0]++; /* UPCOUNTER_4 */
+			if ( ((m_timer16[0] == SFR_TREG5) && BIT(m_t4ffcr, 3)) ||
+				((m_timer16[0] == SFR_TREG4) && BIT(m_t4ffcr, 2)) )
 			{
 				change_timer_flipflop( 4, FF_INVERT );
-				UPCOUNTER_4 = 0;
+				m_timer16[0] = 0;
 				m_int_reg[INTET45] |= 0x08;
 				m_check_irqs = 1;
 			}
@@ -1519,30 +1478,32 @@ void tmp94c241_device::tlcs900_handle_timers()
 
 	if ( BIT(m_t16run, 1) ) /* Timer 6 is running */
 	{
+		/*** NOTE: TIMER_CHANGE_6 is stored at m_timer_change[5] ***/
+
 		switch( m_t6mod & 3 ) /* T6_INPUT_CLOCK */
 		{
 		case 0: /* TIA */
 			// TODO: implement-me!
 			break;
 		case 1: /* T1 */
-			TIMER_CHANGE_6 += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
+			m_timer_change[5] += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
 			break;
 		case 2: /* T4 */
-			TIMER_CHANGE_6 += ( m_timer_pre >> 5 ) - ( old_pre >> 5 );
+			m_timer_change[5] += ( m_timer_pre >> 5 ) - ( old_pre >> 5 );
 			break;
 		case 3: /* T16 */
-			TIMER_CHANGE_6 += ( m_timer_pre >> 7 ) - ( old_pre >> 7 );
+			m_timer_change[5] += ( m_timer_pre >> 7 ) - ( old_pre >> 7 );
 			break;
 		}
 
-		for( ; TIMER_CHANGE_6 > 0; TIMER_CHANGE_6-- )
+		for( ; m_timer_change[5] > 0; m_timer_change[5]-- )
 		{
-			UPCOUNTER_6++;
-			if ( ((UPCOUNTER_6 == SFR_TREG7) && BIT(m_t6ffcr, 3)) ||
-				((UPCOUNTER_6 == SFR_TREG6) && BIT(m_t6ffcr, 2)) )
+			m_timer16[1]++; /* UPCOUNTER_6 */
+			if ( ((m_timer16[1] == SFR_TREG7) && BIT(m_t6ffcr, 3)) ||
+				((m_timer16[1] == SFR_TREG6) && BIT(m_t6ffcr, 2)) )
 			{
 				change_timer_flipflop( 6, FF_INVERT );
-				UPCOUNTER_6 = 0;
+				m_timer16[1] = 0;
 				m_int_reg[INTET67] |= 0x08;
 				m_check_irqs = 1;
 			}
@@ -1552,30 +1513,32 @@ void tmp94c241_device::tlcs900_handle_timers()
 
 	if ( BIT(m_t16run, 2) ) /* Timer 8 is running */
 	{
+		/*** NOTE: TIMER_CHANGE_8 is stored at m_timer_change[6] ***/
+
 		switch( m_t8mod & 3 ) /* T8_INPUT_CLOCK */
 		{
 		case 0:  /* TIA */
 			// TODO: implement-me!
 			break;
 		case 1:  /* T1 */
-			TIMER_CHANGE_8 += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
+			m_timer_change[6] += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
 			break;
 		case 2:  /* T4 */
-			TIMER_CHANGE_8 += ( m_timer_pre >> 5 ) - ( old_pre >> 5 );
+			m_timer_change[6] += ( m_timer_pre >> 5 ) - ( old_pre >> 5 );
 			break;
 		case 3:  /* T16 */
-			TIMER_CHANGE_8 += ( m_timer_pre >> 7 ) - ( old_pre >> 7 );
+			m_timer_change[6] += ( m_timer_pre >> 7 ) - ( old_pre >> 7 );
 			break;
 		}
 
-		for( ; TIMER_CHANGE_8 > 0; TIMER_CHANGE_8-- )
+		for( ; m_timer_change[6] > 0; m_timer_change[6]-- )
 		{
-			UPCOUNTER_8++;
-			if ( ((UPCOUNTER_8 == SFR_TREG9) && BIT(m_t8ffcr, 3)) ||
-				((UPCOUNTER_8 == SFR_TREG8) && BIT(m_t8ffcr, 2)) )
+			m_timer16[2]++; /* UPCOUNTER_8 */
+			if ( ((m_timer16[2] == SFR_TREG9) && BIT(m_t8ffcr, 3)) ||
+				((m_timer16[2] == SFR_TREG8) && BIT(m_t8ffcr, 2)) )
 			{
 				change_timer_flipflop( 8, FF_INVERT );
-				UPCOUNTER_8 = 0;
+				m_timer16[2] = 0;
 				m_int_reg[INTET89] |= 0x08;
 				m_check_irqs = 1;
 			}
@@ -1584,30 +1547,32 @@ void tmp94c241_device::tlcs900_handle_timers()
 
 	if ( BIT(m_t16run, 3) ) /* Timer A is running */
 	{
+		/*** NOTE: TIMER_CHANGE_A is stored at m_timer_change[7] ***/
+
 		switch( m_tamod & 3 ) /* TA_INPUT_CLOCK */
 		{
 		case 0: /* TIA */
 			// TODO: implement-me!
 			break;
 		case 1: /* T1 */
-			TIMER_CHANGE_A += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
+			m_timer_change[7] += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
 			break;
 		case 2: /* T4 */
-			TIMER_CHANGE_A += ( m_timer_pre >> 5 ) - ( old_pre >> 5 );
+			m_timer_change[7] += ( m_timer_pre >> 5 ) - ( old_pre >> 5 );
 			break;
 		case 3: /* T16 */
-			TIMER_CHANGE_A += ( m_timer_pre >> 7 ) - ( old_pre >> 7 );
+			m_timer_change[7] += ( m_timer_pre >> 7 ) - ( old_pre >> 7 );
 			break;
 		}
 
-		for( ; TIMER_CHANGE_A > 0; TIMER_CHANGE_A-- )
+		for( ; m_timer_change[7] > 0; m_timer_change[7]-- )
 		{
-			UPCOUNTER_A++;
-			if ( ((UPCOUNTER_A == SFR_TREGA) && BIT(m_taffcr, 2)) ||
-				((UPCOUNTER_A == SFR_TREGB) && BIT(m_taffcr, 3)) )
+			m_timer16[3]++; /* UPCOUNTER_A */
+			if ( ((m_timer16[3] == SFR_TREGA) && BIT(m_taffcr, 2)) ||
+				((m_timer16[3] == SFR_TREGB) && BIT(m_taffcr, 3)) )
 			{
 				change_timer_flipflop( 0xa, FF_INVERT );
-				UPCOUNTER_A = 0;
+				m_timer16[3] = 0;
 				m_int_reg[INTETAB] |= 0x08;
 				m_check_irqs = 1;
 			}
