@@ -1413,6 +1413,8 @@ void tmp94c241_device::tlcs900_handle_timers()
 		switch( m_t23mod & 3 ) /* T2_INPUT_CLOCK */
 		{
 		case 0: /* invalid */
+			// Not sure yet how this case would be handled...
+			break;
 		case 1: /* T1 */
 			TIMER_CHANGE_2 += ( m_timer_pre >> 3 ) - ( old_pre >> 3 );
 			break;
