@@ -241,7 +241,11 @@ private:
 	uint8_t   m_t6mod;
 	uint8_t   m_t8mod;
 	uint8_t   m_tamod;
-	uint8_t   m_ffcr[5];
+	uint8_t   m_t02ffcr;
+	uint8_t   m_t4ffcr;
+	uint8_t   m_t6ffcr;
+	uint8_t   m_t8ffcr;
+	uint8_t   m_taffcr;
 	uint8_t   m_trdc;
 	uint16_t  m_t16_reg[8];
 	uint16_t  m_t16_cap[8];

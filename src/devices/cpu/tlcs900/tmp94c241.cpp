@@ -17,11 +17,6 @@
 // device type definition
 DEFINE_DEVICE_TYPE(TMP94C241, tmp94c241_device, "tmp94c241", "Toshiba TMP94C241")
 
-#define SFR_T02FFCR	m_ffcr[0]
-#define SFR_T4FFCR	m_ffcr[1]
-#define SFR_T6FFCR	m_ffcr[2]
-#define SFR_T8FFCR	m_ffcr[3]
-#define SFR_TAFFCR	m_ffcr[4]
 #define UPCOUNTER_0		m_timer[0]
 #define UPCOUNTER_1		m_timer[1]
 #define UPCOUNTER_2		m_timer[2]
@@ -144,7 +139,11 @@ tmp94c241_device::tmp94c241_device(const machine_config &mconfig, const char *ta
 	m_t6mod(0),
 	m_t8mod(0),
 	m_tamod(0),
-	m_ffcr{ 0, 0, 0, 0, 0 },
+	m_t02ffcr(0),
+	m_t4ffcr(0),
+	m_t6ffcr(0),
+	m_t8ffcr(0),
+	m_taffcr(0),
 	m_trdc(0),
 	m_t16_reg{ 0, 0, 0, 0, 0, 0, 0, 0 },
 	m_t16_cap{ 0, 0, 0, 0, 0, 0, 0, 0 },
@@ -206,7 +205,11 @@ void tmp94c241_device::device_start()
 	save_item(NAME(m_trdc));
 	save_item(NAME(m_t16_reg));
 	save_item(NAME(m_t16_cap));
-	save_item(NAME(m_ffcr));
+	save_item(NAME(m_t02ffcr));
+	save_item(NAME(m_t4ffcr));
+	save_item(NAME(m_t6ffcr));
+	save_item(NAME(m_t8ffcr));
+	save_item(NAME(m_taffcr));
 	save_item(NAME(m_t16run));
 	save_item(NAME(m_watchdog_mode));
 	save_item(NAME(m_serial_control));
@@ -299,7 +302,11 @@ void tmp94c241_device::device_reset()
 	m_t6mod = 0x00;
 	m_t8mod = 0x00;
 	m_tamod = 0x00;
-	std::fill_n(&m_ffcr[0], 6, 0x00);
+	m_t02ffcr = 0x00;
+	m_t4ffcr = 0x00;
+	m_t6ffcr = 0x00;
+	m_t8ffcr = 0x00;
+	m_taffcr = 0x00;
 	std::fill_n(&m_timer[0], 4, 0x00);
 	std::fill_n(&m_timer16[0], 4, 0x00);
 	m_watchdog_mode = 0x80;
@@ -606,7 +613,7 @@ void tmp94c241_device::t01mod_w(uint8_t data)
 
 uint8_t tmp94c241_device::t02ffcr_r()
 {
-	return SFR_T02FFCR;
+	return m_t02ffcr;
 }
 
 enum
@@ -667,7 +674,7 @@ void tmp94c241_device::t02ffcr_w(uint8_t data)
 {
 	change_timer_flipflop( 1, (data >> 2) & 3 );
 	change_timer_flipflop( 3, (data >> 6) & 3 );
-	SFR_T02FFCR = data | 0xcc;
+	m_t02ffcr = data | 0xcc;
 }
 
 void tmp94c241_device::treg23_w(offs_t offset, uint8_t data)
@@ -780,50 +787,50 @@ void tmp94c241_device::tamod_w(uint8_t data)
 
 uint8_t tmp94c241_device::t4ffcr_r()
 {
-	return SFR_T4FFCR;
+	return m_t4ffcr;
 }
 
 void tmp94c241_device::t4ffcr_w(uint8_t data)
 {
 	change_timer_flipflop( 4, data & 3 );
 	change_timer_flipflop( 5, (data >> 6) & 3 );
-	SFR_T4FFCR = data | 0xc3;
+	m_t4ffcr = data | 0xc3;
 }
 
 uint8_t tmp94c241_device::t6ffcr_r()
 {
-	return SFR_T6FFCR;
+	return m_t6ffcr;
 }
 
 void tmp94c241_device::t6ffcr_w(uint8_t data)
 {
 	change_timer_flipflop( 6, data & 3 );
 	change_timer_flipflop( 7, (data >> 6) & 3 );
-	SFR_T6FFCR = data | 0xc3;
+	m_t6ffcr = data | 0xc3;
 }
 
 uint8_t tmp94c241_device::t8ffcr_r()
 {
-	return SFR_T8FFCR;
+	return m_t8ffcr;
 }
 
 void tmp94c241_device::t8ffcr_w(uint8_t data)
 {
 	change_timer_flipflop( 8, data & 3 );
 	change_timer_flipflop( 9, (data >> 6) & 3 );
-	SFR_T8FFCR = data | 0xc3;
+	m_t8ffcr = data | 0xc3;
 }
 
 uint8_t tmp94c241_device::taffcr_r()
 {
-	return SFR_TAFFCR;
+	return m_taffcr;
 }
 
 void tmp94c241_device::taffcr_w(uint8_t data)
 {
 	change_timer_flipflop( 0xa, data & 3 );
 	change_timer_flipflop( 0xb, (data >> 6) & 3 );
-	SFR_TAFFCR = data | 0xc3;
+	m_taffcr = data | 0xc3;
 }
 
 uint8_t tmp94c241_device::t16run_r()
@@ -1351,7 +1358,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 				if ( ((m_t01mod >> 6) & 3) == 0 ) /* TO1_OPERATING_MODE == MODE_8BIT_TIMER */
 					TIMER_CHANGE_1++;
 
-				if ( (m_ffcr[0] & 0x03) == 0b10 )
+				if ( (m_t02ffcr & 3) == 2 ) /* todo: doc */
 					change_timer_flipflop( 1, FF_INVERT );
 
 				/* In 16bit timer mode the timer should not be reset */
@@ -1391,7 +1398,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 				m_int_reg[INTET01] |= 0x80;
 				m_check_irqs = 1;
 
-				if ( (m_ffcr[0] & 0x03) == 0b11 )
+				if ( (m_t02ffcr & 3) == 3 ) /* todo: doc */
 					change_timer_flipflop( 1, FF_INVERT );
 
 				/* In 16bit timer mode also reset timer 0 */
@@ -1425,7 +1432,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 				if ( ((m_t23mod >> 6) & 3) == 0 ) /* T23_OPERATING_MODE == MODE_8BIT_TIMER */
 					TIMER_CHANGE_3++;
 
-				if ( ((m_ffcr[0] & 0x30) >> 4) == 0b10 )
+				if ( ((m_t02ffcr >> 4) & 3) == 2 ) /* todo: doc */
 					change_timer_flipflop( 3, FF_INVERT );
 
 				/* In 16bit timer mode the timer should not be reset */
@@ -1465,7 +1472,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 				m_int_reg[INTET23] |= 0x80;
 				m_check_irqs = 1;
 
-				if ( ((m_ffcr[0] & 0x30) >> 4) == 0b11 )
+				if ( ((m_t02ffcr >> 4) & 3) == 3 ) /* todo: doc */
 					change_timer_flipflop( 3, FF_INVERT );
 
 				/* In 16bit timer mode also reset timer 2 */
@@ -1496,8 +1503,8 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; TIMER_CHANGE_4 > 0; TIMER_CHANGE_4-- )
 		{
 			UPCOUNTER_4++;
-			if ( ((UPCOUNTER_4 == SFR_TREG5) && BIT(SFR_T4FFCR, 3)) ||
-				((UPCOUNTER_4 == SFR_TREG4) && BIT(SFR_T4FFCR, 2)) )
+			if ( ((UPCOUNTER_4 == SFR_TREG5) && BIT(m_t4ffcr, 3)) ||
+				((UPCOUNTER_4 == SFR_TREG4) && BIT(m_t4ffcr, 2)) )
 			{
 				change_timer_flipflop( 4, FF_INVERT );
 				UPCOUNTER_4 = 0;
@@ -1529,8 +1536,8 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; TIMER_CHANGE_6 > 0; TIMER_CHANGE_6-- )
 		{
 			UPCOUNTER_6++;
-			if ( ((UPCOUNTER_6 == SFR_TREG7) && BIT(SFR_T6FFCR, 3)) ||
-				((UPCOUNTER_6 == SFR_TREG6) && BIT(SFR_T6FFCR, 2)) )
+			if ( ((UPCOUNTER_6 == SFR_TREG7) && BIT(m_t6ffcr, 3)) ||
+				((UPCOUNTER_6 == SFR_TREG6) && BIT(m_t6ffcr, 2)) )
 			{
 				change_timer_flipflop( 6, FF_INVERT );
 				UPCOUNTER_6 = 0;
@@ -1562,8 +1569,8 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; TIMER_CHANGE_8 > 0; TIMER_CHANGE_8-- )
 		{
 			UPCOUNTER_8++;
-			if ( ((UPCOUNTER_8 == SFR_TREG9) && BIT(SFR_T8FFCR, 3)) ||
-				((UPCOUNTER_8 == SFR_TREG8) && BIT(SFR_T8FFCR, 2)) )
+			if ( ((UPCOUNTER_8 == SFR_TREG9) && BIT(m_t8ffcr, 3)) ||
+				((UPCOUNTER_8 == SFR_TREG8) && BIT(m_t8ffcr, 2)) )
 			{
 				change_timer_flipflop( 8, FF_INVERT );
 				UPCOUNTER_8 = 0;
@@ -1594,8 +1601,8 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; TIMER_CHANGE_A > 0; TIMER_CHANGE_A-- )
 		{
 			UPCOUNTER_A++;
-			if ( ((UPCOUNTER_A == SFR_TREGA) && BIT(SFR_TAFFCR, 2)) ||
-				((UPCOUNTER_A == SFR_TREGB) && BIT(SFR_TAFFCR, 3)) )
+			if ( ((UPCOUNTER_A == SFR_TREGA) && BIT(m_taffcr, 2)) ||
+				((UPCOUNTER_A == SFR_TREGB) && BIT(m_taffcr, 3)) )
 			{
 				change_timer_flipflop( 0xa, FF_INVERT );
 				UPCOUNTER_A = 0;
