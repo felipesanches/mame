@@ -22,21 +22,6 @@ DEFINE_DEVICE_TYPE(TMP94C241, tmp94c241_device, "tmp94c241", "Toshiba TMP94C241"
 #define SFR_T6FFCR	m_ffcr[2]
 #define SFR_T8FFCR	m_ffcr[3]
 #define SFR_TAFFCR	m_ffcr[4]
-
-#define PWM1_INTERVAL_SELECTION	((m_t01mod >> 4) & 3)
-#define TO1_OPERATING_MODE		((m_t01mod >> 6) & 3)
-#define PWM2_INTERVAL_SELECTION	((m_t23mod >> 4) & 3)
-#define T23_OPERATING_MODE		((m_t23mod >> 6) & 3)
-#define UC4_CLEAR				((m_t4mod >> 2) & 1)
-#define T4_CAPTURE_TIMING		((m_t4mod >> 3) & 3)
-#define CAP4IN					((m_t4mod >> 5) & 1)
-
-// Field values for timer mode selection on TnMOD SFRs:
-#define MODE_8BIT_TIMER		0
-#define MODE_16BIT_TIMER	1
-#define MODE_PPG			2
-#define MODE_PWM			3
-
 #define UPCOUNTER_0		m_timer[0]
 #define UPCOUNTER_1		m_timer[1]
 #define UPCOUNTER_2		m_timer[2]
@@ -1363,14 +1348,14 @@ void tmp94c241_device::tlcs900_handle_timers()
 			UPCOUNTER_0++;
 			if ( UPCOUNTER_0 == SFR_TREG0 )
 			{
-				if ( TO1_OPERATING_MODE == MODE_8BIT_TIMER )
+				if ( ((m_t01mod >> 6) & 3) == 0 ) /* TO1_OPERATING_MODE == MODE_8BIT_TIMER */
 					TIMER_CHANGE_1++;
 
 				if ( (m_ffcr[0] & 0x03) == 0b10 )
 					change_timer_flipflop( 1, FF_INVERT );
 
 				/* In 16bit timer mode the timer should not be reset */
-				if ( TO1_OPERATING_MODE != MODE_16BIT_TIMER )
+				if ( ((m_t01mod >> 6) & 3) != 1 ) /* TO1_OPERATING_MODE != MODE_16BIT_TIMER */
 				{
 					UPCOUNTER_0 = 0;
 					m_int_reg[INTET01] |= 0x08;
@@ -1410,7 +1395,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 					change_timer_flipflop( 1, FF_INVERT );
 
 				/* In 16bit timer mode also reset timer 0 */
-				if ( TO1_OPERATING_MODE == MODE_16BIT_TIMER )
+				if ( ((m_t01mod >> 6) & 3) == 1 ) /* TO1_OPERATING_MODE == MODE_16BIT_TIMER */
 					UPCOUNTER_1 = 0;
 			}
 		}
@@ -1437,14 +1422,14 @@ void tmp94c241_device::tlcs900_handle_timers()
 			UPCOUNTER_2++;
 			if ( UPCOUNTER_2 == SFR_TREG2 )
 			{
-				if ( T23_OPERATING_MODE == MODE_8BIT_TIMER )
+				if ( ((m_t23mod >> 6) & 3) == 0 ) /* T23_OPERATING_MODE == MODE_8BIT_TIMER */
 					TIMER_CHANGE_3++;
 
 				if ( ((m_ffcr[0] & 0x30) >> 4) == 0b10 )
 					change_timer_flipflop( 3, FF_INVERT );
 
 				/* In 16bit timer mode the timer should not be reset */
-				if ( T23_OPERATING_MODE != MODE_16BIT_TIMER )
+				if ( ((m_t23mod >> 6) & 3) != 1 ) /* T23_OPERATING_MODE != MODE_16BIT_TIMER */
 				{
 					UPCOUNTER_2 = 0;
 					m_int_reg[INTET23] |= 0x08;
@@ -1484,7 +1469,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 					change_timer_flipflop( 3, FF_INVERT );
 
 				/* In 16bit timer mode also reset timer 2 */
-				if ( T23_OPERATING_MODE == MODE_16BIT_TIMER )
+				if ( ((m_t23mod >> 6) & 3) == 1 ) /* T23_OPERATING_MODE == MODE_16BIT_TIMER */
 					UPCOUNTER_2 = 0;
 			}
 		}
