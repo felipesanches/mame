@@ -17,34 +17,27 @@
 // device type definition
 DEFINE_DEVICE_TYPE(TMP94C241, tmp94c241_device, "tmp94c241", "Toshiba TMP94C241")
 
-#define SFR_T01MOD	m_tmod[0]
-#define SFR_T23MOD	m_tmod[1]
-#define SFR_T4MOD	m_tmod[2]
-#define SFR_T6MOD	m_tmod[3]
-#define SFR_T8MOD	m_tmod[4]
-#define SFR_TAMOD	m_tmod[5]
-
 #define SFR_T02FFCR	m_ffcr[0]
 #define SFR_T4FFCR	m_ffcr[1]
 #define SFR_T6FFCR	m_ffcr[2]
 #define SFR_T8FFCR	m_ffcr[3]
 #define SFR_TAFFCR	m_ffcr[4]
 
-#define T0_INPUT_CLOCK			((SFR_T01MOD >> 0) & 0x03)
-#define T1_INPUT_CLOCK			((SFR_T01MOD >> 2) & 0x03)
-#define PWM1_INTERVAL_SELECTION	((SFR_T01MOD >> 4) & 0x03)
-#define TO1_OPERATING_MODE		((SFR_T01MOD >> 6) & 0x03)
-#define T2_INPUT_CLOCK			((SFR_T23MOD >> 0) & 0x03)
-#define T3_INPUT_CLOCK			((SFR_T23MOD >> 2) & 0x03)
-#define PWM2_INTERVAL_SELECTION	((SFR_T23MOD >> 4) & 0x03)
-#define T23_OPERATING_MODE		((SFR_T23MOD >> 6) & 0x03)
-#define T4_INPUT_CLOCK			((SFR_T4MOD >> 0) & 0x03)
-#define UC4_CLEAR				((SFR_T4MOD >> 2) & 0x01)
-#define T4_CAPTURE_TIMING		((SFR_T4MOD >> 3) & 0x03)
-#define CAP4IN					((SFR_T4MOD >> 5) & 0x01)
-#define T6_INPUT_CLOCK			((SFR_T6MOD >> 0) & 0x03)
-#define T8_INPUT_CLOCK			((SFR_T8MOD >> 0) & 0x03)
-#define TA_INPUT_CLOCK			((SFR_TAMOD >> 0) & 0x03)
+#define T0_INPUT_CLOCK			((m_t01mod >> 0) & 3)
+#define T1_INPUT_CLOCK			((m_t01mod >> 2) & 3)
+#define PWM1_INTERVAL_SELECTION	((m_t01mod >> 4) & 3)
+#define TO1_OPERATING_MODE		((m_t01mod >> 6) & 3)
+#define T2_INPUT_CLOCK			((m_t23mod >> 0) & 3)
+#define T3_INPUT_CLOCK			((m_t23mod >> 2) & 3)
+#define PWM2_INTERVAL_SELECTION	((m_t23mod >> 4) & 3)
+#define T23_OPERATING_MODE		((m_t23mod >> 6) & 3)
+#define T4_INPUT_CLOCK			(m_t4mod & 3)
+#define UC4_CLEAR				((m_t4mod >> 2) & 1)
+#define T4_CAPTURE_TIMING		((m_t4mod >> 3) & 3)
+#define CAP4IN					((m_t4mod >> 5) & 1)
+#define T6_INPUT_CLOCK			(m_t6mod & 3)
+#define T8_INPUT_CLOCK			(m_t8mod & 3)
+#define TA_INPUT_CLOCK			(m_tamod & 3)
 #define EQ4T4 BIT(SFR_T4FFCR, 2)
 #define EQ5T4 BIT(SFR_T4FFCR, 3)
 #define EQ6T6 BIT(SFR_T6FFCR, 2)
@@ -176,7 +169,12 @@ tmp94c241_device::tmp94c241_device(const machine_config &mconfig, const char *ta
 	m_port_function{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 	m_t8run(0),
 	m_t8_reg{ 0, 0, 0, 0, 0, 0, 0, 0 },
-	m_tmod{ 0, 0, 0, 0, 0, 0 },
+	m_t01mod(0),
+	m_t23mod(0),
+	m_t4mod(0),
+	m_t6mod(0),
+	m_t8mod(0),
+	m_tamod(0),
 	m_ffcr{ 0, 0, 0, 0, 0 },
 	m_trdc(0),
 	m_t16_reg{ 0, 0, 0, 0, 0, 0, 0, 0 },
@@ -230,7 +228,12 @@ void tmp94c241_device::device_start()
 	save_item(NAME(m_port_function));
 	save_item(NAME(m_t8run));
 	save_item(NAME(m_t8_reg));
-	save_item(NAME(m_tmod));
+	save_item(NAME(m_t01mod));
+	save_item(NAME(m_t23mod));
+	save_item(NAME(m_t4mod));
+	save_item(NAME(m_t6mod));
+	save_item(NAME(m_t8mod));
+	save_item(NAME(m_tamod));
 	save_item(NAME(m_trdc));
 	save_item(NAME(m_t16_reg));
 	save_item(NAME(m_t16_cap));
@@ -321,7 +324,12 @@ void tmp94c241_device::device_reset()
 	std::fill_n(&m_port_control[0], NUM_PORTS, 0x00);
 	m_t8run = 0x00;
 	m_trdc = 0x00;
-	std::fill_n(&m_tmod[0], 8, 0x00);
+	m_t01mod = 0x00;
+	m_t23mod = 0x00;
+	m_t4mod = 0x00;
+	m_t6mod = 0x00;
+	m_t8mod = 0x00;
+	m_tamod = 0x00;
 	std::fill_n(&m_ffcr[0], 6, 0x00);
 	std::fill_n(&m_timer[0], 4, 0x00);
 	std::fill_n(&m_timer16[0], 4, 0x00);
@@ -618,13 +626,13 @@ void tmp94c241_device::treg01_w(offs_t offset, uint8_t data)
 
 uint8_t tmp94c241_device::t01mod_r()
 {
-	return SFR_T01MOD;
+	return m_t01mod;
 }
 
 void tmp94c241_device::t01mod_w(uint8_t data)
 {
 	logerror("T01MOD = %02X\n", data);
-	SFR_T01MOD = data;
+	m_t01mod = data;
 }
 
 uint8_t tmp94c241_device::t02ffcr_r()
@@ -704,14 +712,14 @@ void tmp94c241_device::treg23_w(offs_t offset, uint8_t data)
 
 uint8_t tmp94c241_device::t23mod_r()
 {
-	return SFR_T23MOD;
+	return m_t23mod;
 }
 
 void tmp94c241_device::t23mod_w(uint8_t data)
 {
 	logerror("T23MOD = %02X\n", data);
 
-	SFR_T23MOD = data;
+	m_t23mod = data;
 }
 
 uint8_t tmp94c241_device::trdc_r()
@@ -758,46 +766,46 @@ void tmp94c241_device::tregab_w(offs_t offset, uint16_t data)
 
 uint8_t tmp94c241_device::t4mod_r()
 {
-	return SFR_T4MOD;
+	return m_t4mod;
 }
 
 void tmp94c241_device::t4mod_w(uint8_t data)
 {
 	logerror("T4MOD = %02X\n", data);
-	SFR_T4MOD = data;
+	m_t4mod = data;
 }
 
 uint8_t tmp94c241_device::t6mod_r()
 {
-	return SFR_T6MOD;
+	return m_t6mod;
 }
 
 void tmp94c241_device::t6mod_w(uint8_t data)
 {
 	logerror("T6MOD = %02X\n", data);
-	SFR_T6MOD = data;
+	m_t6mod = data;
 }
 
 uint8_t tmp94c241_device::t8mod_r()
 {
-	return SFR_T8MOD;
+	return m_t8mod;
 }
 
 void tmp94c241_device::t8mod_w(uint8_t data)
 {
 	logerror("T8MOD = %02X\n", data);
-	SFR_T8MOD = data;
+	m_t8mod = data;
 }
 
 uint8_t tmp94c241_device::tamod_r()
 {
-	return SFR_TAMOD;
+	return m_tamod;
 }
 
 void tmp94c241_device::tamod_w(uint8_t data)
 {
 	logerror("TAMOD = %02X\n", data);
-	SFR_TAMOD = data;
+	m_tamod = data;
 }
 
 
