@@ -1316,7 +1316,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 				if ( ((m_t01mod >> 6) & 3) == 0 ) /* TO1_OPERATING_MODE == MODE_8BIT_TIMER */
 					m_timer_change[1]++;
 
-				if ( (m_tffcr & 3) == 2 ) /* todo: doc */
+				if ( (m_tffcr & 3) == 2 ) /* "FF1 Invert Enable" && "Invert by 8-bit timer 0" */
 					change_timer_flipflop( 1, FF_INVERT );
 
 				/* In 16bit timer mode the timer should not be reset */
@@ -1356,7 +1356,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 				m_int_reg[INTET01] |= 0x80;
 				m_check_irqs = 1;
 
-				if ( (m_tffcr & 3) == 3 ) /* todo: doc */
+				if ( (m_tffcr & 3) == 3 ) /* "FF1 Invert Enable" && "Invert by timer 1" */
 					change_timer_flipflop( 1, FF_INVERT );
 
 				/* In 16bit timer mode also reset timer 0 */
@@ -1392,7 +1392,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 				if ( ((m_t23mod >> 6) & 3) == 0 ) /* T23_OPERATING_MODE == MODE_8BIT_TIMER */
 					m_timer_change[3]++;
 
-				if ( ((m_tffcr >> 4) & 3) == 2 ) /* todo: doc */
+				if ( ((m_tffcr >> 4) & 3) == 2 ) /* "FF3 Invert Enable" && "Invert by 8-bit timer 2" */
 					change_timer_flipflop( 3, FF_INVERT );
 
 				/* In 16bit timer mode the timer should not be reset */
@@ -1432,7 +1432,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 				m_int_reg[INTET23] |= 0x80;
 				m_check_irqs = 1;
 
-				if ( ((m_tffcr >> 4) & 3) == 3 ) /* todo: doc */
+				if ( ((m_tffcr >> 4) & 3) == 3 ) /* "FF3 Invert Enable" && "Invert by timer 3" */
 					change_timer_flipflop( 3, FF_INVERT );
 
 				/* In 16bit timer mode also reset timer 2 */
