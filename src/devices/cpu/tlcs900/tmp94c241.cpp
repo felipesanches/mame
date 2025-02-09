@@ -102,6 +102,7 @@ tmp94c241_device::tmp94c241_device(const machine_config &mconfig, const char *ta
 	m_port_latch{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 	m_port_control{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 	m_port_function{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+	m_timer_flipflops{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 	m_t8run(0),
 	m_t8_reg{ 0, 0, 0, 0, 0, 0, 0, 0 },
 	m_t01mod(0),
@@ -176,6 +177,7 @@ void tmp94c241_device::device_start()
 	save_item(NAME(m_port_latch));
 	save_item(NAME(m_port_control));
 	save_item(NAME(m_port_function));
+	save_item(NAME(m_timer_flipflops));
 	save_item(NAME(m_t8run));
 	save_item(NAME(m_t01mod));
 	save_item(NAME(m_t23mod));
@@ -278,6 +280,7 @@ void tmp94c241_device::device_reset()
 	m_port_function[PORT_Z] = 0x00;
 
 	std::fill_n(&m_port_control[0], NUM_PORTS, 0x00);
+	std::fill_n(&m_timer_flipflops[0], 12, 0x00);
 	m_t8run = 0x00;
 	m_trdc = 0x00;
 	m_t01mod = 0x00;
@@ -601,48 +604,98 @@ enum
 
 void tmp94c241_device::change_timer_flipflop(uint8_t flipflop, uint8_t operation)
 {
+	/* First we update the timer flip-flop */
+	bool* ff_state = &m_timer_flipflops[flipflop];
+
 	switch(operation)
 	{
 	case FF_INVERT:
-		switch( flipflop )
-		{
-		case 0x1: if ((m_port_function[PORT_C] & 0x03) == 0x02) port_w<PORT_C>(m_port_latch[PORT_C] ^ 0x01); break;
-		case 0x3: if ((m_port_function[PORT_C] & 0x03) == 0x02) port_w<PORT_C>(m_port_latch[PORT_C] ^ 0x02); break;
-		case 0x4: if ((m_port_function[PORT_D] & 0x01) == 0x01) port_w<PORT_D>(m_port_latch[PORT_D] ^ 0x01); break;
-		case 0x6: if ((m_port_function[PORT_D] & 0x10) == 0x10) port_w<PORT_D>(m_port_latch[PORT_D] ^ 0x10); break;
-		case 0x7: if ((m_port_function[PORT_C] & 0x03) == 0x03) port_w<PORT_C>(m_port_latch[PORT_C] ^ 0x01); break;
-		case 0x8: if ((m_port_function[PORT_E] & 0x01) == 0x01) port_w<PORT_E>(m_port_latch[PORT_E] ^ 0x01); break;
-		case 0xa: if ((m_port_function[PORT_E] & 0x10) == 0x10) port_w<PORT_E>(m_port_latch[PORT_E] ^ 0x10); break;
-		case 0xb: if ((m_port_function[PORT_C] & 0x03) == 0x03) port_w<PORT_C>(m_port_latch[PORT_C] ^ 0x02); break;
-		}
+		*ff_state = !(*ff_state);
 		break;
 	case FF_SET:
-		switch( flipflop )
-		{
-		case 0x1: if ((m_port_function[PORT_C] & 0x03) == 0x02) port_w<PORT_C>(m_port_latch[PORT_C] & 0x01); break;
-		case 0x3: if ((m_port_function[PORT_C] & 0x03) == 0x02) port_w<PORT_C>(m_port_latch[PORT_C] & 0x02); break;
-		case 0x4: if ((m_port_function[PORT_D] & 0x01) == 0x01) port_w<PORT_D>(m_port_latch[PORT_D] & 0x01); break;
-		case 0x6: if ((m_port_function[PORT_D] & 0x10) == 0x10) port_w<PORT_D>(m_port_latch[PORT_D] & 0x10); break;
-		case 0x7: if ((m_port_function[PORT_C] & 0x03) == 0x03) port_w<PORT_C>(m_port_latch[PORT_C] & 0x01); break;
-		case 0x8: if ((m_port_function[PORT_E] & 0x01) == 0x01) port_w<PORT_E>(m_port_latch[PORT_E] & 0x01); break;
-		case 0xa: if ((m_port_function[PORT_E] & 0x10) == 0x10) port_w<PORT_E>(m_port_latch[PORT_E] & 0x10); break;
-		case 0xb: if ((m_port_function[PORT_C] & 0x03) == 0x03) port_w<PORT_C>(m_port_latch[PORT_C] & 0x02); break;
-		}
+		*ff_state = true;
 		break;
 	case FF_CLEAR:
-		switch( flipflop )
-		{
-		case 0x1: if ((m_port_function[PORT_C] & 0x03) == 0x02) port_w<PORT_C>(m_port_latch[PORT_C] | ~0x01); break;
-		case 0x3: if ((m_port_function[PORT_C] & 0x03) == 0x02) port_w<PORT_C>(m_port_latch[PORT_C] | ~0x02); break;
-		case 0x4: if ((m_port_function[PORT_D] & 0x01) == 0x01) port_w<PORT_D>(m_port_latch[PORT_D] | ~0x01); break;
-		case 0x6: if ((m_port_function[PORT_D] & 0x10) == 0x10) port_w<PORT_D>(m_port_latch[PORT_D] | ~0x10); break;
-		case 0x7: if ((m_port_function[PORT_C] & 0x03) == 0x03) port_w<PORT_C>(m_port_latch[PORT_C] | ~0x01); break;
-		case 0x8: if ((m_port_function[PORT_E] & 0x01) == 0x01) port_w<PORT_E>(m_port_latch[PORT_E] | ~0x01); break;
-		case 0xa: if ((m_port_function[PORT_E] & 0x10) == 0x10) port_w<PORT_E>(m_port_latch[PORT_E] | ~0x10); break;
-		case 0xb: if ((m_port_function[PORT_C] & 0x03) == 0x03) port_w<PORT_C>(m_port_latch[PORT_C] | ~0x02); break;
-		}
+		*ff_state = false;
 		break;
+	default:
+		// invalid operation
+		return;
 	}
+
+	/* The value of the flipflop is only exposed to a pin in certain modes of operation
+	   determined by fields of the port function registers.
+	   
+	   So here we bail out if the flipflop is not routed to its corresponding port bit:
+	*/
+	switch( flipflop )
+		{
+		case 0x1:
+			if (!BIT(m_port_function[PORT_C], 0) || BIT(m_port_control[PORT_C], 0)) return;
+			break;
+		case 0x7:
+			if (!BIT(m_port_function[PORT_C], 0) || !BIT(m_port_control[PORT_C], 0)) return;
+			break;
+		case 0x3:
+			if (!BIT(m_port_function[PORT_C], 1) || BIT(m_port_control[PORT_C], 1)) return;
+			break;
+		case 0xb:
+			if (!BIT(m_port_function[PORT_C], 1) || !BIT(m_port_control[PORT_C], 1)) return;
+			break;
+		case 0x4:
+			if (!BIT(m_port_function[PORT_D], 0)) return;
+			break;
+		case 0x6:
+			if (!BIT(m_port_function[PORT_D], 4)) return;
+			break;
+		case 0x8:
+			if (!BIT(m_port_function[PORT_E], 0)) return;
+			break;
+		case 0xA:
+			if (!BIT(m_port_function[PORT_E], 4)) return;
+			break;
+		default:
+			// invalid flip flop
+			return;
+		}
+
+	/* And here we actually send the value to the corresponding pin */
+	uint8_t new_port_value = 0;
+	switch( flipflop )
+		{
+		case 0x1:
+		case 0x7:
+			new_port_value = m_port_latch[PORT_C] & 0xfe;
+			if (*ff_state) new_port_value |= 0x01;
+			port_w<PORT_C>(new_port_value);
+			break;
+		case 0x3:
+		case 0xb:
+			new_port_value = m_port_latch[PORT_C] & 0xfd;
+			if (*ff_state) new_port_value |= 0x02;
+			port_w<PORT_C>(new_port_value);
+			break;
+		case 0x4:
+			new_port_value = m_port_latch[PORT_D] & 0xfe;
+			if (*ff_state) new_port_value |= 0x01;
+			port_w<PORT_D>(new_port_value);
+			break;
+		case 0x6:
+			new_port_value = m_port_latch[PORT_D] & 0xef;
+			if (*ff_state) new_port_value |= 0x10;
+			port_w<PORT_D>(new_port_value);
+			break;
+		case 0x8:
+			new_port_value = m_port_latch[PORT_E] & 0xfe;
+			if (*ff_state) new_port_value |= 0x01;
+			port_w<PORT_E>(new_port_value);
+			break;
+		case 0xa:
+			new_port_value = m_port_latch[PORT_E] & 0xef;
+			if (*ff_state) new_port_value |= 0x10;
+			port_w<PORT_E>(new_port_value);
+			break;
+		}
 }
 
 void tmp94c241_device::tffcr_w(uint8_t data)

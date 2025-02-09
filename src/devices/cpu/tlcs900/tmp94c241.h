@@ -233,6 +233,7 @@ private:
 	uint8_t m_port_function[NUM_PORTS];
 
 	// Timer Control
+	bool m_timer_flipflops[12];
 	uint8_t m_t8run;
 	uint8_t m_t8_reg[8];
 	uint8_t m_t01mod;
