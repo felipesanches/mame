@@ -129,6 +129,10 @@ private:
 	template <uint8_t> void port_w(uint8_t data);
 	template <uint8_t> void port_cr_w(uint8_t data);
 	template <uint8_t> void port_fc_w(uint8_t data);
+	template <uint8_t> void treg_8_w(uint8_t data);
+	template <uint8_t> void treg_16_w(uint16_t data);
+	template <uint8_t> uint16_t cap_r();
+	template <uint8_t> void bNcs_w(offs_t offset, uint16_t data, uint16_t mem_mask);
 	uint8_t t8run_r();
 	void t8run_w(uint8_t data);
 	uint8_t t01mod_r();
@@ -155,9 +159,6 @@ private:
 	void t6ffcr_w(uint8_t data);
 	uint8_t taffcr_r();
 	void taffcr_w(uint8_t data);
-	template<int timer> void treg_8_w(uint8_t data);
-	template<int timer> void treg_16_w(uint16_t data);
-	template<int timer> uint16_t cap_r();
 	uint8_t t16run_r();
 	void t16run_w(uint8_t data);
 	uint8_t wdmod_r();
@@ -193,12 +194,6 @@ private:
 	void iimc_w(uint8_t data);
 	void intclr_w(uint8_t data);
 	void dmav_w(offs_t offset, uint8_t data);
-	void b0cs_w(offs_t offset, uint16_t data, uint16_t mem_mask);
-	void b1cs_w(offs_t offset, uint16_t data, uint16_t mem_mask);
-	void b2cs_w(offs_t offset, uint16_t data, uint16_t mem_mask);
-	void b3cs_w(offs_t offset, uint16_t data, uint16_t mem_mask);
-	void b4cs_w(offs_t offset, uint16_t data, uint16_t mem_mask);
-	void b5cs_w(offs_t offset, uint16_t data, uint16_t mem_mask);
 	uint8_t msar0_r();
 	void msar0_w(offs_t offset, uint8_t data);
 	uint8_t mamr0_r();
