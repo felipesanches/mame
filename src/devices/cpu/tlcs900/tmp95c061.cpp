@@ -688,8 +688,8 @@ void tmp95c061_device::tlcs900_handle_timers()
 
 		for( ; m_timer_change[0] > 0; m_timer_change[0]-- )
 		{
-			m_timer[0] += 1;
-			if ( m_timer[0] == m_t8_reg[0] )
+			m_timer_8[0] += 1;
+			if ( m_timer_8[0] == m_t8_reg[0] )
 			{
 				if ( ( m_trun & 0x02 ) && ( m_t8_mode[0] & 0x0c ) == 0x00 )
 				{
@@ -699,7 +699,7 @@ void tmp95c061_device::tlcs900_handle_timers()
 				/* In 16bit timer mode the timer should not be reset */
 				if ( ( m_t8_mode[0] & 0xc0 ) != 0x40 )
 				{
-					m_timer[0] = 0;
+					m_timer_8[0] = 0;
 					m_int_reg[INTET10] |= 0x08;
 				}
 			}
@@ -726,10 +726,10 @@ void tmp95c061_device::tlcs900_handle_timers()
 
 		for( ; m_timer_change[1] > 0; m_timer_change[1]-- )
 		{
-			m_timer[1] += 1;
-			if ( m_timer[1] == m_t8_reg[1] )
+			m_timer_8[1] += 1;
+			if ( m_timer_8[1] == m_t8_reg[1] )
 			{
-				m_timer[1] = 0;
+				m_timer_8[1] = 0;
 				m_int_reg[INTET10] |= 0x80;
 
 				if ( m_t8_invert & 0x02 )
@@ -740,7 +740,7 @@ void tmp95c061_device::tlcs900_handle_timers()
 				/* In 16bit timer mode also reset timer 0 */
 				if ( ( m_t8_mode[0] & 0xc0 ) == 0x40 )
 				{
-					m_timer[0] = 0;
+					m_timer_8[0] = 0;
 				}
 			}
 		}
@@ -765,8 +765,8 @@ void tmp95c061_device::tlcs900_handle_timers()
 
 		for( ; m_timer_change[2] > 0; m_timer_change[2]-- )
 		{
-			m_timer[2] += 1;
-			if ( m_timer[2] == m_t8_reg[2] )
+			m_timer_8[2] += 1;
+			if ( m_timer_8[2] == m_t8_reg[2] )
 			{
 				if ( ( m_trun & 0x08 ) && ( m_t8_mode[1] & 0x0c ) == 0x00 )
 				{
@@ -776,7 +776,7 @@ void tmp95c061_device::tlcs900_handle_timers()
 				/* In 16bit timer mode the timer should not be reset */
 				if ( ( m_t8_mode[1] & 0xc0 ) != 0x40 )
 				{
-					m_timer[2] = 0;
+					m_timer_8[2] = 0;
 					m_int_reg[INTET32] |= 0x08;
 				}
 			}
@@ -803,10 +803,10 @@ void tmp95c061_device::tlcs900_handle_timers()
 
 		for( ; m_timer_change[3] > 0; m_timer_change[3]-- )
 		{
-			m_timer[3] += 1;
-			if ( m_timer[3] == m_t8_reg[3] )
+			m_timer_8[3] += 1;
+			if ( m_timer_8[3] == m_t8_reg[3] )
 			{
-				m_timer[3] = 0;
+				m_timer_8[3] = 0;
 				m_int_reg[INTET32] |= 0x80;
 
 				if ( m_t8_invert & 0x20 )
@@ -817,7 +817,7 @@ void tmp95c061_device::tlcs900_handle_timers()
 				/* In 16bit timer mode also reset timer 2 */
 				if ( ( m_t8_mode[1] & 0xc0 ) == 0x40 )
 				{
-					m_timer[2] = 0;
+					m_timer_8[2] = 0;
 				}
 			}
 		}
@@ -914,28 +914,28 @@ void tmp95c061_device::trun_w(uint8_t data)
 {
 	if ( ! ( data & 0x01 ) )
 	{
-		m_timer[0] = 0;
+		m_timer_8[0] = 0;
 		m_timer_change[0] = 0;
 	}
 	if ( ! ( data & 0x02 ) )
 	{
-		m_timer[1] = 0;
+		m_timer_8[1] = 0;
 		m_timer_change[1] = 0;
 	}
 	if ( ! ( data & 0x04 ) )
 	{
-		m_timer[2] = 0;
+		m_timer_8[2] = 0;
 		m_timer_change[2] = 0;
 	}
 	if ( ! ( data & 0x08 ) )
 	{
-		m_timer[3] = 0;
+		m_timer_8[3] = 0;
 		m_timer_change[3] = 0;
 	}
 	if ( ! ( data & 0x10 ) )
-		m_timer[4] = 0;
+		m_timer_8[4] = 0;
 	if ( ! ( data & 0x20 ) )
-		m_timer[5] = 0;
+		m_timer_8[5] = 0;
 
 	m_trun = data;
 }

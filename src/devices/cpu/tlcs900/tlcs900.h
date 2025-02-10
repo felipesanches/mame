@@ -105,7 +105,7 @@ protected:
 
 	/* Internal timers, irqs, etc */
 	uint32_t  m_timer_pre;
-	uint8_t   m_timer[10];
+	uint8_t   m_timer_8[6];
 	int     m_timer_change[8];
 	bool    m_prefetch_clear;
 	uint8_t   m_prefetch_index;

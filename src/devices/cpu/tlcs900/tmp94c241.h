@@ -229,7 +229,6 @@ private:
 	// Timer Control
 	bool m_timer_flipflops[12];
 	uint8_t m_t8run;
-	uint8_t m_t8_reg[8];
 	uint8_t m_t01mod;
 	uint8_t m_t23mod;
 	uint8_t m_t4mod;
@@ -242,45 +241,43 @@ private:
 	uint8_t m_t8ffcr;
 	uint8_t m_taffcr;
 	uint8_t m_trdc;
-
+	uint8_t m_t16run;
 	uint8_t m_treg_8[4]; // TREG0 - TREG3
 	uint16_t m_treg_16[8]; //TREG4 - TREGB
-
-	uint16_t  m_t16_cap[8];
-	uint8_t   m_t16run;
-	uint16_t  m_timer16[4];
+	uint16_t m_t16_cap[8]; //CAP4 - CAPB
+	uint16_t m_timer_16[4]; // UPCOUNTERA - UPCOUNTERB
 
 	// Watchdog Timer
-	uint8_t   m_watchdog_mode;
+	uint8_t m_watchdog_mode;
 
 	// Serial Channel
-	uint8_t   m_serial_control[2];
-	uint8_t   m_serial_mode[2];
-	uint8_t   m_baud_rate[2];
-	uint8_t   m_od_enable;
+	uint8_t m_serial_control[2];
+	uint8_t m_serial_mode[2];
+	uint8_t m_baud_rate[2];
+	uint8_t m_od_enable;
 
 	// A/D Converter Control
-	uint8_t   m_ad_mode1;
-	uint8_t   m_ad_mode2;
-	uint16_t  m_ad_result[4];
+	uint8_t m_ad_mode1;
+	uint8_t m_ad_mode2;
+	uint16_t m_ad_result[4];
 
 	// Interrupt Control
-	uint8_t   m_int_reg[18];
-	uint8_t   m_iimc;
-	uint8_t   m_dma_vector[4];
+	uint8_t m_int_reg[18];
+	uint8_t m_iimc;
+	uint8_t m_dma_vector[4];
 
 	// Chip Select/Wait Control
-	uint16_t   m_block_cs[6];
-	uint8_t   m_external_cs;
-	uint8_t   m_msar[6];
-	uint8_t   m_mamr[6];
+	uint16_t m_block_cs[6];
+	uint8_t m_external_cs;
+	uint8_t m_msar[6];
+	uint8_t m_mamr[6];
 
 	// DRAM Control
-	uint8_t   m_dram_refresh[2];
-	uint8_t   m_dram_access[2];
+	uint8_t m_dram_refresh[2];
+	uint8_t m_dram_access[2];
 
 	// D/A Converter Control
-	uint8_t   m_da_drive;
+	uint8_t m_da_drive;
 };
 
 // device type declaration
