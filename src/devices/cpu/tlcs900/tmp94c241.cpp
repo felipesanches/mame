@@ -366,124 +366,28 @@ void tmp94c241_device::bNcs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	COMBINE_DATA(&m_block_cs[N]);
 }
 
-void tmp94c241_device::mamr0_w(offs_t offset, uint8_t data)
+template <uint8_t N>
+void tmp94c241_device::mamr_w(uint8_t data)
 {
-	m_mamr[0] = data;
+	m_mamr[N] = data;
 }
 
-void tmp94c241_device::msar0_w(offs_t offset, uint8_t data)
+template <uint8_t N>
+void tmp94c241_device::msar_w(uint8_t data)
 {
-	m_msar[0] = data;
+	m_msar[N] = data;
 }
 
-uint8_t tmp94c241_device::mamr0_r()
+template <uint8_t N>
+uint8_t tmp94c241_device::mamr_r()
 {
-	return m_mamr[0];
+	return m_mamr[N];
 }
 
-uint8_t tmp94c241_device::msar0_r()
+template <uint8_t N>
+uint8_t tmp94c241_device::msar_r()
 {
-	return m_msar[0];
-}
-
-void tmp94c241_device::mamr1_w(offs_t offset, uint8_t data)
-{
-	m_mamr[1] = data;
-}
-
-void tmp94c241_device::msar1_w(offs_t offset, uint8_t data)
-{
-	m_msar[1] = data;
-}
-
-uint8_t tmp94c241_device::mamr1_r()
-{
-	return m_mamr[1];
-}
-
-uint8_t tmp94c241_device::msar1_r()
-{
-	return m_msar[1];
-}
-
-void tmp94c241_device::mamr2_w(offs_t offset, uint8_t data)
-{
-	m_mamr[2] = data;
-}
-
-void tmp94c241_device::msar2_w(offs_t offset, uint8_t data)
-{
-	m_msar[2] = data;
-}
-
-uint8_t tmp94c241_device::mamr2_r()
-{
-	return m_mamr[2];
-}
-
-uint8_t tmp94c241_device::msar2_r()
-{
-	return m_msar[2];
-}
-
-void tmp94c241_device::mamr3_w(offs_t offset, uint8_t data)
-{
-	m_mamr[3] = data;
-}
-
-void tmp94c241_device::msar3_w(offs_t offset, uint8_t data)
-{
-	m_msar[3] = data;
-}
-
-uint8_t tmp94c241_device::mamr3_r()
-{
-	return m_mamr[3];
-}
-
-uint8_t tmp94c241_device::msar3_r()
-{
-	return m_msar[3];
-}
-
-void tmp94c241_device::mamr4_w(offs_t offset, uint8_t data)
-{
-	m_mamr[4] = data;
-}
-
-void tmp94c241_device::msar4_w(offs_t offset, uint8_t data)
-{
-	m_msar[4] = data;
-}
-
-uint8_t tmp94c241_device::mamr4_r()
-{
-	return m_mamr[4];
-}
-
-uint8_t tmp94c241_device::msar4_r()
-{
-	return m_msar[4];
-}
-
-void tmp94c241_device::mamr5_w(offs_t offset, uint8_t data)
-{
-	m_mamr[5] = data;
-}
-
-void tmp94c241_device::msar5_w(offs_t offset, uint8_t data)
-{
-	m_msar[5] = data;
-}
-
-uint8_t tmp94c241_device::mamr5_r()
-{
-	return m_mamr[5];
-}
-
-uint8_t tmp94c241_device::msar5_r()
-{
-	return m_msar[5];
+	return m_msar[N];
 }
 
 uint8_t tmp94c241_device::t8run_r()
@@ -1096,23 +1000,23 @@ void tmp94c241_device::internal_mem(address_map &map)
 	map(0x000130, 0x000131).w(FUNC(tmp94c241_device::dareg_w));
 	map(0x000132, 0x000132).rw(FUNC(tmp94c241_device::dadrv_r), FUNC(tmp94c241_device::dadrv_w));
 	map(0x000140, 0x000141).w(FUNC(tmp94c241_device::bNcs_w<0>));
-	map(0x000142, 0x000142).rw(FUNC(tmp94c241_device::mamr0_r), FUNC(tmp94c241_device::mamr0_w));
-	map(0x000143, 0x000143).rw(FUNC(tmp94c241_device::msar0_r), FUNC(tmp94c241_device::msar0_w));
+	map(0x000142, 0x000142).rw(FUNC(tmp94c241_device::mamr_r<0>), FUNC(tmp94c241_device::mamr_w<0>));
+	map(0x000143, 0x000143).rw(FUNC(tmp94c241_device::msar_r<0>), FUNC(tmp94c241_device::msar_w<0>));
 	map(0x000144, 0x000145).w(FUNC(tmp94c241_device::bNcs_w<1>));
-	map(0x000146, 0x000146).rw(FUNC(tmp94c241_device::mamr1_r), FUNC(tmp94c241_device::mamr1_w));
-	map(0x000147, 0x000147).rw(FUNC(tmp94c241_device::msar1_r), FUNC(tmp94c241_device::msar1_w));
+	map(0x000146, 0x000146).rw(FUNC(tmp94c241_device::mamr_r<1>), FUNC(tmp94c241_device::mamr_w<1>));
+	map(0x000147, 0x000147).rw(FUNC(tmp94c241_device::msar_r<1>), FUNC(tmp94c241_device::msar_w<1>));
 	map(0x000148, 0x000149).w(FUNC(tmp94c241_device::bNcs_w<2>));
-	map(0x00014a, 0x00014a).rw(FUNC(tmp94c241_device::mamr2_r), FUNC(tmp94c241_device::mamr2_w));
-	map(0x00014b, 0x00014b).rw(FUNC(tmp94c241_device::msar2_r), FUNC(tmp94c241_device::msar2_w));
+	map(0x00014a, 0x00014a).rw(FUNC(tmp94c241_device::mamr_r<2>), FUNC(tmp94c241_device::mamr_w<2>));
+	map(0x00014b, 0x00014b).rw(FUNC(tmp94c241_device::msar_r<2>), FUNC(tmp94c241_device::msar_w<2>));
 	map(0x00014c, 0x00014d).w(FUNC(tmp94c241_device::bNcs_w<3>));
-	map(0x00014e, 0x00014e).rw(FUNC(tmp94c241_device::mamr3_r), FUNC(tmp94c241_device::mamr3_w));
-	map(0x00014f, 0x00014f).rw(FUNC(tmp94c241_device::msar3_r), FUNC(tmp94c241_device::msar3_w));
+	map(0x00014e, 0x00014e).rw(FUNC(tmp94c241_device::mamr_r<3>), FUNC(tmp94c241_device::mamr_w<3>));
+	map(0x00014f, 0x00014f).rw(FUNC(tmp94c241_device::msar_r<3>), FUNC(tmp94c241_device::msar_w<3>));
 	map(0x000150, 0x000151).w(FUNC(tmp94c241_device::bNcs_w<4>));
-	map(0x000152, 0x000152).rw(FUNC(tmp94c241_device::mamr4_r), FUNC(tmp94c241_device::mamr4_w));
-	map(0x000153, 0x000153).rw(FUNC(tmp94c241_device::msar4_r), FUNC(tmp94c241_device::msar4_w));
+	map(0x000152, 0x000152).rw(FUNC(tmp94c241_device::mamr_r<4>), FUNC(tmp94c241_device::mamr_w<4>));
+	map(0x000153, 0x000153).rw(FUNC(tmp94c241_device::msar_r<4>), FUNC(tmp94c241_device::msar_w<4>));
 	map(0x000154, 0x000155).w(FUNC(tmp94c241_device::bNcs_w<5>));
-	map(0x000156, 0x000156).rw(FUNC(tmp94c241_device::mamr5_r), FUNC(tmp94c241_device::mamr5_w));
-	map(0x000157, 0x000157).rw(FUNC(tmp94c241_device::msar5_r), FUNC(tmp94c241_device::msar5_w));
+	map(0x000156, 0x000156).rw(FUNC(tmp94c241_device::mamr_r<5>), FUNC(tmp94c241_device::mamr_w<5>));
+	map(0x000157, 0x000157).rw(FUNC(tmp94c241_device::msar_r<5>), FUNC(tmp94c241_device::msar_w<5>));
 	map(0x000400, 0x000bff).ram();
 }
 

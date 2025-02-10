@@ -125,14 +125,22 @@ protected:
 
 private:
 	void change_timer_flipflop(uint8_t flipflop, uint8_t operation);
+
+	// Ports
 	template <uint8_t> uint8_t port_r();
 	template <uint8_t> void port_w(uint8_t data);
 	template <uint8_t> void port_cr_w(uint8_t data);
 	template <uint8_t> void port_fc_w(uint8_t data);
+
+	// Special Function Registers
+	template <uint8_t> void bNcs_w(offs_t offset, uint16_t data, uint16_t mem_mask);
+	template <uint8_t> uint16_t cap_r();
+	template <uint8_t> uint8_t mamr_r();
+	template <uint8_t> void mamr_w(uint8_t data);
+	template <uint8_t> uint8_t msar_r();
+	template <uint8_t> void msar_w(uint8_t data);
 	template <uint8_t> void treg_8_w(uint8_t data);
 	template <uint8_t> void treg_16_w(uint16_t data);
-	template <uint8_t> uint16_t cap_r();
-	template <uint8_t> void bNcs_w(offs_t offset, uint16_t data, uint16_t mem_mask);
 	uint8_t t8run_r();
 	void t8run_w(uint8_t data);
 	uint8_t t01mod_r();
@@ -194,30 +202,6 @@ private:
 	void iimc_w(uint8_t data);
 	void intclr_w(uint8_t data);
 	void dmav_w(offs_t offset, uint8_t data);
-	uint8_t msar0_r();
-	void msar0_w(offs_t offset, uint8_t data);
-	uint8_t mamr0_r();
-	void mamr0_w(offs_t offset, uint8_t data);
-	uint8_t msar1_r();
-	void msar1_w(offs_t offset, uint8_t data);
-	uint8_t mamr1_r();
-	void mamr1_w(offs_t offset, uint8_t data);
-	uint8_t msar2_r();
-	void msar2_w(offs_t offset, uint8_t data);
-	uint8_t mamr2_r();
-	void mamr2_w(offs_t offset, uint8_t data);
-	uint8_t msar3_r();
-	void msar3_w(offs_t offset, uint8_t data);
-	uint8_t mamr3_r();
-	void mamr3_w(offs_t offset, uint8_t data);
-	uint8_t msar4_r();
-	void msar4_w(offs_t offset, uint8_t data);
-	uint8_t mamr4_r();
-	void mamr4_w(offs_t offset, uint8_t data);
-	uint8_t msar5_r();
-	void msar5_w(offs_t offset, uint8_t data);
-	uint8_t mamr5_r();
-	void mamr5_w(offs_t offset, uint8_t data);
 	uint8_t drefcr1_r();
 	void drefcr1_w(uint8_t data);
 	uint8_t dmemcr1_r();
