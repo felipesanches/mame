@@ -42,6 +42,28 @@ class tmp94c241_device : public tlcs900h_device
 	static constexpr uint8_t PORT_Z = 17; // 8 bit I/O.
 	static constexpr uint8_t NUM_PORTS = 18;
 
+	static constexpr uint8_t TREG0 = 0;
+	static constexpr uint8_t TREG1 = 1;
+	static constexpr uint8_t TREG2 = 2;
+	static constexpr uint8_t TREG3 = 3;
+	static constexpr uint8_t TREG4 = 0;
+	static constexpr uint8_t TREG5 = 1;
+	static constexpr uint8_t TREG6 = 2;
+	static constexpr uint8_t TREG7 = 3;
+	static constexpr uint8_t TREG8 = 4;
+	static constexpr uint8_t TREG9 = 5;
+	static constexpr uint8_t TREGA = 6;
+	static constexpr uint8_t TREGB = 7;
+
+	static constexpr uint8_t CAP4 = 0;
+	static constexpr uint8_t CAP5 = 1;
+	static constexpr uint8_t CAP6 = 2;
+	static constexpr uint8_t CAP7 = 3;
+	static constexpr uint8_t CAP8 = 4;
+	static constexpr uint8_t CAP9 = 5;
+	static constexpr uint8_t CAPA = 6;
+	static constexpr uint8_t CAPB = 7;
+
 public:
 	// device type constructor
 	tmp94c241_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock);

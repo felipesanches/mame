@@ -1070,33 +1070,33 @@ void tmp94c241_device::internal_mem(address_map &map)
 	map(0x000082, 0x000082).rw(FUNC(tmp94c241_device::tffcr_r), FUNC(tmp94c241_device::tffcr_w));
 	map(0x000084, 0x000084).rw(FUNC(tmp94c241_device::t01mod_r), FUNC(tmp94c241_device::t01mod_w));
 	map(0x000085, 0x000085).rw(FUNC(tmp94c241_device::t23mod_r), FUNC(tmp94c241_device::t23mod_w));
-	map(0x000088, 0x000088).w(FUNC(tmp94c241_device::treg_8_w<0>)); // TREG0
-	map(0x000089, 0x000089).w(FUNC(tmp94c241_device::treg_8_w<1>)); // TREG1
-	map(0x00008a, 0x00008a).w(FUNC(tmp94c241_device::treg_8_w<2>)); // TREG2
-	map(0x00008b, 0x00008b).w(FUNC(tmp94c241_device::treg_8_w<3>)); // TREG3
-	map(0x000090, 0x000091).w(FUNC(tmp94c241_device::treg_16_w<0>)); // TREG4
-	map(0x000092, 0x000093).w(FUNC(tmp94c241_device::treg_16_w<1>)); // TREG5
-	map(0x000094, 0x000095).r(FUNC(tmp94c241_device::cap_r<0>)); // CAP4
-	map(0x000096, 0x000097).r(FUNC(tmp94c241_device::cap_r<1>)); // CAP5
+	map(0x000088, 0x000088).w(FUNC(tmp94c241_device::treg_8_w<TREG0>));
+	map(0x000089, 0x000089).w(FUNC(tmp94c241_device::treg_8_w<TREG1>));
+	map(0x00008a, 0x00008a).w(FUNC(tmp94c241_device::treg_8_w<TREG2>));
+	map(0x00008b, 0x00008b).w(FUNC(tmp94c241_device::treg_8_w<TREG3>));
+	map(0x000090, 0x000091).w(FUNC(tmp94c241_device::treg_16_w<TREG4>));
+	map(0x000092, 0x000093).w(FUNC(tmp94c241_device::treg_16_w<TREG5>));
+	map(0x000094, 0x000095).r(FUNC(tmp94c241_device::cap_r<CAP4>));
+	map(0x000096, 0x000097).r(FUNC(tmp94c241_device::cap_r<CAP5>));
 	map(0x000098, 0x000098).rw(FUNC(tmp94c241_device::t4mod_r), FUNC(tmp94c241_device::t4mod_w));
 	map(0x000099, 0x000099).rw(FUNC(tmp94c241_device::t4ffcr_r), FUNC(tmp94c241_device::t4ffcr_w));
 	map(0x00009e, 0x00009e).rw(FUNC(tmp94c241_device::t16run_r), FUNC(tmp94c241_device::t16run_w));
-	map(0x0000a0, 0x0000a1).w(FUNC(tmp94c241_device::treg_16_w<2>)); // TREG6
-	map(0x0000a2, 0x0000a3).w(FUNC(tmp94c241_device::treg_16_w<3>)); // TREG7
-	map(0x0000a4, 0x0000a5).r(FUNC(tmp94c241_device::cap_r<2>)); //CAP6
-	map(0x0000a6, 0x0000a7).r(FUNC(tmp94c241_device::cap_r<3>)); //CAP7
+	map(0x0000a0, 0x0000a1).w(FUNC(tmp94c241_device::treg_16_w<TREG6>));
+	map(0x0000a2, 0x0000a3).w(FUNC(tmp94c241_device::treg_16_w<TREG7>));
+	map(0x0000a4, 0x0000a5).r(FUNC(tmp94c241_device::cap_r<CAP6>));
+	map(0x0000a6, 0x0000a7).r(FUNC(tmp94c241_device::cap_r<CAP7>));
 	map(0x0000a8, 0x0000a8).rw(FUNC(tmp94c241_device::t6mod_r), FUNC(tmp94c241_device::t6mod_w));
 	map(0x0000a9, 0x0000a9).rw(FUNC(tmp94c241_device::t6ffcr_r), FUNC(tmp94c241_device::t6ffcr_w));
-	map(0x0000b0, 0x0000b1).w(FUNC(tmp94c241_device::treg_16_w<4>)); // TREG8
-	map(0x0000b2, 0x0000b3).w(FUNC(tmp94c241_device::treg_16_w<5>)); // TREG9
-	map(0x0000b4, 0x0000b5).r(FUNC(tmp94c241_device::cap_r<4>)); // CAP8
-	map(0x0000b6, 0x0000b7).r(FUNC(tmp94c241_device::cap_r<5>)); // CAP9
+	map(0x0000b0, 0x0000b1).w(FUNC(tmp94c241_device::treg_16_w<TREG8>));
+	map(0x0000b2, 0x0000b3).w(FUNC(tmp94c241_device::treg_16_w<TREG9>));
+	map(0x0000b4, 0x0000b5).r(FUNC(tmp94c241_device::cap_r<CAP8>));
+	map(0x0000b6, 0x0000b7).r(FUNC(tmp94c241_device::cap_r<CAP9>));
 	map(0x0000b8, 0x0000b8).rw(FUNC(tmp94c241_device::t8mod_r), FUNC(tmp94c241_device::t8mod_w));
 	map(0x0000b9, 0x0000b9).rw(FUNC(tmp94c241_device::t8ffcr_r), FUNC(tmp94c241_device::t8ffcr_w));
-	map(0x0000c0, 0x0000c1).w(FUNC(tmp94c241_device::treg_16_w<6>)); // TREGA
-	map(0x0000c2, 0x0000c3).w(FUNC(tmp94c241_device::treg_16_w<7>)); // TREGB
-	map(0x0000c4, 0x0000c5).r(FUNC(tmp94c241_device::cap_r<6>)); // CAPA
-	map(0x0000c6, 0x0000c7).r(FUNC(tmp94c241_device::cap_r<7>)); // CAPB
+	map(0x0000c0, 0x0000c1).w(FUNC(tmp94c241_device::treg_16_w<TREGA>));
+	map(0x0000c2, 0x0000c3).w(FUNC(tmp94c241_device::treg_16_w<TREGB>));
+	map(0x0000c4, 0x0000c5).r(FUNC(tmp94c241_device::cap_r<CAPA>));
+	map(0x0000c6, 0x0000c7).r(FUNC(tmp94c241_device::cap_r<CAPB>));
 	map(0x0000c8, 0x0000c8).rw(FUNC(tmp94c241_device::tamod_r), FUNC(tmp94c241_device::tamod_w));
 	map(0x0000c9, 0x0000c9).rw(FUNC(tmp94c241_device::taffcr_r), FUNC(tmp94c241_device::taffcr_w));
 	map(0x0000d0, 0x0000d0).rw(FUNC(tmp94c241_device::sc0buf_r), FUNC(tmp94c241_device::sc0buf_w));
@@ -1271,7 +1271,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; m_timer_change[0] > 0; m_timer_change[0]-- )
 		{
 			m_timer[0]++; /* UPCOUNTER_0 */
-			if ( m_timer[0] == m_treg_8[0] ) /* TREG0 */
+			if ( m_timer[0] == m_treg_8[TREG0] )
 			{
 				if ( ((m_t01mod >> 6) & 3) == 0 ) /* TO1_OPERATING_MODE == MODE_8BIT_TIMER */
 					m_timer_change[1]++;
@@ -1310,7 +1310,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; m_timer_change[1] > 0; m_timer_change[1]-- )
 		{
 			m_timer[1] += 1; /* UPCOUNTER_1 */
-			if ( m_timer[1] == m_treg_8[1] ) /* TREG1 */
+			if ( m_timer[1] == m_treg_8[TREG1] )
 			{
 				m_timer[1] = 0;
 				m_int_reg[INTET01] |= 0x80;
@@ -1347,7 +1347,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; m_timer_change[2] > 0; m_timer_change[2]-- )
 		{
 			m_timer[2]++; /* UPCOUNTER_2 */
-			if ( m_timer[2] == m_treg_8[2] ) /* TREG2 */
+			if ( m_timer[2] == m_treg_8[TREG2] )
 			{
 				if ( ((m_t23mod >> 6) & 3) == 0 ) /* T23_OPERATING_MODE == MODE_8BIT_TIMER */
 					m_timer_change[3]++;
@@ -1386,7 +1386,7 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; m_timer_change[3] > 0; m_timer_change[3]-- )
 		{
 			m_timer[3]++; /* UPCOUNTER_3 */
-			if ( m_timer[3] == m_treg_8[3] ) /* TREG3 */
+			if ( m_timer[3] == m_treg_8[TREG3] )
 			{
 				m_timer[3] = 0;
 				m_int_reg[INTET23] |= 0x80;
@@ -1423,8 +1423,8 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; m_timer_change[4] > 0; m_timer_change[4]-- )
 		{
 			m_timer16[0]++; /* UPCOUNTER_4 */
-			if ( ((m_timer16[0] == m_treg_16[1] /* TREG5 */) && BIT(m_t4ffcr, 3)) ||
-				((m_timer16[0] == m_treg_16[0] /* TREG4 */) && BIT(m_t4ffcr, 2)) )
+			if ( ((m_timer16[0] == m_treg_16[TREG5]) && BIT(m_t4ffcr, 3)) ||
+				((m_timer16[0] == m_treg_16[TREG4]) && BIT(m_t4ffcr, 2)) )
 			{
 				change_timer_flipflop( 4, FF_INVERT );
 				m_timer16[0] = 0;
@@ -1458,8 +1458,8 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; m_timer_change[5] > 0; m_timer_change[5]-- )
 		{
 			m_timer16[1]++; /* UPCOUNTER_6 */
-			if ( ((m_timer16[1] == m_treg_16[3] /* TREG7 */) && BIT(m_t6ffcr, 3)) ||
-				((m_timer16[1] == m_treg_16[2] /* TREG6 */) && BIT(m_t6ffcr, 2)) )
+			if ( ((m_timer16[1] == m_treg_16[TREG7]) && BIT(m_t6ffcr, 3)) ||
+				((m_timer16[1] == m_treg_16[TREG6]) && BIT(m_t6ffcr, 2)) )
 			{
 				change_timer_flipflop( 6, FF_INVERT );
 				m_timer16[1] = 0;
@@ -1493,8 +1493,8 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; m_timer_change[6] > 0; m_timer_change[6]-- )
 		{
 			m_timer16[2]++; /* UPCOUNTER_8 */
-			if ( ((m_timer16[2] == m_treg_16[5] /* TREG9 */) && BIT(m_t8ffcr, 3)) ||
-				((m_timer16[2] == m_treg_16[4] /* TREG8 */) && BIT(m_t8ffcr, 2)) )
+			if ( ((m_timer16[2] == m_treg_16[TREG9]) && BIT(m_t8ffcr, 3)) ||
+				((m_timer16[2] == m_treg_16[TREG8]) && BIT(m_t8ffcr, 2)) )
 			{
 				change_timer_flipflop( 8, FF_INVERT );
 				m_timer16[2] = 0;
@@ -1527,8 +1527,8 @@ void tmp94c241_device::tlcs900_handle_timers()
 		for( ; m_timer_change[7] > 0; m_timer_change[7]-- )
 		{
 			m_timer16[3]++; /* UPCOUNTER_A */
-			if ( ((m_timer16[3] == m_treg_16[6] /* TREGA */) && BIT(m_taffcr, 2)) ||
-				((m_timer16[3] == m_treg_16[7] /* TREGB */) && BIT(m_taffcr, 3)) )
+			if ( ((m_timer16[3] == m_treg_16[TREGA]) && BIT(m_taffcr, 2)) ||
+				((m_timer16[3] == m_treg_16[TREGB]) && BIT(m_taffcr, 3)) )
 			{
 				change_timer_flipflop( 0xa, FF_INVERT );
 				m_timer16[3] = 0;
