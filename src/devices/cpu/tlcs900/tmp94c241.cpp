@@ -868,37 +868,10 @@ void tmp94c241_device::t16run_w(uint8_t data)
 	}
 }
 
-
-uint8_t tmp94c241_device::cap45_r(offs_t offset)
+template<int timer>
+uint16_t tmp94c241_device::cap_r()
 {
-	if (BIT(offset, 0))
-		return m_t16_cap[(offset >> 1) + 0] >> 8;
-	else
-		return m_t16_cap[(offset >> 1) + 0] & 0x00ff;
-}
-
-uint8_t tmp94c241_device::cap67_r(offs_t offset)
-{
-	if (BIT(offset, 0))
-		return m_t16_cap[(offset >> 1) + 2] >> 8;
-	else
-		return m_t16_cap[(offset >> 1) + 2] & 0x00ff;
-}
-
-uint8_t tmp94c241_device::cap89_r(offs_t offset)
-{
-	if (BIT(offset, 0))
-		return m_t16_cap[(offset >> 1) + 4] >> 8;
-	else
-		return m_t16_cap[(offset >> 1) + 4] & 0x00ff;
-}
-
-uint8_t tmp94c241_device::capab_r(offs_t offset)
-{
-	if (BIT(offset, 0))
-		return m_t16_cap[(offset >> 1) + 6] >> 8;
-	else
-		return m_t16_cap[(offset >> 1) + 6] & 0x00ff;
+	return m_t16_cap[timer];
 }
 
 uint8_t tmp94c241_device::wdmod_r()
@@ -914,7 +887,6 @@ void tmp94c241_device::wdmod_w(uint8_t data)
 void tmp94c241_device::wdcr_w(uint8_t data)
 {
 }
-
 
 uint8_t tmp94c241_device::sc0buf_r()
 {
@@ -1172,23 +1144,27 @@ void tmp94c241_device::internal_mem(address_map &map)
 	map(0x00008b, 0x00008b).w(FUNC(tmp94c241_device::treg3_w));
 	map(0x000090, 0x000091).w(FUNC(tmp94c241_device::treg4_w));
 	map(0x000092, 0x000093).w(FUNC(tmp94c241_device::treg5_w));
-	map(0x000094, 0x000097).r(FUNC(tmp94c241_device::cap45_r));
+	map(0x000094, 0x000095).r(FUNC(tmp94c241_device::cap_r<0>)); // CAP4
+	map(0x000096, 0x000097).r(FUNC(tmp94c241_device::cap_r<1>)); // CAP5
 	map(0x000098, 0x000098).rw(FUNC(tmp94c241_device::t4mod_r), FUNC(tmp94c241_device::t4mod_w));
 	map(0x000099, 0x000099).rw(FUNC(tmp94c241_device::t4ffcr_r), FUNC(tmp94c241_device::t4ffcr_w));
 	map(0x00009e, 0x00009e).rw(FUNC(tmp94c241_device::t16run_r), FUNC(tmp94c241_device::t16run_w));
 	map(0x0000a0, 0x0000a1).w(FUNC(tmp94c241_device::treg6_w));
 	map(0x0000a2, 0x0000a3).w(FUNC(tmp94c241_device::treg7_w));
-	map(0x0000a4, 0x0000a7).r(FUNC(tmp94c241_device::cap67_r));
+	map(0x0000a4, 0x0000a5).r(FUNC(tmp94c241_device::cap_r<2>)); //CAP6
+	map(0x0000a6, 0x0000a7).r(FUNC(tmp94c241_device::cap_r<3>)); //CAP7
 	map(0x0000a8, 0x0000a8).rw(FUNC(tmp94c241_device::t6mod_r), FUNC(tmp94c241_device::t6mod_w));
 	map(0x0000a9, 0x0000a9).rw(FUNC(tmp94c241_device::t6ffcr_r), FUNC(tmp94c241_device::t6ffcr_w));
 	map(0x0000b0, 0x0000b1).w(FUNC(tmp94c241_device::treg8_w));
 	map(0x0000b2, 0x0000b3).w(FUNC(tmp94c241_device::treg9_w));
-	map(0x0000b4, 0x0000b7).r(FUNC(tmp94c241_device::cap89_r));
+	map(0x0000b4, 0x0000b5).r(FUNC(tmp94c241_device::cap_r<4>)); // CAP8
+	map(0x0000b6, 0x0000b7).r(FUNC(tmp94c241_device::cap_r<5>)); // CAP9
 	map(0x0000b8, 0x0000b8).rw(FUNC(tmp94c241_device::t8mod_r), FUNC(tmp94c241_device::t8mod_w));
 	map(0x0000b9, 0x0000b9).rw(FUNC(tmp94c241_device::t8ffcr_r), FUNC(tmp94c241_device::t8ffcr_w));
 	map(0x0000c0, 0x0000c1).w(FUNC(tmp94c241_device::trega_w));
 	map(0x0000c2, 0x0000c3).w(FUNC(tmp94c241_device::tregb_w));
-	map(0x0000c4, 0x0000c7).r(FUNC(tmp94c241_device::capab_r));
+	map(0x0000c4, 0x0000c5).r(FUNC(tmp94c241_device::cap_r<6>)); // CAPA
+	map(0x0000c6, 0x0000c7).r(FUNC(tmp94c241_device::cap_r<7>)); // CAPB
 	map(0x0000c8, 0x0000c8).rw(FUNC(tmp94c241_device::tamod_r), FUNC(tmp94c241_device::tamod_w));
 	map(0x0000c9, 0x0000c9).rw(FUNC(tmp94c241_device::taffcr_r), FUNC(tmp94c241_device::taffcr_w));
 	map(0x0000d0, 0x0000d0).rw(FUNC(tmp94c241_device::sc0buf_r), FUNC(tmp94c241_device::sc0buf_w));

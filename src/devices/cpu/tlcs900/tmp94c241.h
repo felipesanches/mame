@@ -145,10 +145,7 @@ private:
 	void treg9_w(offs_t offset, uint16_t data);
 	void trega_w(offs_t offset, uint16_t data);
 	void tregb_w(offs_t offset, uint16_t data);
-	uint8_t cap45_r(offs_t offset);
-	uint8_t cap67_r(offs_t offset);
-	uint8_t cap89_r(offs_t offset);
-	uint8_t capab_r(offs_t offset);
+	template<int timer> uint16_t cap_r();
 	uint8_t t16run_r();
 	void t16run_w(uint8_t data);
 	uint8_t wdmod_r();
