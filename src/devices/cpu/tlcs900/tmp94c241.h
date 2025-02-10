@@ -184,12 +184,12 @@ private:
 	void iimc_w(uint8_t data);
 	void intclr_w(uint8_t data);
 	void dmav_w(offs_t offset, uint8_t data);
-	void b0cs_w(offs_t offset, uint8_t data);
-	void b1cs_w(offs_t offset, uint8_t data);
-	void b2cs_w(offs_t offset, uint8_t data);
-	void b3cs_w(offs_t offset, uint8_t data);
-	void b4cs_w(offs_t offset, uint8_t data);
-	void b5cs_w(offs_t offset, uint8_t data);
+	void b0cs_w(offs_t offset, uint16_t data, uint16_t mem_mask);
+	void b1cs_w(offs_t offset, uint16_t data, uint16_t mem_mask);
+	void b2cs_w(offs_t offset, uint16_t data, uint16_t mem_mask);
+	void b3cs_w(offs_t offset, uint16_t data, uint16_t mem_mask);
+	void b4cs_w(offs_t offset, uint16_t data, uint16_t mem_mask);
+	void b5cs_w(offs_t offset, uint16_t data, uint16_t mem_mask);
 	uint8_t msar0_r();
 	void msar0_w(offs_t offset, uint8_t data);
 	uint8_t mamr0_r();

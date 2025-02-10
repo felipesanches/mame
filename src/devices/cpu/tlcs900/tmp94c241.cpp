@@ -380,52 +380,34 @@ void tmp94c241_device::dmav_w(offs_t offset, uint8_t data)
 	m_dma_vector[offset] = data;
 }
 
-void tmp94c241_device::b0cs_w(offs_t offset, uint8_t data)
+void tmp94c241_device::b0cs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	if (BIT(offset, 0))
-		m_block_cs[0] = (m_block_cs[0] & 0xff) | (data << 8);
-	else
-		m_block_cs[0] = (m_block_cs[0] & 0xff00) | data;
+	COMBINE_DATA(&m_block_cs[0]);
 }
 
-void tmp94c241_device::b1cs_w(offs_t offset, uint8_t data)
+void tmp94c241_device::b1cs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	if (BIT(offset, 0))
-		m_block_cs[1] = (m_block_cs[1] & 0xff) | (data << 8);
-	else
-		m_block_cs[1] = (m_block_cs[1] & 0xff00) | data;
+	COMBINE_DATA(&m_block_cs[1]);
 }
 
-void tmp94c241_device::b2cs_w(offs_t offset, uint8_t data)
+void tmp94c241_device::b2cs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	if (BIT(offset, 0))
-		m_block_cs[2] = (m_block_cs[2] & 0xff) | (data << 8);
-	else
-		m_block_cs[2] = (m_block_cs[2] & 0xff00) | data;
+	COMBINE_DATA(&m_block_cs[2]);
 }
 
-void tmp94c241_device::b3cs_w(offs_t offset, uint8_t data)
+void tmp94c241_device::b3cs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	if (BIT(offset, 0))
-		m_block_cs[3] = (m_block_cs[3] & 0xff) | (data << 8);
-	else
-		m_block_cs[3] = (m_block_cs[3] & 0xff00) | data;
+	COMBINE_DATA(&m_block_cs[3]);
 }
 
-void tmp94c241_device::b4cs_w(offs_t offset, uint8_t data)
+void tmp94c241_device::b4cs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	if (BIT(offset, 0))
-		m_block_cs[4] = (m_block_cs[4] & 0xff) | (data << 8);
-	else
-		m_block_cs[4] = (m_block_cs[4] & 0xff00) | data;
+	COMBINE_DATA(&m_block_cs[4]);
 }
 
-void tmp94c241_device::b5cs_w(offs_t offset, uint8_t data)
+void tmp94c241_device::b5cs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	if (BIT(offset, 0))
-		m_block_cs[5] = (m_block_cs[5] & 0xff) | (data << 8);
-	else
-		m_block_cs[5] = (m_block_cs[5] & 0xff00) | data;
+	COMBINE_DATA(&m_block_cs[5]);
 }
 
 void tmp94c241_device::mamr0_w(offs_t offset, uint8_t data)
