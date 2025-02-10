@@ -109,10 +109,6 @@ private:
 	template <uint8_t> void port_fc_w(uint8_t data);
 	uint8_t t8run_r();
 	void t8run_w(uint8_t data);
-	void treg0_w(offs_t offset, uint8_t data);
-	void treg1_w(offs_t offset, uint8_t data);
-	void treg2_w(offs_t offset, uint8_t data);
-	void treg3_w(offs_t offset, uint8_t data);
 	uint8_t t01mod_r();
 	void t01mod_w(uint8_t data);
 	uint8_t tffcr_r();
@@ -137,14 +133,8 @@ private:
 	void t6ffcr_w(uint8_t data);
 	uint8_t taffcr_r();
 	void taffcr_w(uint8_t data);
-	void treg4_w(offs_t offset, uint16_t data);
-	void treg5_w(offs_t offset, uint16_t data);
-	void treg6_w(offs_t offset, uint16_t data);
-	void treg7_w(offs_t offset, uint16_t data);
-	void treg8_w(offs_t offset, uint16_t data);
-	void treg9_w(offs_t offset, uint16_t data);
-	void trega_w(offs_t offset, uint16_t data);
-	void tregb_w(offs_t offset, uint16_t data);
+	template<int timer> void treg_8_w(uint8_t data);
+	template<int timer> void treg_16_w(uint16_t data);
 	template<int timer> uint16_t cap_r();
 	uint8_t t16run_r();
 	void t16run_w(uint8_t data);
@@ -252,19 +242,8 @@ private:
 	uint8_t m_taffcr;
 	uint8_t m_trdc;
 
-	uint8_t m_treg0;
-	uint8_t m_treg1;
-	uint8_t m_treg2;
-	uint8_t m_treg3;
-
-	uint16_t m_treg4;
-	uint16_t m_treg5;
-	uint16_t m_treg6;
-	uint16_t m_treg7;
-	uint16_t m_treg8;
-	uint16_t m_treg9;
-	uint16_t m_trega;
-	uint16_t m_tregb;
+	uint8_t m_treg_8[4]; // TREG0 - TREG3
+	uint16_t m_treg_16[8]; //TREG4 - TREGB
 
 	uint16_t  m_t16_cap[8];
 	uint8_t   m_t16run;
