@@ -596,18 +596,18 @@ enum
 void tmp94c241_device::change_timer_flipflop(uint8_t flipflop, uint8_t operation)
 {
 	/* First we update the timer flip-flop */
-	bool* ff_state = &m_timer_flipflops[flipflop];
+	bool &ff_state = m_timer_flipflops[flipflop];
 
 	switch(operation)
 	{
 	case FF_INVERT:
-		*ff_state = !(*ff_state);
+		ff_state = !ff_state;
 		break;
 	case FF_SET:
-		*ff_state = true;
+		ff_state = true;
 		break;
 	case FF_CLEAR:
-		*ff_state = false;
+		ff_state = false;
 		break;
 	default:
 		// invalid operation
@@ -657,33 +657,33 @@ void tmp94c241_device::change_timer_flipflop(uint8_t flipflop, uint8_t operation
 		case 0x1:
 		case 0x7:
 			new_port_value = m_port_latch[PORT_C] & 0xfe;
-			if (*ff_state) new_port_value |= 0x01;
+			if (ff_state) new_port_value |= 0x01;
 			port_w<PORT_C>(new_port_value);
 			break;
 		case 0x3:
 		case 0xb:
 			new_port_value = m_port_latch[PORT_C] & 0xfd;
-			if (*ff_state) new_port_value |= 0x02;
+			if (ff_state) new_port_value |= 0x02;
 			port_w<PORT_C>(new_port_value);
 			break;
 		case 0x4:
 			new_port_value = m_port_latch[PORT_D] & 0xfe;
-			if (*ff_state) new_port_value |= 0x01;
+			if (ff_state) new_port_value |= 0x01;
 			port_w<PORT_D>(new_port_value);
 			break;
 		case 0x6:
 			new_port_value = m_port_latch[PORT_D] & 0xef;
-			if (*ff_state) new_port_value |= 0x10;
+			if (ff_state) new_port_value |= 0x10;
 			port_w<PORT_D>(new_port_value);
 			break;
 		case 0x8:
 			new_port_value = m_port_latch[PORT_E] & 0xfe;
-			if (*ff_state) new_port_value |= 0x01;
+			if (ff_state) new_port_value |= 0x01;
 			port_w<PORT_E>(new_port_value);
 			break;
 		case 0xa:
 			new_port_value = m_port_latch[PORT_E] & 0xef;
-			if (*ff_state) new_port_value |= 0x10;
+			if (ff_state) new_port_value |= 0x10;
 			port_w<PORT_E>(new_port_value);
 			break;
 		}
