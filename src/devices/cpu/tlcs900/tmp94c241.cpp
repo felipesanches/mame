@@ -699,94 +699,59 @@ void tmp94c241_device::wdcr_w(uint8_t data)
 {
 }
 
-uint8_t tmp94c241_device::sc0buf_r()
+template <uint8_t channel>
+uint8_t tmp94c241_device::scNbuf_r()
 {
 	return 0;
 }
 
-void tmp94c241_device::sc0buf_w(uint8_t data)
+template <uint8_t channel>
+void tmp94c241_device::scNbuf_w(uint8_t data)
 {
 	// Fake finish sending data
-	m_int_reg[INTES0] |= 0x80;
+	m_int_reg[channel == 0 ? INTES0 : INTES1] |= 0x80;
 	m_check_irqs = 1;
+	logerror("sc%dbuf write: %02X\n", channel, data);
+	//machine().debugger().debug_break();
 }
 
-uint8_t tmp94c241_device::sc0cr_r()
+template <uint8_t channel>
+uint8_t tmp94c241_device::scNcr_r()
 {
-	uint8_t reg = m_serial_control[0];
+	uint8_t reg = m_serial_control[channel];
 	if (!machine().side_effects_disabled())
-		m_serial_control[0] &= 0xe3;
+		m_serial_control[channel] &= 0xe3;
 	return reg;
 }
 
-void tmp94c241_device::sc0cr_w(uint8_t data)
+template <uint8_t channel>
+void tmp94c241_device::scNcr_w(uint8_t data)
 {
-	m_serial_control[0] = data;
+	m_serial_control[channel] = data;
 }
 
-uint8_t tmp94c241_device::sc0mod_r()
+template <uint8_t channel>
+uint8_t tmp94c241_device::scNmod_r()
 {
-	return m_serial_mode[0];
+	return m_serial_mode[channel];
 }
 
-void tmp94c241_device::sc0mod_w(uint8_t data)
+template <uint8_t channel>
+void tmp94c241_device::scNmod_w(uint8_t data)
 {
-	m_serial_mode[0] = data;
+	m_serial_mode[channel] = data;
 }
 
-uint8_t tmp94c241_device::br0cr_r()
+template <uint8_t channel>
+uint8_t tmp94c241_device::brNcr_r()
 {
-	return m_baud_rate[0];
+	return m_baud_rate[channel];
 }
 
-void tmp94c241_device::br0cr_w(uint8_t data)
+template <uint8_t channel>
+void tmp94c241_device::brNcr_w(uint8_t data)
 {
-	m_baud_rate[0] = data;
-}
-
-uint8_t tmp94c241_device::sc1buf_r()
-{
-	return 0;
-}
-
-void tmp94c241_device::sc1buf_w(uint8_t data)
-{
-	// Fake finish sending data
-	m_int_reg[INTES1] |= 0x80;
-	m_check_irqs = 1;
-}
-
-uint8_t tmp94c241_device::sc1cr_r()
-{
-	uint8_t reg = m_serial_control[1];
-	if (!machine().side_effects_disabled())
-		m_serial_control[1] &= 0xe3;
-	return reg;
-}
-
-void tmp94c241_device::sc1cr_w(uint8_t data)
-{
-	m_serial_control[1] = data;
-}
-
-uint8_t tmp94c241_device::sc1mod_r()
-{
-	return m_serial_mode[1];
-}
-
-void tmp94c241_device::sc1mod_w(uint8_t data)
-{
-	m_serial_mode[1] = data;
-}
-
-uint8_t tmp94c241_device::br1cr_r()
-{
-	return m_baud_rate[1];
-}
-
-void tmp94c241_device::br1cr_w(uint8_t data)
-{
-	m_baud_rate[1] = data;
+	m_baud_rate[channel] = data;
 }
 
 uint8_t tmp94c241_device::ode_r()
@@ -978,14 +943,14 @@ void tmp94c241_device::internal_mem(address_map &map)
 	map(0x0000c6, 0x0000c7).r(FUNC(tmp94c241_device::cap_r<CAPB>));
 	map(0x0000c8, 0x0000c8).rw(FUNC(tmp94c241_device::tamod_r), FUNC(tmp94c241_device::tamod_w));
 	map(0x0000c9, 0x0000c9).rw(FUNC(tmp94c241_device::taffcr_r), FUNC(tmp94c241_device::taffcr_w));
-	map(0x0000d0, 0x0000d0).rw(FUNC(tmp94c241_device::sc0buf_r), FUNC(tmp94c241_device::sc0buf_w));
-	map(0x0000d1, 0x0000d1).rw(FUNC(tmp94c241_device::sc0cr_r), FUNC(tmp94c241_device::sc0cr_w));
-	map(0x0000d2, 0x0000d2).rw(FUNC(tmp94c241_device::sc0mod_r), FUNC(tmp94c241_device::sc0mod_w));
-	map(0x0000d3, 0x0000d3).rw(FUNC(tmp94c241_device::br0cr_r), FUNC(tmp94c241_device::br0cr_w));
-	map(0x0000d4, 0x0000d4).rw(FUNC(tmp94c241_device::sc1buf_r), FUNC(tmp94c241_device::sc1buf_w));
-	map(0x0000d5, 0x0000d5).rw(FUNC(tmp94c241_device::sc1cr_r), FUNC(tmp94c241_device::sc1cr_w));
-	map(0x0000d6, 0x0000d6).rw(FUNC(tmp94c241_device::sc1mod_r), FUNC(tmp94c241_device::sc1mod_w));
-	map(0x0000d7, 0x0000d7).rw(FUNC(tmp94c241_device::br1cr_r), FUNC(tmp94c241_device::br1cr_w));
+	map(0x0000d0, 0x0000d0).rw(FUNC(tmp94c241_device::scNbuf_r<0>), FUNC(tmp94c241_device::scNbuf_w<0>));
+	map(0x0000d1, 0x0000d1).rw(FUNC(tmp94c241_device::scNcr_r<0>), FUNC(tmp94c241_device::scNcr_w<0>));
+	map(0x0000d2, 0x0000d2).rw(FUNC(tmp94c241_device::scNmod_r<0>), FUNC(tmp94c241_device::scNmod_w<0>));
+	map(0x0000d3, 0x0000d3).rw(FUNC(tmp94c241_device::brNcr_r<0>), FUNC(tmp94c241_device::brNcr_w<0>));
+	map(0x0000d4, 0x0000d4).rw(FUNC(tmp94c241_device::scNbuf_r<1>), FUNC(tmp94c241_device::scNbuf_w<1>));
+	map(0x0000d5, 0x0000d5).rw(FUNC(tmp94c241_device::scNcr_r<1>), FUNC(tmp94c241_device::scNcr_w<1>));
+	map(0x0000d6, 0x0000d6).rw(FUNC(tmp94c241_device::scNmod_r<1>), FUNC(tmp94c241_device::scNmod_w<1>));
+	map(0x0000d7, 0x0000d7).rw(FUNC(tmp94c241_device::brNcr_r<1>), FUNC(tmp94c241_device::brNcr_w<1>));
 	map(0x0000e0, 0x0000f0).rw(FUNC(tmp94c241_device::inte_r), FUNC(tmp94c241_device::inte_w));
 	map(0x0000f6, 0x0000f6).w(FUNC(tmp94c241_device::iimc_w));
 	map(0x0000f7, 0x0000f7).rw(FUNC(tmp94c241_device::intnmwdt_r), FUNC(tmp94c241_device::intnmwdt_w));
