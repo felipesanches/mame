@@ -189,6 +189,7 @@ NOTES:
 #include "esqpanel.h"
 #include "sound/es5503.h"
 #include "speaker.h"
+#include "esq1.lh"
 
 
 #define WD1772_TAG      "wd1772"
@@ -649,6 +650,8 @@ void esq1_state::esq1(machine_config &config)
 	m_es5503->add_route(5, "filters", 1.0, 5);
 	m_es5503->add_route(6, "filters", 1.0, 6);
 	m_es5503->add_route(7, "filters", 1.0, 7);
+
+	config.set_default_layout(layout_esq1);
 }
 
 void esq1_state::sq80(machine_config &config)
