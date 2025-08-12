@@ -398,6 +398,7 @@ public:
 		m_filters(*this, "filters"),
 		m_fdc(*this, WD1772_TAG),
 		m_panel(*this, "panel"),
+		m_sliders(*this, "slider_p%d", 1),
 		m_mdout(*this, "mdout"),
 		m_es5503(*this, "es5503"),
 		m_es5503_rom(*this, "es5503")
@@ -416,6 +417,7 @@ private:
 	required_device<esq1_filters> m_filters;
 	optional_device<wd1772_device> m_fdc;
 	optional_device<esqpanel2x40_device> m_panel;
+	required_ioport_array<2> m_sliders;
 	optional_device<midi_port_device> m_mdout;
 	required_device<es5503_device> m_es5503;
 	required_region_ptr<uint8_t> m_es5503_rom;
@@ -461,6 +463,8 @@ void esq1_state::sq80_es5503_map(address_map &map)
 
 uint8_t esq1_state::esq1_adc_read()
 {
+	if (m_adc_target == 0) return m_sliders[1]->read() * 255.0/100;
+
 	return m_adc_value[m_adc_target];
 }
 
@@ -689,6 +693,12 @@ void esq1_state::sq80(machine_config &config)
 }
 
 static INPUT_PORTS_START( esq1 )
+	PORT_START("slider_p1")
+	PORT_ADJUSTER(100, "Volume")
+
+	PORT_START("slider_p2")
+	PORT_ADJUSTER(100, "Data Entry")
+
 	PORT_START("COL0")
 	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_Q) PORT_CHAR('q') PORT_CHAR('Q') PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(esq1_state::key_stroke), 0x84) PORT_NAME("SEQ")
 	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_CODE(KEYCODE_W) PORT_CHAR('w') PORT_CHAR('W') PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(esq1_state::key_stroke), 0x85) PORT_NAME("CART A")
