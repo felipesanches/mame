@@ -7,6 +7,7 @@
 ******************************************************************************/
 
 #include "emu.h"
+#include "bus/technics/hdae5000.h"
 #include "cpu/tlcs900/tmp94c241.h"
 #include "imagedev/floppy.h"
 #include "machine/gen_latch.h"
@@ -96,6 +97,8 @@ public:
 		, m_subcpu_latch(*this, "subcpu_latch")
 		, m_fdc(*this, "fdc")
 		, m_com_select(*this, "COM_SELECT")
+		, m_extension(*this, "extension")
+		, m_extension_view(*this, "extension_view")
 		, m_CPL_SEG(*this, "CPL_SEG%u", 0U)
 		, m_CPR_SEG(*this, "CPR_SEG%u", 0U)
 		, m_checking_device_led_cn11(*this, "checking_device_led_cn11")
@@ -116,6 +119,9 @@ private:
 	required_device<generic_latch_8_device> m_subcpu_latch;
 	required_device<upd72067_device> m_fdc;
 	required_ioport m_com_select;
+	required_device<kn5000_extension_device> m_extension;
+	memory_view m_extension_view;
+
 	required_ioport_array<11> m_CPL_SEG; // buttons on "Control Panel Left" PCB
 	required_ioport_array<11> m_CPR_SEG; // buttons on "Control Panel Right" PCB
 	output_finder<> m_checking_device_led_cn11;
@@ -150,7 +156,9 @@ void kn5000_state::maincpu_mem(address_map &map)
 	map(0x1703b0, 0x1703df).m("vga", FUNC(mn89304_vga_device::io_map)); // LCD controller @ IC206
 	map(0x1a0000, 0x1bffff).rw("vga", FUNC(mn89304_vga_device::mem_linear_r), FUNC(mn89304_vga_device::mem_linear_w));
 	map(0x1e0000, 0x1fffff).ram(); // 1Mbit SRAM @ IC21 (CS0)  Note: I think this is the message "ERROR in back-up SRAM"
-	map(0x200000, 0x2fffff).noprw(); // Extension board goes here.
+	map(0x200000, 0x2fffff).view(m_extension_view);
+	m_extension_view[0](0x200000, 0x2fffff).noprw();
+	m_extension_view[1](0x200000, 0x27ffff).ram(); // optional hsram: 2 * 256k bytes Static RAM @ IC5, IC6 (CS5)
 	map(0x300000, 0x3fffff).rom().region("custom_data", 0); // 8MBit FLASH ROM @ IC19 (CS5)
 	map(0x400000, 0x7fffff).rom().region("rhythm_data", 0); // 32MBit ROM @ IC14 (A22=1 and CS5)
 	//map(0x800000, 0x82ffff).rom().region("subprogram", 0); // not sure yet in which chip this is stored, but I suspect it should be IC19
@@ -619,6 +627,16 @@ void kn5000_state::machine_start()
 	save_item(NAME(m_mstat));
 	save_item(NAME(m_sstat));
 
+	if (m_extension)
+	{
+		m_extension->rom_map(m_extension_view[1], 0x280000, 0x2fffff);
+		m_extension_view.select(1);
+	}
+	else
+	{
+		m_extension_view.select(0);
+	}
+
 	m_checking_device_led_cn11.resolve();
 	m_checking_device_led_cn12.resolve();
 	m_CPL_LED.resolve();
@@ -775,6 +793,11 @@ void kn5000_state::kn5000(machine_config &config)
 	// Interrupt 7: FDC.I/O
 
 	FLOPPY_CONNECTOR(config, "fdc:0", kn5000_floppies, "35dd", floppy_image_device::default_mfm_floppy_formats).enable_sound(true);
+
+    /* extension port */
+	KN5000_EXTENSION(config, m_extension, 16_MHz_XTAL / 16); //FIXME: which clock signal should be passed to the extension port?
+	m_extension->irq_callback().set_inputline(m_maincpu, TLCS900_INT9);
+	m_extension->option_add("hdae5000", HDAE5000);
 
 	/* video hardware */
 	// LCD Controller MN89304 @ IC206 24_MHz_XTAL
