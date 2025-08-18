@@ -1,5 +1,5 @@
 // license:BSD-3-Clause
-// copyright-holders:Antoine Mine, Olivier Galibert, Felipe Sanches
+// copyright-holders:Olivier Galibert, Felipe Sanches
 //
 // HD-AE5000, Hard Disk & Audio Extension for Technics KN5000 emulation
 //
@@ -9,42 +9,109 @@
 
 #include "emu.h"
 #include "hdae5000.h"
+
 #include "bus/ata/hdd.h"
 #include "machine/i8255.h"
 
 namespace {
 
-class hdae5000_device : public device_t, public kn5000_extension_interface
+class hdae5000_device : public device_t, public device_kn5000_extension_interface
 {
 public:
 	static constexpr feature_type unemulated_features() { return feature::DISK | feature::SOUND; }
 
-	hdae5000_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
+	hdae5000_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 
-	virtual void rom_map(address_map &map) override;
-	virtual void io_map(address_map &map) override;
+	virtual void program_map(address_space_installer &space) override;
+	virtual void io_map(address_space_installer &space) override;
 
 protected:
-	virtual void device_add_mconfig(machine_config &config) override;
-	virtual void device_start() override;
-	virtual void device_reset() override;
-	virtual const tiny_rom_entry *device_rom_region() const override;
+	virtual void device_start() override ATTR_COLD;
+	virtual void device_reset() override ATTR_COLD;
+	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
+
+	virtual const tiny_rom_entry *device_rom_region() const override ATTR_COLD;
 
 private:
-	uint8_t ata_r(offs_t offset);
-	void ata_w(offs_t offset, uint8_t data);
-
 	required_device<ide_hdd_device> m_hdd;
 	required_device<i8255_device> m_ppi;
 	required_memory_region m_rom;
+
+	void card_program_map(address_map &map) ATTR_COLD;
+	void card_io_map(address_map &map) ATTR_COLD;
+
+	uint8_t ata_r(offs_t offset);
+	void ata_w(offs_t offset, uint8_t data);
 };
 
 hdae5000_device::hdae5000_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock) :
-	device_t(mconfig, HDAE5000, tag, owner, clock)
-	, kn5000_extension_interface(mconfig, *this)
-	, m_hdd(*this, "hdd")
-	, m_ppi(*this, "ppi")
-	, m_rom(*this, "rom")
+	device_t(mconfig, HDAE5000, tag, owner, clock),
+	device_kn5000_extension_interface(mconfig, *this),
+	m_hdd(*this, "hdd"),
+	m_ppi(*this, "ppi"),
+	m_rom(*this, "rom")
+{
+}
+
+void hdae5000_device::program_map(address_space_installer &space)
+{
+	space.install_device(0x200000, 0x2fffff, *this, &hdae5000_device::card_program_map);
+}
+
+void hdae5000_device::io_map(address_space_installer &space)
+{
+	space.install_device(0x000000, 0x16ffff, *this, &hdae5000_device::card_io_map);
+}
+
+void hdae5000_device::card_program_map(address_map &map)
+{
+	map(0x00000, 0x7ffff).ram(); // hsram: 2 * 256k bytes Static RAM @ IC5, IC6 (CS5)
+	map(0x80000, 0xfffff).rom().region(m_rom, 0);
+}
+
+uint8_t hdae5000_device::ata_r(offs_t offset)
+{
+	return 0; //TODO: FIXME!
+}
+
+void hdae5000_device::ata_w(offs_t offset, uint8_t data)
+{
+}
+
+/*
+PPI pin 2 /CS = CN6 pin 59 PPIFCS
+ATA pin 31 INTRQ = CN6 pin 58 HDINT
+
+*/
+void hdae5000_device::card_io_map(address_map &map)
+{
+	map(0x130000, 0x13001f).rw(FUNC(hdae5000_device::ata_r), FUNC(hdae5000_device::ata_w)); // ATA IDE at CN2
+	map(0x160000, 0x160007).umask16(0x00ff).rw(m_ppi, FUNC(i8255_device::read), FUNC(i8255_device::write)); // parallel port interface (NEC uPD71055) IC9
+}
+
+void hdae5000_device::device_add_mconfig(machine_config &config)
+{
+	IDE_HARDDISK(config, m_hdd, 0);
+
+	/* Optional Parallel Port */
+	I8255(config, m_ppi); // actual chip is a NEC uPD71055 @ IC9
+
+	// Port A: DB15 connector
+	// m_ppi->in_pa_callback().set(FUNC(?_device::ppi_in_a));
+	// m_ppi->out_pb_callback().set(FUNC(?_device::ppi_out_b));
+	// m_ppi->in_pc_callback().set(FUNC(?_device::ppi_in_c));
+	// m_ppi->out_pc_callback().set(FUNC(?_device::ppi_out_c));
+
+	// We may later add this for the auxiliary audio output
+	// provided by this extension board:
+	// SPEAKER(config, "mono").front_center();
+}
+
+void hdae5000_device::device_start()
+{
+}
+
+void hdae5000_device::device_reset()
 {
 }
 
@@ -66,63 +133,11 @@ ROM_START(hdae5000)
 	ROMX_LOAD("hd-ae5000_v2_06i.ic4", 0x000000, 0x80000, CRC(836be80a) SHA1(c4da28f0ad16b1288774af761b3729142e8050b3), ROM_BIOS(3))
 ROM_END
 
-void hdae5000_device::rom_map(address_map &map)
-{
-	map(0x00000, 0x7ffff).rom().region(m_rom, 0);
-}
-
-uint8_t hdae5000_device::ata_r(offs_t offset)
-{
-	return 0; //TODO: FIXME!
-}
-
-void hdae5000_device::ata_w(offs_t offset, uint8_t data)
-{
-}
-
-/*
-PPI pin 2 /CS = CN6 pin 59 PPIFCS
-ATA pin 31 INTRQ = CN6 pin 58 HDINT
-
-*/
-void hdae5000_device::io_map(address_map &map)
-{
-	map(0x130000, 0x13001f).rw(FUNC(hdae5000_device::ata_r), FUNC(hdae5000_device::ata_w)); // ATA IDE at CN2
-	map(0x160000, 0x160007).umask16(0x00ff).rw(m_ppi, FUNC(i8255_device::read), FUNC(i8255_device::write)); // parallel port interface (NEC uPD71055) IC9
-}
-
 const tiny_rom_entry *hdae5000_device::device_rom_region() const
 {
 	return ROM_NAME(hdae5000);
 }
 
-void hdae5000_device::device_add_mconfig(machine_config &config)
-{
-	IDE_HARDDISK(config, m_hdd, 0);
-
-	/* Optional Parallel Port */
-	I8255(config, m_ppi); // actual chip is a NEC uPD71055 @ IC9 on the HD-AE5000 board
-
-	// Port A: DB15 connector
-
-	// m_ppi->in_pa_callback().set(FUNC(?_device::ppi_in_a));
-	// m_ppi->out_pb_callback().set(FUNC(?_device::ppi_out_b));
-	// m_ppi->in_pc_callback().set(FUNC(?_device::ppi_in_c));
-	// m_ppi->out_pc_callback().set(FUNC(?_device::ppi_out_c));
-
-//  we may later add this, for the auxiliary audio output provided by this extension board:
-// 	SPEAKER(config, "is it mono or stereo ?").front_center();
-}
-
-void hdae5000_device::device_start()
-{
-//	save_item(NAME(m_...));
-}
-
-void hdae5000_device::device_reset()
-{
-}
-
 } // anonymous namespace
 
-DEFINE_DEVICE_TYPE_PRIVATE(HDAE5000, kn5000_extension_interface, hdae5000_device, "hdae5000", "HD-AE5000, Hard Disk & Audio Extension")
+DEFINE_DEVICE_TYPE_PRIVATE(HDAE5000, device_kn5000_extension_interface, hdae5000_device, "hdae5000", "HD-AE5000, Hard Disk & Audio Extension")
