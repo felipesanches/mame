@@ -623,7 +623,6 @@ void kn5000_state::machine_start()
 	save_item(NAME(m_sstat));
 
 	m_extension->program_map(m_maincpu->space(AS_PROGRAM));
-	m_extension->io_map(m_maincpu->space(AS_IO));
 
 	m_checking_device_led_cn11.resolve();
 	m_checking_device_led_cn12.resolve();

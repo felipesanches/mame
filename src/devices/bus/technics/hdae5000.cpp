@@ -23,7 +23,6 @@ public:
 	hdae5000_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 
 	virtual void program_map(address_space_installer &space) override;
-	virtual void io_map(address_space_installer &space) override;
 
 protected:
 	virtual void device_start() override ATTR_COLD;
@@ -36,9 +35,11 @@ private:
 	required_device<ide_hdd_device> m_hdd;
 	required_device<i8255_device> m_ppi;
 	required_memory_region m_rom;
+	memory_share_creator<uint16_t> m_ram;
 
-	void card_program_map(address_map &map) ATTR_COLD;
-	void card_io_map(address_map &map) ATTR_COLD;
+	void card_rom_map(address_map &map) ATTR_COLD;
+	void card_ata_map(address_map &map) ATTR_COLD;
+	void card_ppi_map(address_map &map) ATTR_COLD;
 
 	uint8_t ata_r(offs_t offset);
 	void ata_w(offs_t offset, uint8_t data);
@@ -49,23 +50,24 @@ hdae5000_device::hdae5000_device(const machine_config &mconfig, const char *tag,
 	device_kn5000_extension_interface(mconfig, *this),
 	m_hdd(*this, "hdd"),
 	m_ppi(*this, "ppi"),
-	m_rom(*this, "rom")
+	m_rom(*this, "rom"),
+	m_ram(*this, "ram", 0x80000, ENDIANNESS_LITTLE)
 {
 }
+
+//	map(0x130000, 0x13001f).rw(FUNC(hdae5000_device::ata_r), FUNC(hdae5000_device::ata_w)); // ATA IDE at CN2
+//	map(0x160000, 0x160007).umask16(0x00ff).rw(m_ppi, FUNC(i8255_device::read), FUNC(i8255_device::write)); // parallel port interface (NEC uPD71055) IC9
 
 void hdae5000_device::program_map(address_space_installer &space)
 {
-	space.install_device(0x200000, 0x2fffff, *this, &hdae5000_device::card_program_map);
+	space.install_device(0x130000, 0x13001f, *this, &hdae5000_device::card_ata_map);
+	space.install_device(0x160000, 0x160007, *this, &hdae5000_device::card_ppi_map);
+	space.install_device(0x200000, 0x2fffff, *this, &hdae5000_device::card_rom_map);
 }
 
-void hdae5000_device::io_map(address_space_installer &space)
+void hdae5000_device::card_rom_map(address_map &map)
 {
-	space.install_device(0x000000, 0x16ffff, *this, &hdae5000_device::card_io_map);
-}
-
-void hdae5000_device::card_program_map(address_map &map)
-{
-	map(0x00000, 0x7ffff).ram(); // hsram: 2 * 256k bytes Static RAM @ IC5, IC6 (CS5)
+	map(0x00000, 0x7ffff).ram().share("ram"); // hsram: 2 * 256k bytes Static RAM @ IC5, IC6 (CS5)
 	map(0x80000, 0xfffff).rom().region(m_rom, 0);
 }
 
@@ -83,10 +85,14 @@ PPI pin 2 /CS = CN6 pin 59 PPIFCS
 ATA pin 31 INTRQ = CN6 pin 58 HDINT
 
 */
-void hdae5000_device::card_io_map(address_map &map)
+void hdae5000_device::card_ppi_map(address_map &map)
 {
-	map(0x130000, 0x13001f).rw(FUNC(hdae5000_device::ata_r), FUNC(hdae5000_device::ata_w)); // ATA IDE at CN2
-	map(0x160000, 0x160007).umask16(0x00ff).rw(m_ppi, FUNC(i8255_device::read), FUNC(i8255_device::write)); // parallel port interface (NEC uPD71055) IC9
+	map(0x0000, 0x0007).umask16(0x00ff).rw(m_ppi, FUNC(i8255_device::read), FUNC(i8255_device::write)); // parallel port interface (NEC uPD71055) IC9
+}
+
+void hdae5000_device::card_ata_map(address_map &map)
+{
+	map(0x0000, 0x001f).rw(FUNC(hdae5000_device::ata_r), FUNC(hdae5000_device::ata_w)); // ATA IDE at CN2
 }
 
 void hdae5000_device::device_add_mconfig(machine_config &config)

@@ -26,7 +26,6 @@ public:
 	kn5000_extension_connector(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
 	void program_map(address_space_installer &space);
-	void io_map(address_space_installer &space);
 	auto irq_callback() { return m_write_irq.bind(); }
 	void irq_w(int state) { m_write_irq(state); }
 
@@ -43,7 +42,6 @@ public:
 	virtual ~device_kn5000_extension_interface();
 
 	virtual void program_map(address_space_installer &space) = 0;
-	virtual void io_map(address_space_installer &space) = 0;
 
 //protected:
 //	DECLARE_WRITE_LINE_MEMBER(irq_w);

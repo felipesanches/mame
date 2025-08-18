@@ -30,13 +30,6 @@ void kn5000_extension_connector::program_map(address_space_installer &space)
 		card->program_map(space);
 }
 
-void kn5000_extension_connector::io_map(address_space_installer &space)
-{
-	auto card = get_card_device();
-	if(card)
-		card->io_map(space);
-}
-
 void kn5000_extension_intf(device_slot_interface &device)
 {
 	device.option_add("hdae5000", HDAE5000);
