@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!--
 license:CC0-1.0
-copyright-holders:Felipe Sanches, Nicoly Sampaio
+copyright-holders:Felipe Sanches, Nicoly Sampaio, Felipe Nascimento
 
 Front panel of the Patinho Feio mini-computer with clickable buttons, switches and lamps.
 -->
@@ -50,6 +50,10 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 	</element>
 	<element name="sqr_button_surrond_border">
 		<rect><color red="0" green="0" blue="0" /></rect>
+	</element>
+
+	<element name="circle">
+		<disk><color red="0" green="0" blue="0" /></disk>
 	</element>
 
 	<element name="line">
@@ -514,6 +518,81 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 			<bounds x="32" y="527" width="545" height="4" />
 		</element>
 
+<!-- define 'FASES DE OPERACAO' horizontal lines -->
+		<element ref="line">
+			<bounds x="72" y="568" width="95" height="1" />
+		</element>
+		
+		<element ref="line">
+			<bounds x="422" y="568" width="95" height="1" />
+		</element>
+
+		<element ref="line">
+			<bounds x="72" y="617" width="56" height="1" />
+		</element>
+
+		<element ref="line">
+			<bounds x="194" y="617" width="56" height="1" />
+		</element>
+
+		<element ref="line">
+			<bounds x="250" y="617" width="44" height="1" />
+		</element>
+
+		<element ref="line">
+			<bounds x="382" y="617" width="44" height="1" />
+		</element>
+
+		<element ref="line">
+			<bounds x="428" y="617" width="8" height="1" />
+		</element>
+
+		<element ref="line">
+			<bounds x="509" y="617" width="8" height="1" />
+		</element>
+
+		<repeat count="5">
+			<param name="line1_x" start="72" increment="89"/>
+			<param name="line2_x" start="127" increment="89"/>
+			<element ref="line">
+				<bounds x="~line1_x~" y="634" width="33" height="1" />
+			</element>
+			<element ref="line">
+				<bounds x="~line2_x~" y="634" width="34" height="1" />
+			</element>
+			<element ref="line">
+				<bounds x="~line1_x~" y="669" width="89" height="1" />
+			</element>
+		</repeat>
+
+		<element ref="line">
+			<bounds x="118" y="706" width="133" height="1" />
+		</element>
+
+		<element ref="line">
+			<bounds x="336" y="706" width="133" height="1" />
+		</element>
+
+		<element ref="line">
+			<bounds x="118" y="726" width="77" height="1" />
+		</element>
+
+		<element ref="line">
+			<bounds x="217" y="726" width="77" height="1" />
+		</element>
+
+		<element ref="line">
+			<bounds x="293" y="726" width="77" height="1" />
+		</element>
+
+		<element ref="line">
+			<bounds x="392" y="726" width="77" height="1" />
+		</element>
+
+		<element ref="line">
+			<bounds x="72" y="760" width="445" height="1" />
+		</element>
+
 <!-- define vertical lines -->
 		<element ref="line">
 			<bounds x="32" y="97" width="4" height="430" />
@@ -541,6 +620,104 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 
 		<element ref="line">
 			<bounds x="1246" y="38" width="4" height="295" />
+		</element>
+
+<!-- define 'FASES DE OPERACAO' vertical lines -->
+		<element ref="line">
+			<bounds x="72" y="568" width="1" height="49" />
+		</element>
+
+		<element ref="line">
+			<bounds x="517" y="568" width="1" height="49" />
+		</element>
+
+		<element ref="line">
+			<bounds x="72" y="617" width="1" height="17" />
+		</element>
+
+		<element ref="line">
+			<bounds x="250" y="617" width="1" height="17" />
+		</element>
+
+		<element ref="line">
+			<bounds x="428" y="617" width="1" height="17" />
+		</element>
+
+		<element ref="line">
+			<bounds x="517" y="617" width="1" height="17" />
+		</element>
+
+		<repeat count="6">
+			<param name="line1_x" start="72" increment="89"/>
+			<element ref="line">
+				<bounds x="~line1_x~" y="634" width="1" height="35" />
+			</element>
+		</repeat>
+
+		<element ref="line">
+			<bounds x="72" y="669" width="1" height="91" />
+		</element>
+
+		<element ref="line">
+			<bounds x="517" y="669" width="1" height="91" />
+		</element>
+
+		<element ref="line">
+			<bounds x="118" y="706" width="1" height="20" />
+		</element>
+
+		<element ref="line">
+			<bounds x="469" y="706" width="1" height="20" />
+		</element>
+
+		<element ref="line">
+			<bounds x="118" y="726" width="1" height="34" />
+		</element>
+
+		<element ref="line">
+			<bounds x="293" y="726" width="1" height="34" />
+		</element>
+
+		<element ref="line">
+			<bounds x="469" y="726" width="1" height="34" />
+		</element>
+
+
+<!-- define circles -->
+		<element ref="circle">
+			<bounds x="573" y="74" width="11" height="11" />
+		</element>
+
+		<element ref="circle">
+			<bounds x="1241" y="74" width="11" height="11" />
+		</element>
+
+		<element ref="circle">
+			<bounds x="106" y="190" width="11" height="11" />
+		</element>
+
+		<element ref="circle">
+			<bounds x="573" y="190" width="11" height="11" />
+		</element>
+
+		<element ref="circle">
+			<bounds x="1241" y="190" width="11" height="11" />
+		</element>
+
+		<element ref="circle">
+			<bounds x="106" y="310" width="11" height="11" />
+		</element>
+
+		<element ref="circle">
+			<bounds x="573" y="310" width="11" height="11" />
+		</element>
+
+		<element ref="circle">
+			<bounds x="573" y="430" width="11" height="11" />
+		</element>
+
+		<element ref="circle">
+			<bounds x="573" y="482" width="11" height="11" />
 		</element>
 
 		<element ref="ula"><bounds x="875" y="278" width="81" height="104" /></element>
