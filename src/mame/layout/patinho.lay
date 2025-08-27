@@ -682,6 +682,105 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 			<bounds x="469" y="726" width="1" height="34" />
 		</element>
 
+<!-- define 'ENTRADA MANUAL DE DADOS' horizontal lines -->
+
+		<repeat count="12">
+			<param name="line1_x" start="123" increment="85"/>
+			<element ref="line">
+				<bounds x="~line1_x~" y="845" width="86" height="1" />
+			</element>
+		</repeat>
+
+		<element ref="line">
+			<bounds x="123" y="788" width="32" height="4" />
+		</element>
+		<element ref="line">
+			<bounds x="176" y="788" width="64" height="4" />
+		</element>
+		<element ref="line">
+			<bounds x="262" y="788" width="64" height="4" />
+		</element>
+		<element ref="line">
+			<bounds x="346" y="788" width="32" height="4" />
+		</element>
+
+		<element ref="line">
+			<bounds x="378" y="788" width="32" height="1" />
+		</element>
+		<element ref="line">
+			<bounds x="432" y="788" width="64" height="1" />
+		</element>
+		<element ref="line">
+			<bounds x="517" y="788" width="64" height="1" />
+		</element>
+		<element ref="line">
+			<bounds x="602" y="788" width="32" height="1" />
+		</element>
+
+		<element ref="line">
+			<bounds x="633" y="788" width="32" height="4" />
+		</element>
+		<element ref="line">
+			<bounds x="687" y="788" width="64" height="4" />
+		</element>
+		<element ref="line">
+			<bounds x="772" y="788" width="64" height="4" />
+		</element>
+		<element ref="line">
+			<bounds x="857" y="788" width="32" height="4" />
+		</element>
+
+		<element ref="line">
+			<bounds x="889" y="788" width="32" height="1" />
+		</element>
+		<element ref="line">
+			<bounds x="942" y="788" width="64" height="1" />
+		</element>
+		<element ref="line">
+			<bounds x="1027" y="788" width="64" height="1" />
+		</element>
+		<element ref="line">
+			<bounds x="1112" y="788" width="32" height="1" />
+		</element>
+
+		<element ref="line">
+			<bounds x="123" y="884" width="342" height="4" />
+		</element>
+		<element ref="line">
+			<bounds x="803" y="884" width="342" height="4" />
+		</element>
+
+<!-- define 'ENTRADA MANUAL DE DADOS' vertical lines -->
+		<repeat count="13">
+			<param name="line1_x" start="123" increment="85"/>
+			<element ref="line">
+				<bounds x="~line1_x~" y="788" width="1" height="58" />
+			</element>
+		</repeat>
+
+		<element ref="line">
+			<bounds x="123" y="788" width="4" height="100" />
+		</element>
+		<element ref="line">
+			<bounds x="1143" y="788" width="4" height="100" />
+		</element>
+
+		<element ref="line">
+			<bounds x="376" y="788" width="4" height="10" />
+		</element>
+		<element ref="line">
+			<bounds x="632" y="788" width="4" height="10" />
+		</element>
+		<element ref="line">
+			<bounds x="887" y="788" width="4" height="10" />
+		</element>
+
+		<element ref="line">
+			<bounds x="462" y="875" width="4" height="12" />
+		</element>
+		<element ref="line">
+			<bounds x="803" y="875" width="4" height="12" />
+		</element>
 
 <!-- define circles -->
 		<element ref="circle">
