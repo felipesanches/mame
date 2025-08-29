@@ -606,7 +606,7 @@ void esq1_state::duart_output(uint8_t data)
 
 	m_seq_bank = (data & 0x8) ? 0x8000 : 0x0000;
 	m_seq_bank += ((data>>1) & 3) * 0x2000;
-	LOG("seqram_bank = %x\n", state->m_seq_bank);
+	LOG("seqram_bank = %x\n", m_seq_bank);
 }
 
 void esq1_state::send_through_panel(uint8_t data)
