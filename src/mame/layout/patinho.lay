@@ -12,7 +12,7 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		<image><data><![CDATA[
 			<svg width="210" height="270">
 				<path
-					fill="#a11022" stroke="#000" strokeWidth="10"
+					fill="#a11022" stroke="#000" stroke-width="10"
 					d="m 5,5 v 120 l 85,10 -85,10 v 120 l 200,-40 v -180 z"
 				/>
 			</svg>
@@ -23,7 +23,7 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		<image><data><![CDATA[
 			<svg width="78" height="70">
 				<path
-					fill="#598162" stroke="#000" strokeWidth="1"
+					fill="#598162" stroke="#000" stroke-width="1"
 					d="m 38,0 v 16.5 m -37.5,0 v 53 h 77 v -53 z"/>
 				</svg>
 		]]></data></image>
@@ -33,7 +33,7 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		<image><data><![CDATA[
 			<svg width="383" height="34">
 				<path
-					fill="none" stroke="#000" strokeWidth="1"
+					fill="none" stroke="#000" stroke-width="1"
 					d="m 8.5,0.5 h -8 v 33 h 78 m 211,0 h 93 v -33 h -8"/>
 				</svg>
 		]]></data></image>
@@ -43,7 +43,7 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		<image><data><![CDATA[
 			<svg width="238" height="34">
 				<path
-					fill="none" stroke="#000" strokeWidth="1"
+					fill="none" stroke="#000" stroke-width="1"
 					d="m 8.5,0.5 h -8 v 33 h 15 m 207,0 h 15 v -33 h -8"/>
 				</svg>
 		]]></data></image>
@@ -53,7 +53,7 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		<image><data><![CDATA[
 			<svg width="351" height="34">
 				<path
-					fill="none" stroke="#000" strokeWidth="1"
+					fill="none" stroke="#000" stroke-width="1"
 					d="m 8.5,0.5 h -8 v 33 h 15 m 320,0 h 15 v -33 h -8"/>
 				</svg>
 		]]></data></image>
@@ -63,7 +63,7 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		<image><data><![CDATA[
 			<svg width="405" height="147">
 				<path
-					style="fill:none;stroke:#000000;stroke-width:1"
+					fill="none" stroke="#000" stroke-width="1"
 					d="
 					M 213.5,30.5 V 0.5 h 149 V 12.5 
 					m -169,18 V 0.5 H 58.5 V 13.5 
