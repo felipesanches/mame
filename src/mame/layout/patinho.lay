@@ -25,7 +25,7 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 				<path
 					fill="#598162" stroke="#000" stroke-width="1"
 					d="m 38,0 v 16.5 m -37.5,0 v 53 h 77 v -53 z"/>
-				</svg>
+			</svg>
 		]]></data></image>
 	</element>
 
@@ -37,7 +37,7 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 					d="
 					m 8.5,0.5 h -8 v 33 h 78
 					m 211,0 h 93 v -33 h -8"/>
-				</svg>
+			</svg>
 		]]></data></image>
 	</element>
 
@@ -49,7 +49,7 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 					d="
 					m 8.5,0.5 h -8 v 33 h 15
 					m 207,0 h 15 v -33 h -8"/>
-				</svg>
+			</svg>
 		]]></data></image>
 	</element>
 
@@ -61,7 +61,7 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 					d="
 					m 8.5,0.5 h -8 v 33 h 15
 					m 320,0 h 15 v -33 h -8"/>
-				</svg>
+			</svg>
 		]]></data></image>
 	</element>
 
@@ -92,6 +92,62 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 				<path
 					fill="none" stroke="#000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" 
 					d="m 14,91 h -12 v -47 h 182 v 47 h -12"/>
+			</svg>
+		]]></data></image>
+	</element>
+
+	<element name="diagram_06">
+		<image><data><![CDATA[
+			<svg width="226" height="34">
+				<path
+					fill="none" stroke="#000" stroke-width="4"
+					d="
+					m 141,9 v -7 h -84 v 7
+					m -55,8 v 17
+					m 222,-34 v 32 h -112 v -7"/>
+			</svg>
+		]]></data></image>
+	</element>
+
+	<element name="diagram_07">
+		<image><data><![CDATA[
+			<svg width="338" height="34">
+				<path
+					fill="none" stroke="#000" stroke-width="4"
+					d="
+					m 336,0 v 32 h -112 v -6
+					m -137,-17 v -7 h -85 v 30 h 112 v -6
+					m 139,-17 v -7 h -84 v 7"/>
+			</svg>
+		]]></data></image>
+	</element>
+
+	<element name="left_arrow">
+		<image><data><![CDATA[
+			<svg width="22" height="14">
+				<path
+					style="fill:#000"
+					d="m 22,0 v 14 l -22,-7 z"/>
+			</svg>
+		]]></data></image>
+	</element>
+
+	<element name="right_arrow">
+		<image><data><![CDATA[
+			<svg width="22" height="14">
+				<path
+					style="fill:#000"
+					d="m 0,14 v -14 l 22,7 z"/>
+			</svg>
+		]]></data></image>
+	</element>
+
+	<element name="down_arrow">
+		<image><data><![CDATA[
+			<svg width="14" height="22">
+				<path
+					style="fill:#000"
+					d="m 0,0 h 14 l -7,22 z" />
 			</svg>
 		]]></data></image>
 	</element>
@@ -939,15 +995,12 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 			<bounds x="152" y="130" width="383" height="34" />
 		</element>
 
-		<element ref="diagram_02">
-			<bounds x="218" y="210" width="238" height="34" />
-		</element>
-		<element ref="diagram_02">
-			<bounds x="218" y="330" width="238" height="34" />
-		</element>
-		<element ref="diagram_02">
-			<bounds x="218" y="450" width="238" height="34" />
-		</element>
+		<repeat count="3">
+			<param name="diagram_y" start="210" increment="120"/>
+			<element ref="diagram_02">
+				<bounds x="218" y="~diagram_y~" width="238" height="34" />
+			</element>
+		</repeat>
 
 		<element ref="diagram_03">
 			<bounds x="748" y="94" width="351" height="34" />
@@ -971,6 +1024,84 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 
 		<element ref="diagram_05">
 			<bounds x="1014" y="624" width="186" height="93" />
+		</element>
+
+		<repeat count="3">
+			<param name="diagram_y" start="180" increment="120"/>
+			<element ref="diagram_06">
+				<bounds x="225" y="~diagram_y~" width="226" height="34" />
+			</element>
+		</repeat>
+
+		<element ref="diagram_07">
+			<bounds x="755" y="63" width="338" height="34" />
+		</element>
+		<element ref="diagram_07">
+			<bounds x="755" y="180" width="338" height="34" />
+		</element>
+		<element ref="diagram_07">
+			<bounds x="755" y="469" width="338" height="34" />
+		</element>
+
+	<!-- define arrows -->
+
+		<element ref="down_arrow">
+			<bounds x="63" y="375" width="14" height="22" />
+		</element>
+		<element ref="down_arrow">
+			<bounds x="104" y="375" width="14" height="22" />
+		</element>
+
+
+		<element ref="left_arrow">
+			<bounds x="538" y="75" width="22" height="14" />
+		</element>
+		<element ref="left_arrow">
+			<bounds x="622" y="75" width="22" height="14" />
+		</element>
+		<element ref="left_arrow">
+			<bounds x="1148" y="75" width="22" height="14" />
+		</element>
+
+		<element ref="left_arrow">
+			<bounds x="622" y="190" width="22" height="14" />
+		</element>
+		<element ref="left_arrow">
+			<bounds x="1148" y="190" width="22" height="14" />
+		</element>
+
+		<element ref="left_arrow">
+			<bounds x="622" y="480" width="22" height="14" />
+		</element>
+
+		<element ref="left_arrow">
+			<bounds x="479" y="522" width="22" height="14" />
+		</element>
+
+
+		<element ref="right_arrow">
+			<bounds x="203" y="190" width="22" height="14" />
+		</element>
+		<element ref="right_arrow">
+			<bounds x="504" y="190" width="22" height="14" />
+		</element>
+
+		<element ref="right_arrow">
+			<bounds x="203" y="310" width="22" height="14" />
+		</element>
+		<element ref="right_arrow">
+			<bounds x="504" y="310" width="22" height="14" />
+		</element>
+		<element ref="right_arrow">
+			<bounds x="629" y="310" width="22" height="14" />
+		</element>
+		
+		<element ref="right_arrow">
+			<bounds x="629" y="339" width="22" height="14" />
+		</element>
+
+		<element ref="right_arrow">
+			<bounds x="504" y="430" width="22" height="14" />
 		</element>
 
 	</view>
