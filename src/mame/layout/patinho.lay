@@ -34,7 +34,9 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 			<svg width="383" height="34">
 				<path
 					fill="none" stroke="#000" stroke-width="1"
-					d="m 8.5,0.5 h -8 v 33 h 78 m 211,0 h 93 v -33 h -8"/>
+					d="
+					m 8.5,0.5 h -8 v 33 h 78
+					m 211,0 h 93 v -33 h -8"/>
 				</svg>
 		]]></data></image>
 	</element>
@@ -44,7 +46,9 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 			<svg width="238" height="34">
 				<path
 					fill="none" stroke="#000" stroke-width="1"
-					d="m 8.5,0.5 h -8 v 33 h 15 m 207,0 h 15 v -33 h -8"/>
+					d="
+					m 8.5,0.5 h -8 v 33 h 15
+					m 207,0 h 15 v -33 h -8"/>
 				</svg>
 		]]></data></image>
 	</element>
@@ -54,7 +58,9 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 			<svg width="351" height="34">
 				<path
 					fill="none" stroke="#000" stroke-width="1"
-					d="m 8.5,0.5 h -8 v 33 h 15 m 320,0 h 15 v -33 h -8"/>
+					d="
+					m 8.5,0.5 h -8 v 33 h 15
+					m 320,0 h 15 v -33 h -8"/>
 				</svg>
 		]]></data></image>
 	</element>
@@ -65,12 +71,12 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 				<path
 					fill="none" stroke="#000" stroke-width="1"
 					d="
-					M 213.5,30.5 V 0.5 h 149 V 12.5 
-					m -169,18 V 0.5 H 58.5 V 13.5 
-					M 164.5,116.5 h -56 v 30 h 9 
-					m 167,0 h 6 v -30 h -46 v -12 
-					m -134,-63 h 9 v -18 H 0.5 v 18 H 9.5 
-					m 387,0 h 8 v -18 h -76 v 18 h 9" />
+					m 213.5,30.5 v -30 h 149 v 12
+					m -169,18 v -30 h -135 v 13
+					m 106,103 h -56 v 30 h 9
+					m 167,0 h 6 v -30 h -46 v -12
+					m -134,-63 h 9 v -18 h -119 v 18 h 9
+					m 386,0 h 9 v -18 h -76 v 18 h 9" />
 			</svg>
 		]]></data></image>
 	</element>
@@ -80,7 +86,9 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 			<svg width="186" height="93">
 				<path
 					fill="none" stroke="#000" stroke-width="1"
-					d="m 128,0.5 h -7 l -18,31 m -46,-31 h 7 l 18,31"/>
+					d="
+					m 128,0.5 h -7 l -18,31
+					m -46,-31 h 7 l 18,31"/>
 				<path
 					fill="none" stroke="#000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" 
 					d="m 14,91 h -12 v -47 h 182 v 47 h -12"/>
