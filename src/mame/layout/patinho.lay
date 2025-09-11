@@ -75,6 +75,19 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		]]></data></image>
 	</element>
 
+	<element name="diagram_05">
+		<image><data><![CDATA[
+			<svg width="186" height="93">
+				<path
+					fill="none" stroke="#000" stroke-width="1"
+					d="m 128,0.5 h -7 l -18,31 m -46,-31 h 7 l 18,31"/>
+				<path
+					fill="none" stroke="#000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" 
+					d="m 14,91 h -12 v -47 h 182 v 47 h -12"/>
+			</svg>
+		]]></data></image>
+	</element>
+
 	<element name="bit_lamp" defstate="0">
 		<disk state="1"><color red="1.0" green="0.1" blue="0.1" /></disk>
 		<disk state="0"><color red="0.3" green="0.02" blue="0.02" /></disk>
@@ -649,6 +662,26 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 			<bounds x="72" y="760" width="445" height="1" />
 		</element>
 
+		<element ref="line">
+			<bounds x="565" y="634" width="6" height="1" />
+		</element>
+		<element ref="line">
+			<bounds x="621" y="634" width="6" height="1" />
+		</element>
+		<element ref="line">
+			<bounds x="565" y="669" width="62" height="1" />
+		</element>
+
+		<element ref="line">
+			<bounds x="674" y="634" width="4" height="1" />
+		</element>
+		<element ref="line">
+			<bounds x="732" y="634" width="4" height="1" />
+		</element>
+		<element ref="line">
+			<bounds x="674" y="669" width="62" height="1" />
+		</element>
+
 <!-- define vertical lines -->
 		<element ref="line">
 			<bounds x="32" y="97" width="4" height="430" />
@@ -736,6 +769,20 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 
 		<element ref="line">
 			<bounds x="469" y="726" width="1" height="34" />
+		</element>
+
+		<element ref="line">
+			<bounds x="565" y="634" width="1" height="35" />
+		</element>
+		<element ref="line">
+			<bounds x="627" y="634" width="1" height="35" />
+		</element>
+
+		<element ref="line">
+			<bounds x="674" y="634" width="1" height="35" />
+		</element>
+		<element ref="line">
+			<bounds x="736" y="634" width="1" height="35" />
 		</element>
 
 <!-- define 'ENTRADA MANUAL DE DADOS' horizontal lines -->
@@ -909,6 +956,14 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		</element>
 
 		<element ref="ula"><bounds x="875" y="278" width="81" height="104" /></element>
+
+		<element ref="diagram_05">
+			<bounds x="782" y="624" width="186" height="93" />
+		</element>
+
+		<element ref="diagram_05">
+			<bounds x="1014" y="624" width="186" height="93" />
+		</element>
 
 	</view>
 </mamelayout>
