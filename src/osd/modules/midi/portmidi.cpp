@@ -328,6 +328,11 @@ int midi_input_pm::read(uint8_t *pOut)
 		}
 	}
 
+	printf("read:"); 
+	for (int i=0; i<bytesOut; i++)
+		printf(" %02X", pOut[i-bytesOut]); 
+
+	printf("\n"); 
 	return bytesOut;
 }
 
@@ -340,11 +345,12 @@ midi_output_pm::~midi_output_pm()
 
 void midi_output_pm::write(uint8_t data)
 {
+
 	int bytes_needed = 0;
 	PmEvent ev;
 	ev.timestamp = 0;   // use the current time
 
-//  printf("write: %02x (%d)\n", data, m_xmit_cnt);
+	printf("write: %02x (%d)\n", data, m_xmit_cnt);
 
 	// reject data bytes when no valid status exists
 	if ((m_last_status == 0) && !(data & 0x80))
@@ -356,6 +362,9 @@ void midi_output_pm::write(uint8_t data)
 	if (m_xmit_cnt >= 4)
 	{
 		printf("MIDI out: packet assembly overflow, contact MAMEdev!\n");
+		m_xmit_in[0] = m_xmit_in[1] = m_xmit_in[2] = m_xmit_in[3] = 0;
+		m_xmit_cnt = 0;
+		m_last_status = 0;
 		return;
 	}
 

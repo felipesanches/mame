@@ -935,6 +935,7 @@ void upd7810_device::MOV_A_PT()
 void upd7810_device::MOV_A_RXB()
 {
 	A = RXB;
+	logerror("PC = %08X  Read %02X from RXB\n", PC, A);
 }
 
 /* 4c e0: 0100 1100 1110 0000 */
@@ -1058,6 +1059,7 @@ void upd7810_device::MOV_MCC_A()
 	if (MCC == A)
 		return;
 	MCC = A;
+	logerror("MCC = %02X\n", MCC);
 	WP(UPD7810_PORTC, m_pc_out);
 }
 
@@ -1085,6 +1087,7 @@ void upd7810_device::MOV_MC_A()
 	if (MC == A)
 		return;
 	MC = A;
+	logerror(">>> MC = %02X\n", MC);
 	WP(UPD7810_PORTC, m_pc_out);
 }
 
@@ -1101,6 +1104,7 @@ void upd7810_device::MOV_MF_A()
 void upd7810_device::MOV_TXB_A()
 {
 	TXB = A;
+	logerror("PC = %08X  TXB = %02X\n", PC, TXB);
 	upd7810_write_TXB();
 }
 
