@@ -152,6 +152,16 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		]]></data></image>
 	</element>
 
+	<element name="switch_arrow">
+		<image><data><![CDATA[
+			<svg width="20" height="20">
+			<path 
+				style="fill:#b3b3b3;stroke:#808080;stroke-width:1"
+				d="m 5.5,0.5 4,4 -8,8 6,6 8,-8 4,4 v -14 z" />
+			</svg>
+		]]></data></image>
+	</element>
+
 	<element name="bit_lamp" defstate="0">
 		<disk state="1"><color red="1.0" green="0.1" blue="0.1" /></disk>
 		<disk state="0"><color red="0.3" green="0.02" blue="0.02" /></disk>
@@ -1217,6 +1227,42 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 
 		<element ref="right_arrow">
 			<bounds x="504" y="430" width="22" height="14" />
+		</element>
+
+		<!-- enderecamento button -->
+		<element ref="button_surrond_border">
+			<bounds x="856" y="650" width="37" height="37" />
+		</element>
+		<element ref="button_surrond">
+			<bounds x="858" y="652" width="33" height="33" />
+		</element>
+		<element ref="button_border">
+			<bounds x="860" y="654" width="29" height="29" />
+		</element>
+		<element ref="button">
+			<bounds x="862" y="656" width="25" height="25" />
+		</element>
+
+		<element ref="switch_arrow">
+			<bounds x="864" y="660" width="20" height="20" />
+		</element>
+
+		<!-- memoria button -->
+		<element ref="button_surrond_border">
+			<bounds x="1088" y="650" width="37" height="37" />
+		</element>
+		<element ref="button_surrond">
+			<bounds x="1090" y="652" width="33" height="33" />
+		</element>
+		<element ref="button_border">
+			<bounds x="1092" y="654" width="29" height="29" />
+		</element>
+		<element ref="button">
+			<bounds x="1094" y="656" width="25" height="25" />
+		</element>
+
+		<element ref="switch_arrow">
+			<bounds x="1096" y="660" width="20" height="20" />
 		</element>
 
 	</view>
