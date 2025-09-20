@@ -57,6 +57,32 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		</image>
 	</element>
 
+	<element name="state_lamp">
+		<!-- external border -->
+		<disk>
+			<bounds x="0" y="0" width="36" height="36"/>
+			<color red="0" green="0" blue="0"/>
+		</disk>
+
+		<!-- surround border -->
+		<disk>
+			<bounds x="2" y="2" width="32" height="32"/>
+			<color red="0.04" green="0.09" blue="0.1"/>
+		</disk>
+
+		<!-- internal border -->
+		<disk>
+			<bounds x="7" y="7" width="22" height="22"/>
+			<color red="0.29" green="0.35" blue="0.44"/>
+		</disk>
+
+		<!-- lamp -->
+		<disk>
+			<bounds x="8" y="8" width="20" height="20"/>
+			<color red="0.40" green="0.48" blue="0.61"/>
+		</disk>
+	</element>
+
 	<element name="diagram_rect">
 		<image><data><![CDATA[
 			<svg width="78" height="70">
@@ -1266,6 +1292,28 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		<!-- memoria switch -->
 		<element ref="rotary_switch">
 			<bounds x="1088" y="650" width="37" height="37" />
+		</element>
+
+		<!-- 'FASES DE OPERACAO' lamps -->
+		<repeat count="5">
+			<param name="lamp_x" start="98" increment="89"/>
+			<element ref="state_lamp">
+				<bounds x="~lamp_x~" y="651" width="36" height="36" />
+			</element>
+		</repeat>
+
+		<element ref="state_lamp">
+			<bounds x="579" y="651" width="36" height="36" />
+		</element>
+		<element ref="state_lamp">
+			<bounds x="688" y="651" width="36" height="36" />
+		</element>
+
+		<element ref="state_lamp">
+			<bounds x="187" y="742" width="36" height="36" />
+		</element>
+		<element ref="state_lamp">
+			<bounds x="364" y="742" width="36" height="36" />
 		</element>
 
 	</view>
