@@ -71,6 +71,40 @@ void hh_ht11xx_state::mcfg_svg_screen(machine_config &config, u16 width, u16 hei
 	config.set_default_layout(layout_hh_ht11xx_lcd);
 }
 
+// kc55in1 class
+// TODO - Needs to get the correct CPU name
+class hh_kc55in1_state : public hh_ht11xx_state
+{
+public:
+	hh_kc55in1_state(const machine_config &mconfig, device_type type, const char *tag) :
+		hh_ht11xx_state(mconfig, type, tag),
+		m_out_x(*this, "%u.%u", 0U, 0U),
+		m_in(*this, "IN%u", 1)
+	{ }
+
+	void kc55in1(machine_config &config);
+
+protected:
+	virtual void machine_start() override ATTR_COLD;
+
+	void segment_w(offs_t offset, u64 data);
+
+private:
+	output_finder<4, 32> m_out_x;
+	required_ioport_array<3> m_in;
+};
+
+void hh_kc55in1_state::machine_start()
+{
+	m_out_x.resolve();
+}
+
+void hh_kc55in1_state::segment_w(offs_t offset, u64 data)
+{
+	// output to x.y where x = COM# and y = SEG#
+	for (int i = 0; i < 32; i++)
+		m_out_x[offset][i] = BIT(data, i);
+}
 
 // HT1130 class
 
@@ -267,6 +301,54 @@ ROM_START( ga888 )
 ROM_END
 
 
+/*******************************************************************************
+
+  Block Game & Echo Key GA888
+  * Holtek HT1130
+  * 8*12 LCD screen + 8 custom segments, 1-bit sound
+
+*******************************************************************************/
+
+// inputs
+
+static INPUT_PORTS_START( kc55in1 ) // the unit also has an up button, and a reset button, is 'up' connected to anything?
+	PORT_START("IN1")
+	PORT_BIT( 0x01, IP_ACTIVE_LOW, IPT_VOLUME_DOWN ) PORT_NAME("Pause / Power") PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(hh_ht11xx_state::input_wakeup), 0)
+	PORT_BIT( 0x02, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0x04, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0x08, IP_ACTIVE_LOW, IPT_UNUSED )
+
+	PORT_START("IN2")
+	PORT_BIT( 0x01, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0x02, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0x04, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0x08, IP_ACTIVE_LOW, IPT_UNUSED )
+
+	PORT_START("IN3")
+	PORT_BIT( 0x01, IP_ACTIVE_LOW, IPT_START ) PORT_NAME("Start / Rotate")
+	PORT_BIT( 0x02, IP_ACTIVE_LOW, IPT_BUTTON2 ) PORT_NAME("Down / Drop")
+	PORT_BIT( 0x04, IP_ACTIVE_LOW, IPT_BUTTON3 ) PORT_NAME("Right / Sound")
+	PORT_BIT( 0x08, IP_ACTIVE_LOW, IPT_BUTTON4 ) PORT_NAME("Left")
+INPUT_PORTS_END
+
+// config
+//TODO - Needs to create a machine state for kc 55  in 1
+void hh_kc55in1_state::kc55in1(machine_config &config)
+{
+	HT1130(config, m_maincpu, 1000000/8); // frequency?
+	m_maincpu->segment_out_cb().set(FUNC(hh_kc55in1_state::segment_w));
+
+	m_maincpu->ps_in_cb().set_ioport(m_in[0]);
+	m_maincpu->pp_in_cb().set_ioport(m_in[1]);
+	m_maincpu->pm_in_cb().set_ioport(m_in[2]);
+
+	SPEAKER(config, "speaker").front_center();
+
+	mcfg_svg_screen(config, 698, 1080);
+}
+
+// roms
+
 ROM_START( kc55in1 )
  ROM_REGION( 0x1000, "maincpu", 0 )
  ROM_LOAD( "keychain55in1.bin", 0x0000, 0x1000, CRC(c8623cf2) SHA1(27fe405a8a866bfc6a857af886ed00f64083c2cc) ) // visual decap
@@ -293,4 +375,4 @@ CONS( 1993, brke23p2, 0,      0,      brke23p2, brke23p2, hh_ht1190_state, empty
 CONS( 199?, ga888,    0,      0,      ga888,    ga888,    hh_ht1130_state, empty_init, "<unknown>", "Block Game & Echo Key GA888", MACHINE_IMPERFECT_TIMING | MACHINE_NO_SOUND ) // clone of Tetris Jr?
 
 // TODO - Corrigir as informações a partir de pesquisa
-CONS( 199?, kc55in1,    0,      0,      ga888,    ga888,    hh_ht1130_state, empty_init, "<unknown>", "Brick game 55 in 1", MACHINE_IMPERFECT_TIMING | MACHINE_NO_SOUND )
+CONS( 199?, kc55in1,    0,      0,      kc55in1,    kc55in1,    hh_kc55in1_state, empty_init, "<unknown>", "Brick game 55 in 1", MACHINE_IMPERFECT_TIMING | MACHINE_NO_SOUND )
