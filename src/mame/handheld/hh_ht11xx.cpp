@@ -266,6 +266,17 @@ ROM_START( ga888 )
 	ROM_LOAD( "ga888.svg", 0, 85508, CRC(9ab6dd67) SHA1(a4365a00204bf4e376f28600c0b87289bda0cbb0) )
 ROM_END
 
+
+ROM_START( Keychain55in1 )
+ ROM_REGION( 0x1000, "maincpu", 0 )
+ ROM_LOAD( "Keychain55in1.bin", 0x0000, 0x1000, CRC(c8623cf2) SHA1(27fe405a8a866bfc6a857af886ed00f64083c2cc) ) // visual decap
+
+ ROM_REGION( 0x280, "melody", 0 )
+ ROM_LOAD( "Keychain55in1.srom", 0x000, 0x280, CRC(5667eb80) SHA1(4aee372f87a988ae46790538f4435c4a249e3686) )
+
+ ROM_REGION( 85508, "screen", 0)	
+ ROM_LOAD( "ga888.svg", 0, 85508, CRC(9ab6dd67) SHA1(a4365a00204bf4e376f28600c0b87289bda0cbb0) )
+ROM_END
 } // anonymous namespace
 
 
@@ -280,3 +291,6 @@ ROM_END
 CONS( 1993, brke23p2, 0,      0,      brke23p2, brke23p2, hh_ht1190_state, empty_init, "E-Star", "Brick Game 96 in 1 (E-23 Plus Mark II)", MACHINE_IMPERFECT_TIMING | MACHINE_NO_SOUND ) // some other dieshots have 1996 on them, it is also possible the software is from Holtek
 
 CONS( 199?, ga888,    0,      0,      ga888,    ga888,    hh_ht1130_state, empty_init, "<unknown>", "Block Game & Echo Key GA888", MACHINE_IMPERFECT_TIMING | MACHINE_NO_SOUND ) // clone of Tetris Jr?
+
+// TODO - Corrigir as informações a partir de pesquisa
+CONS( 199?, Keychain55in1,    0,      0,      ga888,    ga888,    hh_ht1130_state, empty_init, "<unknown>", "Brick game 55 in 1", MACHINE_IMPERFECT_TIMING | MACHINE_NO_SOUND )
