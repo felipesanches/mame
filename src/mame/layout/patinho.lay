@@ -19,7 +19,7 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		]]></data></image>
 	</element>
 
-	<element name="rotary_switch">
+	<element name="rotary_switch" defstate="0">
 		<!-- button_surrond_border -->
 		<disk>
 			<bounds x="0" y="0" width="37" height="37"/>
@@ -45,13 +45,23 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		</disk>
 
 		<!-- arrow -->
-		<image>
-			<bounds x="8" y="10" width="20" height="20"/>
+		<image state="0">
+			<bounds x="7" y="10" width="20" height="20"/>
 			<data><![CDATA[
 				<svg width="20" height="20">
 					<path 
 						fill="#b3b3b3" stroke="#808080" stroke-width="1"
 						d="m 5.5,0.5 4,4 -8,8 6,6 8,-8 4,4 v -14 z" />
+				</svg>
+			]]></data>
+		</image>
+		<image state="1">
+			<bounds x="10" y="10" width="20" height="20"/>
+			<data><![CDATA[
+				<svg width="20" height="20">
+					<path 
+						fill="#b3b3b3" stroke="#808080" stroke-width="1"
+						d="m 0.5,14.5 4,-4 8,8 6,-6 -8,-8 4,-4 h -14 z" />
 				</svg>
 			]]></data>
 		</image>
