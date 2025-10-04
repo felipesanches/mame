@@ -164,14 +164,20 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 	<element name="diagram_05">
 		<image><data><![CDATA[
 			<svg width="186" height="93">
-				<path
-					fill="none" stroke="#000" stroke-width="1"
-					d="
-					m 128,0.5 h -7 l -18,31
-					m -46,-31 h 7 l 18,31"/>
-				<path
-					fill="none" stroke="#000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" 
-					d="m 14,91 h -12 v -47 h 182 v 47 h -12"/>
+				<g stroke="#000" fill="none" stroke-width="1">
+					<path d="
+						m 128,0.5 h -7 l -18,31
+						m -46,-31 h 7 l 18,31
+					"/>
+				</g>
+				<g fill="none" stroke="#000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+					<path d="
+						m 14,91 h -12 v -47 h 182 v 47 h -12
+					"/>
+				</g>
+				<g fill="#d45500">
+					<rect x="6" y="48" width="174" height="39"/>
+				</g>
 			</svg>
 		]]></data></image>
 	</element>
@@ -410,14 +416,6 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		</element>
 
 		<!-- define orange rectangles -->
-		<element ref="rect">
-			<bounds x="788" y="672" width="174" height="39" />
-		</element>
-
-		<element ref="rect">
-			<bounds x="1020" y="672" width="174" height="39" />
-		</element>
-
 		<element ref="rect">
 			<bounds x="382" y="944" width="311" height="68" />
 		</element>
