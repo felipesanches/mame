@@ -594,22 +594,22 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 
 		<!-- define 'FASES DE OPERACAO' lines -->
 		<element ref="line">
-			<bounds x="72" y="568" width="1" height="50" />
+			<bounds x="72" y="568" width="1" height="192" />
 		</element>
 		<element ref="line">
 			<bounds x="72" y="568" width="96" height="1" />
 		</element>
 		<element ref="line">
+			<bounds x="72" y="760" width="446" height="1" />
+		</element>
+		<element ref="line">
 			<bounds x="422" y="568" width="96" height="1" />
 		</element>
 		<element ref="line">
-			<bounds x="517" y="568" width="1" height="50" />
+			<bounds x="517" y="568" width="1" height="192" />
 		</element>
 
 		<!-- BUSCA -->
-		<element ref="line">
-			<bounds x="72" y="617" width="1" height="18" />
-		</element>
 		<element ref="line">
 			<bounds x="72" y="617" width="56" height="1" />
 		</element>
@@ -639,10 +639,6 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 			<bounds x="510" y="617" width="8" height="1" />
 		</element>
 
-		<element ref="line">
-			<bounds x="517" y="617" width="1" height="18" />
-		</element>
-
 		<!-- 1-5 -->
 		<repeat count="5">
 			<param name="line_left" start="72" increment="89"/>
@@ -660,9 +656,6 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 				<bounds x="~line_left~" y="634" width="1" height="36" />
 			</element>
 		</repeat>
-		<element ref="line">
-			<bounds x="517" y="634" width="1" height="36" />
-		</element>
 
 		<!-- INDIRETO -->
 		<element ref="line">
@@ -696,16 +689,6 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		</element>
 		<element ref="line">
 			<bounds x="393" y="726" width="77" height="1" />
-		</element>
-
-		<element ref="line">
-			<bounds x="72" y="669" width="1" height="92" />
-		</element>
-		<element ref="line">
-			<bounds x="72" y="760" width="446" height="1" />
-		</element>
-		<element ref="line">
-			<bounds x="517" y="669" width="1" height="92" />
 		</element>
 
 		<!-- define vertical lines -->
