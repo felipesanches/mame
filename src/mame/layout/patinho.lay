@@ -592,79 +592,120 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 			<bounds x="32" y="527" width="545" height="4" />
 		</element>
 
-		<!-- define 'FASES DE OPERACAO' horizontal lines -->
+		<!-- define 'FASES DE OPERACAO' lines -->
+		<element ref="line">
+			<bounds x="72" y="568" width="1" height="50" />
+		</element>
 		<element ref="line">
 			<bounds x="72" y="568" width="96" height="1" />
 		</element>
-
 		<element ref="line">
 			<bounds x="422" y="568" width="96" height="1" />
 		</element>
+		<element ref="line">
+			<bounds x="517" y="568" width="1" height="50" />
+		</element>
 
+		<!-- BUSCA -->
+		<element ref="line">
+			<bounds x="72" y="617" width="1" height="18" />
+		</element>
 		<element ref="line">
 			<bounds x="72" y="617" width="56" height="1" />
 		</element>
-
 		<element ref="line">
 			<bounds x="194" y="617" width="56" height="1" />
 		</element>
 
+		<!-- EXECUÇÃO -->
+		<element ref="line">
+			<bounds x="250" y="617" width="1" height="18" />
+		</element>
 		<element ref="line">
 			<bounds x="250" y="617" width="45" height="1" />
 		</element>
-
 		<element ref="line">
 			<bounds x="384" y="617" width="45" height="1" />
 		</element>
 
+		<!-- INDEXAÇÃO -->
+		<element ref="line">
+			<bounds x="428" y="617" width="1" height="18" />
+		</element>
 		<element ref="line">
 			<bounds x="428" y="617" width="8" height="1" />
 		</element>
-
 		<element ref="line">
 			<bounds x="510" y="617" width="8" height="1" />
 		</element>
 
+		<element ref="line">
+			<bounds x="517" y="617" width="1" height="18" />
+		</element>
+
+		<!-- 1-5 -->
 		<repeat count="5">
-			<param name="line1_x" start="72" increment="89"/>
-			<param name="line2_x" start="128" increment="89"/>
+			<param name="line_left" start="72" increment="89"/>
+			<param name="line_top_right" start="128" increment="89"/>
 			<element ref="line">
-				<bounds x="~line1_x~" y="634" width="34" height="1" />
+				<bounds x="~line_left~" y="634" width="34" height="1" />
 			</element>
 			<element ref="line">
-				<bounds x="~line2_x~" y="634" width="34" height="1" />
+				<bounds x="~line_top_right~" y="634" width="34" height="1" />
 			</element>
 			<element ref="line">
-				<bounds x="~line1_x~" y="669" width="90" height="1" />
+				<bounds x="~line_left~" y="669" width="90" height="1" />
+			</element>
+			<element ref="line">
+				<bounds x="~line_left~" y="634" width="1" height="36" />
 			</element>
 		</repeat>
+		<element ref="line">
+			<bounds x="517" y="634" width="1" height="36" />
+		</element>
 
+		<!-- INDIRETO -->
+		<element ref="line">
+			<bounds x="118" y="706" width="1" height="55" />
+		</element>
 		<element ref="line">
 			<bounds x="118" y="706" width="133" height="1" />
 		</element>
-
 		<element ref="line">
 			<bounds x="337" y="706" width="133" height="1" />
 		</element>
+		<element ref="line">
+			<bounds x="469" y="706" width="1" height="55" />
+		</element>
 
+		<!-- 6 -->
 		<element ref="line">
 			<bounds x="118" y="726" width="77" height="1" />
 		</element>
-
 		<element ref="line">
 			<bounds x="217" y="726" width="77" height="1" />
 		</element>
 
 		<element ref="line">
-			<bounds x="293" y="726" width="77" height="1" />
+			<bounds x="293" y="726" width="1" height="34" />
 		</element>
 
+		<!-- 7 -->
+		<element ref="line">
+			<bounds x="293" y="726" width="77" height="1" />
+		</element>
 		<element ref="line">
 			<bounds x="393" y="726" width="77" height="1" />
 		</element>
 
 		<element ref="line">
+			<bounds x="72" y="669" width="1" height="92" />
+		</element>
+		<element ref="line">
 			<bounds x="72" y="760" width="446" height="1" />
+		</element>
+		<element ref="line">
+			<bounds x="517" y="669" width="1" height="92" />
 		</element>
 
 		<!-- define vertical lines -->
@@ -694,66 +735,6 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 
 		<element ref="line">
 			<bounds x="1246" y="38" width="4" height="295" />
-		</element>
-
-		<!-- define 'FASES DE OPERACAO' vertical lines -->
-		<element ref="line">
-			<bounds x="72" y="568" width="1" height="50" />
-		</element>
-
-		<element ref="line">
-			<bounds x="517" y="568" width="1" height="50" />
-		</element>
-
-		<element ref="line">
-			<bounds x="72" y="617" width="1" height="18" />
-		</element>
-
-		<element ref="line">
-			<bounds x="250" y="617" width="1" height="18" />
-		</element>
-
-		<element ref="line">
-			<bounds x="428" y="617" width="1" height="18" />
-		</element>
-
-		<element ref="line">
-			<bounds x="517" y="617" width="1" height="18" />
-		</element>
-
-		<repeat count="6">
-			<param name="line1_x" start="72" increment="89"/>
-			<element ref="line">
-				<bounds x="~line1_x~" y="634" width="1" height="36" />
-			</element>
-		</repeat>
-
-		<element ref="line">
-			<bounds x="72" y="669" width="1" height="92" />
-		</element>
-
-		<element ref="line">
-			<bounds x="517" y="669" width="1" height="92" />
-		</element>
-
-		<element ref="line">
-			<bounds x="118" y="706" width="1" height="22" />
-		</element>
-
-		<element ref="line">
-			<bounds x="469" y="706" width="1" height="22" />
-		</element>
-
-		<element ref="line">
-			<bounds x="118" y="726" width="1" height="34" />
-		</element>
-
-		<element ref="line">
-			<bounds x="293" y="726" width="1" height="34" />
-		</element>
-
-		<element ref="line">
-			<bounds x="469" y="726" width="1" height="34" />
 		</element>
 
 		<!-- define "PARADO" and "EXTERNO" lines-->
