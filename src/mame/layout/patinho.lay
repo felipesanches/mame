@@ -848,13 +848,13 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 			<bounds x="378" y="942" width="116" height="1"/>
 		</element>
 		<element ref="line">
-			<bounds x="378" y="942" width="1" height="23"/>
+			<bounds x="378" y="942" width="1" height="24"/>
 		</element>
 		<element ref="line">
-			<bounds x="693" y="942" width="1" height="23"/>
+			<bounds x="693" y="942" width="1" height="24"/>
 		</element>
 		<element ref="line">
-			<bounds x="580" y="942" width="116" height="1"/>
+			<bounds x="578" y="942" width="116" height="1"/>
 		</element>
 
 		<!-- define 'MODO DE OPERACAO' lines -->
@@ -868,13 +868,13 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 				<bounds x="~line_x_top_left~" y="965" width="13" height="1"/>
 			</element>
 			<element ref="line">
-				<bounds x="~line_y_left~" y="965" width="1" height="49"/>
+				<bounds x="~line_y_left~" y="965" width="1" height="50"/>
 			</element>
 			<element ref="line">
 				<bounds x="~line_x_bottom~" y="1014" width="105" height="1"/>
 			</element>
 			<element ref="line">
-				<bounds x="~line_y_right~" y="965" width="1" height="49"/>
+				<bounds x="~line_y_right~" y="965" width="1" height="50"/>
 			</element>
 			<element ref="line">
 				<bounds x="~line_x_top_right~" y="965" width="13" height="1"/>
