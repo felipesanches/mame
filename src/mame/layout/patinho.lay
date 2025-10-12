@@ -1044,11 +1044,11 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 
 		<!-- define circles -->
 		<element ref="circle">
-			<bounds x="573" y="74" width="11" height="11" />
+			<bounds x="574" y="76" width="11" height="11" />
 		</element>
 
 		<element ref="circle">
-			<bounds x="1241" y="74" width="11" height="11" />
+			<bounds x="1241" y="76" width="11" height="11" />
 		</element>
 
 		<element ref="circle">
@@ -1056,7 +1056,7 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		</element>
 
 		<element ref="circle">
-			<bounds x="573" y="190" width="11" height="11" />
+			<bounds x="574" y="190" width="11" height="11" />
 		</element>
 
 		<element ref="circle">
@@ -1064,19 +1064,19 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		</element>
 
 		<element ref="circle">
-			<bounds x="106" y="310" width="11" height="11" />
+			<bounds x="106" y="312" width="11" height="11" />
 		</element>
 
 		<element ref="circle">
-			<bounds x="573" y="310" width="11" height="11" />
+			<bounds x="574" y="312" width="11" height="11" />
 		</element>
 
 		<element ref="circle">
-			<bounds x="573" y="430" width="11" height="11" />
+			<bounds x="574" y="431" width="11" height="11" />
 		</element>
 
 		<element ref="circle">
-			<bounds x="573" y="482" width="11" height="11" />
+			<bounds x="574" y="483" width="11" height="11" />
 		</element>
 
 		<!-- define panel diagrams -->
