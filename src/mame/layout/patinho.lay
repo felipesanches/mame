@@ -916,19 +916,19 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 			<param name="line_y_right" start="989" increment="105"/>
 			<param name="line_x_top_right" start="976" increment="105"/>
 			<element ref="line">
-				<bounds x="~line_x_top_left~" y="965" width="13" height="1"/>
+				<bounds x="~line_x_top_left~" y="965" width="14" height="1"/>
 			</element>
 			<element ref="line">
-				<bounds x="~line_y_left~" y="965" width="1" height="49"/>
+				<bounds x="~line_y_left~" y="965" width="1" height="50"/>
 			</element>
 			<element ref="line">
 				<bounds x="~line_x_bottom~" y="1014" width="105" height="1"/>
 			</element>
 			<element ref="line">
-				<bounds x="~line_y_right~" y="965" width="1" height="49"/>
+				<bounds x="~line_y_right~" y="965" width="1" height="50"/>
 			</element>
 			<element ref="line">
-				<bounds x="~line_x_top_right~" y="965" width="13" height="1"/>
+				<bounds x="~line_x_top_right~" y="965" width="14" height="1"/>
 			</element>
 		</repeat>
 
@@ -936,13 +936,13 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 			<bounds x="884" y="1057" width="108" height="1"/>
 		</element>
 		<element ref="line">
-			<bounds x="884" y="1014" width="1" height="43"/>
+			<bounds x="884" y="1014" width="1" height="44"/>
 		</element>
 		<element ref="line">
-			<bounds x="884" y="1014" width="316" height="1"/>
+			<bounds x="884" y="1014" width="315" height="1"/>
 		</element>
 		<element ref="line">
-			<bounds x="1200" y="1014" width="1" height="43"/>
+			<bounds x="1199" y="1014" width="1" height="44"/>
 		</element>
 		<element ref="line">
 			<bounds x="1092" y="1057" width="108" height="1"/>
@@ -950,19 +950,19 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 
 		<!-- define 'PREPARACAO' lines -->
 		<element ref="line">
-			<bounds x="1094" y="1160" width="13" height="1"/>
+			<bounds x="1094" y="1160" width="14" height="1"/>
 		</element>
 		<element ref="line">
-			<bounds x="1094" y="1111" width="1" height="49"/>
+			<bounds x="1094" y="1111" width="1" height="50"/>
 		</element>
 		<element ref="line">
-			<bounds x="1094" y="1111" width="105" height="1"/>
+			<bounds x="1094" y="1111" width="106" height="1"/>
 		</element>
 		<element ref="line">
-			<bounds x="1200" y="1111" width="1" height="49"/>
+			<bounds x="1200" y="1111" width="1" height="50"/>
 		</element>
 		<element ref="line">
-			<bounds x="1187" y="1160" width="13" height="1"/>
+			<bounds x="1187" y="1160" width="14" height="1"/>
 		</element>
 
 		<!-- define buttons -->
