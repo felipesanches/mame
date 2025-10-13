@@ -111,7 +111,7 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 
 	<element name="diagram_01">
 		<image><data><![CDATA[
-			<svg width="383" height="34">
+			<svg width="384" height="34">
 				<path
 					fill="none" stroke="#000" stroke-width="1"
 					d="
@@ -1091,8 +1091,9 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 			<bounds x="123" y="195" width="78" height="70" />
 		</element>
 
+		<!-- simple line diagrams -->
 		<element ref="diagram_01">
-			<bounds x="152" y="130" width="383" height="34" />
+			<bounds x="151" y="130" width="384" height="34" />
 		</element>
 
 		<repeat count="3">
@@ -1103,21 +1104,23 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		</repeat>
 
 		<element ref="diagram_03">
-			<bounds x="748" y="94" width="351" height="34" />
+			<bounds x="746" y="94" width="351" height="34" />
 		</element>
 		<element ref="diagram_03">
-			<bounds x="748" y="210" width="351" height="34" />
+			<bounds x="746" y="210" width="351" height="34" />
 		</element>
 		<element ref="diagram_03">
-			<bounds x="748" y="500" width="351" height="34" />
+			<bounds x="746" y="500" width="351" height="34" />
 		</element>
 
+		<!-- ula diagrams -->
 		<element ref="diagram_04">
 			<bounds x="712" y="265" width="405" height="147" />
 		</element>
 
 		<element ref="ula"><bounds x="875" y="278" width="81" height="104" /></element>
 
+		<!-- switch diagrams -->
 		<element ref="diagram_05">
 			<bounds x="782" y="624" width="186" height="93" />
 		</element>
