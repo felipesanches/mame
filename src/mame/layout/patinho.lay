@@ -197,7 +197,7 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 
 	<element name="diagram_07">
 		<image><data><![CDATA[
-			<svg width="338" height="34">
+			<svg width="339" height="34">
 				<path
 					fill="none" stroke="#000" stroke-width="4"
 					d="
@@ -315,16 +315,23 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		</rect>
 	</element>
 
+	<element name="bold_rect">
+		<rect>
+			<bounds x="0" y="0" width="369" height="73"/>
+			<color red="0" green="0" blue="0"/>
+		</rect>
+		<rect>
+			<bounds x="4" y="4" width="361" height="65"/>
+			<color red="0.83" green="0.33" blue="0" />
+		</rect>
+	</element>
+
 	<element name="circle">
 		<disk><color red="0" green="0" blue="0" /></disk>
 	</element>
 
 	<element name="line">
 		<rect><color red="0" green="0" blue="0" /></rect>
-	</element>
-
-	<element name="rect">
-		<rect><color red="0.83" green="0.33" blue="0" /></rect>
 	</element>
 
 	<element name="panel_background">
@@ -427,8 +434,8 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		</element>
 
 		<!-- define orange rectangles -->
-		<element ref="rect">
-			<bounds x="158" y="65" width="369" height="73" />
+		<element ref="bold_rect">
+			<bounds x="158" y="65" width="369" height="73"/>
 		</element>
 
 		<!-- define lamps -->
@@ -528,11 +535,11 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 
 		<!-- define horizontal lines -->
 		<element ref="line">
-			<bounds x="68" y="38" width="1177" height="4" />
+			<bounds x="68" y="38" width="1180" height="4" />
 		</element>
 
 		<element ref="line">
-			<bounds x="525" y="80" width="220" height="4" />
+			<bounds x="525" y="80" width="232" height="4" />
 		</element>
 
 		<element ref="line">
@@ -544,11 +551,11 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		</element>
 
 		<element ref="line">
-			<bounds x="109" y="121" width="49" height="4" />
+			<bounds x="109" y="121" width="51" height="4" />
 		</element>
 
 		<element ref="line">
-			<bounds x="109" y="195" width="116" height="4" />
+			<bounds x="109" y="195" width="118" height="4" />
 		</element>
 
 		<element ref="line">
@@ -576,7 +583,7 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		</element>
 
 		<element ref="line">
-			<bounds x="109" y="415" width="74" height="4" />
+			<bounds x="109" y="415" width="75" height="4" />
 		</element>
 
 		<element ref="line">
@@ -588,7 +595,7 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		</element>
 
 		<element ref="line">
-			<bounds x="68" y="451" width="115" height="4" />
+			<bounds x="68" y="451" width="117" height="4" />
 		</element>
 
 		<element ref="line">
@@ -704,11 +711,11 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		</element>
 
 		<element ref="line">
-			<bounds x="68" y="38" width="4" height="413" />
+			<bounds x="68" y="38" width="4" height="415" />
 		</element>
 
 		<element ref="line">
-			<bounds x="109" y="121" width="4" height="294" />
+			<bounds x="109" y="121" width="4" height="296" />
 		</element>
 
 		<element ref="line">
@@ -1119,21 +1126,22 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 			<bounds x="1014" y="624" width="186" height="93" />
 		</element>
 
+		<!-- bold line diagrams-->
 		<repeat count="3">
 			<param name="diagram_y" start="180" increment="120"/>
 			<element ref="diagram_06">
-				<bounds x="225" y="~diagram_y~" width="226" height="34" />
+				<bounds x="223" y="~diagram_y~" width="226" height="34" />
 			</element>
 		</repeat>
 
 		<element ref="diagram_07">
-			<bounds x="755" y="63" width="338" height="34" />
+			<bounds x="753" y="63" width="339" height="34" />
 		</element>
 		<element ref="diagram_07">
-			<bounds x="755" y="180" width="338" height="34" />
+			<bounds x="753" y="180" width="339" height="34" />
 		</element>
 		<element ref="diagram_07">
-			<bounds x="755" y="469" width="338" height="34" />
+			<bounds x="753" y="469" width="339" height="34" />
 		</element>
 
 		<!-- define arrows -->
