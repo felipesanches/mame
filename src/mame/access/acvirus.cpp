@@ -59,10 +59,48 @@
     word in Y memory. Command 4 starts execution at the specified address,
     and doesn't have a length.
 
+
+    FSanches notes:
+	- Initial upload of DSP code ends at address 0x4250
+	- P1.4 is read at 0x0CE9 and it will only continue if it is 0
+	- At 0x4258 we have our first string printed on the LCD
+		- via routine 0FCB for the top line
+		- and routine 0FE0 prints the bottom line
+		
+	- P1.7 (clkout) = 0
+	- P1.6 (t2) = 1
+	- P1.5 (t2ex) is the lcd clock signal
+	- P1.1 (cc1) is DB4
+	- P1.2 (cc2) is DB5
+	- P1.3 (cc3) is DB6
+	- P1.4 (int2) is DB7
+	- P1.6 (t2) = 0
+	
+	routine 0d1e writes to display in 4bit mode
+
+	routine 4ec0 animates logo: "access VIRUS b"
+
+
+
+	P3.4 and P3.5 select the 4 rows of knobs
+
+	P4 read: status of selected row of buttons
+	P4 write: status of selected row of LEDs
+
+	P5.3 is register clock for LEDs
+	P5 bits 2, 1 and 0 select the 8 rows of buttons and also LEDs
+
+
+A/D converter:
+	
+	The first instruction manipulating A/D registers is reach during boot
+	at address 5C37.
+
 ***************************************************************************/
 
 #include "emu.h"
 
+#include "debugger.h"
 #include "cpu/dsp563xx/dsp56303.h"
 #include "cpu/dsp563xx/dsp56311.h"
 #include "cpu/dsp563xx/dsp56362.h"
@@ -88,7 +126,9 @@ public:
 		m_maincpu(*this, "maincpu"),
 		m_lcdc(*this, "lcdc"),
 		m_dsp(*this, "dsp"),
-		m_rombank(*this, "rombank")
+		m_rombank(*this, "rombank"),
+		m_row(*this, "ROW%u", 0U),
+		m_scan(0xff)
 	{ }
 
 	void virusa(machine_config &config) ATTR_COLD;
@@ -106,17 +146,24 @@ private:
 	required_device<hd44780_device> m_lcdc;
 	required_device<dsp563xx_device> m_dsp;
 	required_memory_bank m_rombank;
+	required_ioport_array<4> m_row;
 
 	void prog_map(address_map &map) ATTR_COLD;
 	void data_map(address_map &map) ATTR_COLD;
 
 	u8 p1_r();
+	u8 p3_r();
+	u8 p4_r();
+	u8 p5_r();
 	void p1_w(u8 data);
 	void p5_w(u8 data);
+	void p4_w(u8 data);
 
 	u8 p402_r();
 
 	void palette_init(palette_device &palette) ATTR_COLD;
+	
+	u8 m_scan;
 };
 
 
@@ -132,7 +179,7 @@ void acvirus_state::machine_reset()
 
 u8 acvirus_state::p1_r()
 {
-	return 0; // m_lcdc ready?
+	return ~0x10; // m_lcdc ready?
 }
 
 void acvirus_state::p1_w(u8 data)
@@ -143,9 +190,25 @@ void acvirus_state::p1_w(u8 data)
 	m_lcdc->rs_w(BIT(data, 7));
 }
 
+u8 acvirus_state::p3_r()
+{
+	return 0x00; // dsp ready?
+}
+
+u8 acvirus_state::p4_r()
+{
+	return m_row[m_scan & 3]->read();
+}
+
+void acvirus_state::p4_w(u8 data)
+{
+	// m_LED_pattern = data;
+}
 
 void acvirus_state::p5_w(u8 data)
 {
+	// if raising edge p5.3: set_leds(m_LED_pattern);
+	m_scan = data & 7;
 	m_rombank->set_entry((data >> 4) & 15);
 }
 
@@ -158,6 +221,7 @@ void acvirus_state::prog_map(address_map &map)
 void acvirus_state::data_map(address_map &map)
 {
 	map(0x0400, 0x0407).rw(m_dsp, FUNC(dsp563xx_device::hi08_r), FUNC(dsp563xx_device::hi08_w));
+	map(0x4000, 0x7fff).ram();
 }
 
 void acvirus_state::palette_init(palette_device &palette)
@@ -201,6 +265,9 @@ void acvirus_state::virusb(machine_config &config)
 	m_maincpu->set_addrmap(AS_DATA,    &acvirus_state::data_map);
 	m_maincpu->port_in_cb<1>().set(FUNC(acvirus_state::p1_r));
 	m_maincpu->port_out_cb<1>().set(FUNC(acvirus_state::p1_w));
+	m_maincpu->port_in_cb<3>().set(FUNC(acvirus_state::p3_r));
+	m_maincpu->port_in_cb<4>().set(FUNC(acvirus_state::p4_r));
+	m_maincpu->port_out_cb<4>().set(FUNC(acvirus_state::p4_w));
 	m_maincpu->port_out_cb<5>().set(FUNC(acvirus_state::p5_w));
 
 	screen_device &screen(SCREEN(config, "screen", SCREEN_TYPE_LCD));
@@ -216,7 +283,7 @@ void acvirus_state::virusb(machine_config &config)
 	HD44780(config, m_lcdc, 270000); // TODO: clock not measured, datasheet typical clock used
 	m_lcdc->set_lcd_size(2, 16);
 
-	DSP56311(config, m_dsp, 108_MHz_XTAL);
+	DSP56311(config, m_dsp, 1_MHz_XTAL);
 	m_dsp->set_hard_omr(0xe);
 
 	SPEAKER(config, "speaker", 2).front();
@@ -253,6 +320,45 @@ void acvirus_state::virusc(machine_config &config)
 }
 
 static INPUT_PORTS_START( virus )
+	PORT_START("ROW0")
+	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_1)
+	PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_2)
+	PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_3)
+	PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_4)
+	PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_5)
+	PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_6)
+	PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_7)
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_8)
+
+	PORT_START("ROW1")
+	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_Q)
+	PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_W)
+	PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_E)
+	PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_R)
+	PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_T)
+	PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_Y)
+	PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_U)
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_I)
+
+	PORT_START("ROW2")
+	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_A)
+	PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_S)
+	PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_D)
+	PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_F)
+	PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_G)
+	PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_H)
+	PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_J)
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_K)
+
+	PORT_START("ROW3")
+	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_Z)
+	PORT_BIT(0x02, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_X)
+	PORT_BIT(0x04, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_C)
+	PORT_BIT(0x08, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_V)
+	PORT_BIT(0x10, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_B)
+	PORT_BIT(0x20, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_N)
+	PORT_BIT(0x40, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_M)
+	PORT_BIT(0x80, IP_ACTIVE_LOW, IPT_OTHER) PORT_CODE(KEYCODE_COMMA) PORT_CODE(KEYCODE_ENTER)
 INPUT_PORTS_END
 
 ROM_START( virusa )
