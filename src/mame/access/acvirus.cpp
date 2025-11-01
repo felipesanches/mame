@@ -128,7 +128,8 @@ public:
 		m_dsp(*this, "dsp"),
 		m_rombank(*this, "rombank"),
 		m_row(*this, "ROW%u", 0U),
-		m_scan(0xff)
+		m_scan(0),
+		m_p5_value(0)
 	{ }
 
 	void virusa(machine_config &config) ATTR_COLD;
@@ -164,6 +165,7 @@ private:
 	void palette_init(palette_device &palette) ATTR_COLD;
 	
 	u8 m_scan;
+	u8 m_p5_value;
 };
 
 
@@ -192,7 +194,7 @@ void acvirus_state::p1_w(u8 data)
 
 u8 acvirus_state::p3_r()
 {
-	return 0x00; // dsp ready?
+	return 0x00; // ?
 }
 
 u8 acvirus_state::p4_r()
@@ -205,8 +207,14 @@ void acvirus_state::p4_w(u8 data)
 	// m_LED_pattern = data;
 }
 
+u8 acvirus_state::p5_r()
+{
+	return 0xfd; //m_p5_value;
+}
+
 void acvirus_state::p5_w(u8 data)
 {
+	m_p5_value = data;
 	// if raising edge p5.3: set_leds(m_LED_pattern);
 	m_scan = data & 7;
 	m_rombank->set_entry((data >> 4) & 15);
@@ -221,7 +229,7 @@ void acvirus_state::prog_map(address_map &map)
 void acvirus_state::data_map(address_map &map)
 {
 	map(0x0400, 0x0407).rw(m_dsp, FUNC(dsp563xx_device::hi08_r), FUNC(dsp563xx_device::hi08_w));
-	map(0x4000, 0x7fff).ram();
+	map(0x2000, 0x7fff).ram();
 }
 
 void acvirus_state::palette_init(palette_device &palette)
@@ -268,6 +276,7 @@ void acvirus_state::virusb(machine_config &config)
 	m_maincpu->port_in_cb<3>().set(FUNC(acvirus_state::p3_r));
 	m_maincpu->port_in_cb<4>().set(FUNC(acvirus_state::p4_r));
 	m_maincpu->port_out_cb<4>().set(FUNC(acvirus_state::p4_w));
+	m_maincpu->port_in_cb<5>().set(FUNC(acvirus_state::p5_r));
 	m_maincpu->port_out_cb<5>().set(FUNC(acvirus_state::p5_w));
 
 	screen_device &screen(SCREEN(config, "screen", SCREEN_TYPE_LCD));
