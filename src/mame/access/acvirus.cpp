@@ -128,8 +128,9 @@ public:
 		m_dsp(*this, "dsp"),
 		m_rombank(*this, "rombank"),
 		m_row(*this, "ROW%u", 0U),
-		m_scan(0),
-		m_p5_value(0)
+		m_led(*this, "LED%u", 0U),
+		m_scan(0)
+//		m_p5_value(0)
 	{ }
 
 	void virusa(machine_config &config) ATTR_COLD;
@@ -148,6 +149,7 @@ private:
 	required_device<dsp563xx_device> m_dsp;
 	required_memory_bank m_rombank;
 	required_ioport_array<4> m_row;
+	output_finder<53> m_led;
 
 	void prog_map(address_map &map) ATTR_COLD;
 	void data_map(address_map &map) ATTR_COLD;
@@ -165,7 +167,8 @@ private:
 	void palette_init(palette_device &palette) ATTR_COLD;
 	
 	u8 m_scan;
-	u8 m_p5_value;
+//	u8 m_p5_value;
+	u8 m_LED_pattern;
 };
 
 
@@ -173,6 +176,10 @@ void acvirus_state::machine_start()
 {
 	m_rombank->configure_entries(0, 16, memregion("maincpu")->base(), 0x8000);
 	m_rombank->set_entry(3);
+	m_led.resolve();
+
+	save_item(NAME(m_scan));
+	save_item(NAME(m_LED_pattern));
 }
 
 void acvirus_state::machine_reset()
@@ -204,7 +211,7 @@ u8 acvirus_state::p4_r()
 
 void acvirus_state::p4_w(u8 data)
 {
-	// m_LED_pattern = data;
+	m_LED_pattern = data;
 }
 
 u8 acvirus_state::p5_r()
@@ -214,8 +221,11 @@ u8 acvirus_state::p5_r()
 
 void acvirus_state::p5_w(u8 data)
 {
-	m_p5_value = data;
-	// if raising edge p5.3: set_leds(m_LED_pattern);
+//	m_p5_value = data;
+	if (BIT(data, 3)) // TODO: raising edge
+		for (int i=0; i<8; i++)
+			m_led[8 * (m_scan & 3) + i] = BIT(m_LED_pattern, i);
+
 	m_scan = data & 7;
 	m_rombank->set_entry((data >> 4) & 15);
 }
