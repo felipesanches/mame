@@ -96,9 +96,10 @@ namespace {
 #define LOG_HANDSHAKE (1U << 3) // MSTAT/SSTAT handshake changes
 #define LOG_RESET    (1U << 4)  // Sub CPU reset control
 #define LOG_KEYBED   (1U << 5)  // Tone generator keybed HLE events
+#define LOG_DSP      (1U << 6)  // DSP1 register writes (effect/reverb params)
 #define LOG_ALL_LATCH (LOG_LATCH | LOG_LATCH_DATA)
 
-#define VERBOSE (LOG_LATCH | LOG_RESET)
+#define VERBOSE (LOG_LATCH | LOG_RESET | LOG_DSP)
 #include "logmacro.h"
 
 class kn5000_state : public driver_device
@@ -158,6 +159,12 @@ private:
 	// Tone generator keybed HLE
 	uint16_t tonegen_status_r();
 	uint16_t tonegen_data_r();
+
+	// DSP1 register interface (memory-mapped at 0x130000/0x130002)
+	void dsp1_addr_w(uint16_t data);
+	void dsp1_data_w(uint16_t data);
+	uint8_t m_dsp1_addr;
+	uint8_t m_dsp1_regs[128];
 	struct keybed_event { uint16_t data; };
 	std::queue<keybed_event> m_keybed_queue;
 	uint8_t m_keybed_prev[61];
@@ -218,6 +225,27 @@ uint16_t kn5000_state::tonegen_data_r()
 	keybed_event ev = m_keybed_queue.front();
 	m_keybed_queue.pop();
 	return ev.data;
+}
+
+// DSP1 register interface (IC311)
+// Memory-mapped at SubCPU 0x130000 (address) / 0x130002 (data)
+// Register layout: 4 channels x 32 registers, channels at 0x00/0x20/0x40/0x60
+// Known registers per channel: 8 voice params at ch*32+0x10 through ch*32+0x17
+// Config registers: 0x1F, 0x3F, 0x5F, 0x7F
+void kn5000_state::dsp1_addr_w(uint16_t data)
+{
+	m_dsp1_addr = data & 0x7f;
+}
+
+void kn5000_state::dsp1_data_w(uint16_t data)
+{
+	uint8_t val = data & 0xff;
+	m_dsp1_regs[m_dsp1_addr] = val;
+
+	int channel = (m_dsp1_addr >> 5) & 3;
+	int reg = m_dsp1_addr & 0x1f;
+	LOGMASKED(LOG_DSP, "DSP1: ch%d reg[0x%02X] = 0x%02X (addr=0x%02X)\n",
+		channel, reg, val, m_dsp1_addr);
 }
 
 // Scan PC keyboard input ports and generate note-on/note-off events
@@ -282,7 +310,8 @@ void kn5000_state::subcpu_mem(address_map &map)
 	map(0x110002, 0x110003).r(FUNC(kn5000_state::tonegen_status_r)); // Tone gen keybed status (HLE)
 	map(0x120000, 0x12ffff).r(m_subcpu_latch, FUNC(generic_latch_8_device::read)); // @ IC22
 	map(0x120000, 0x12ffff).w(FUNC(kn5000_state::maincpu_latch_w)); // @ IC23 (logged wrapper)
-	map(0x130000, 0x130003).noprw(); // DSP1 @ IC311 (stub - not yet emulated)
+	map(0x130000, 0x130001).w(FUNC(kn5000_state::dsp1_addr_w));  // DSP1 @ IC311 address register
+	map(0x130002, 0x130003).w(FUNC(kn5000_state::dsp1_data_w));  // DSP1 @ IC311 data register
 	map(0x1e0000, 0x1effff).noprw(); // Waveform/sample RAM (stub - not yet emulated)
 	map(0xfe0000, 0xffffff).rom().region("subcpu", 0); // 1Mbit MASK ROM @ IC30
 
@@ -657,6 +686,8 @@ void kn5000_state::machine_start()
 	save_item(NAME(m_subcpu_latch_write_count));
 	save_item(NAME(m_maincpu_latch_write_count));
 	save_item(NAME(m_keybed_prev));
+	save_item(NAME(m_dsp1_addr));
+	save_item(NAME(m_dsp1_regs));
 
 	m_extension->program_map(m_maincpu->space(AS_PROGRAM));
 
@@ -685,6 +716,10 @@ void kn5000_state::machine_reset()
 	memset(m_keybed_prev, 0, sizeof(m_keybed_prev));
 	while (!m_keybed_queue.empty())
 		m_keybed_queue.pop();
+
+	// Clear DSP1 state
+	m_dsp1_addr = 0;
+	memset(m_dsp1_regs, 0, sizeof(m_dsp1_regs));
 }
 
 void kn5000_state::nvram2_init(nvram_device &device, void *data, size_t size)
