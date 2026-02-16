@@ -105,8 +105,8 @@ void tc183c230002_device::config_data_w(uint16_t data)
 	default:   group_name = nullptr;  break;
 	}
 
-	// Track voice state for group 0x00 (control) writes
-	if (group == 0x00 && channel < 64)
+	// Track voice state for group 0x00, bank 0 (control) writes only
+	if (group == 0x00 && bank == 0 && channel < 64)
 	{
 		bool was_active = m_voices[channel].active;
 		m_voices[channel].control = data;
