@@ -24,6 +24,18 @@
 
 DEFINE_DEVICE_TYPE(TC183C230002, tc183c230002_device, "tc183c230002", "TC183C230002 Tone Generator")
 
+// MIDI note number to name (octave-3 convention: MIDI 60 = C4)
+static const char *midi_note_name(uint8_t note)
+{
+	static const char *const NAMES[] = {
+		"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+	};
+	static char buf[8];
+	if (note > 127) return "?";
+	snprintf(buf, sizeof(buf), "%s%d", NAMES[note % 12], (note / 12) - 1);
+	return buf;
+}
+
 tc183c230002_device::tc183c230002_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: device_t(mconfig, TC183C230002, tag, owner, clock)
 	, m_config_addr(0)
@@ -103,14 +115,16 @@ void tc183c230002_device::config_data_w(uint16_t data)
 		if (!was_active && m_voices[channel].active)
 		{
 			m_active_count++;
-			LOGMASKED(LOG_VOICE, "voice %d: idle -> key-on (active: %d)\n", channel, m_active_count);
+			LOGMASKED(LOG_VOICE, "voice %d: key-on vol=0x%04X (active: %d/64)\n",
+				channel, m_voices[channel].volume, m_active_count);
 		}
 		else if (was_active && !m_voices[channel].active)
 		{
 			if (m_active_count > 0)
 				m_active_count--;
-			LOGMASKED(LOG_VOICE, "voice %d: key-on -> %s (active: %d)\n", channel,
-				(data == 0x7e00) ? "idle" : (data == 0x1200) ? "transition" : "off", m_active_count);
+			LOGMASKED(LOG_VOICE, "voice %d: %s (active: %d/64)\n", channel,
+				(data == 0x7e00) ? "key-off" : (data == 0x1200) ? "release" : "off",
+				m_active_count);
 		}
 	}
 
@@ -160,12 +174,13 @@ uint16_t tc183c230002_device::keyboard_data_r()
 	bool note_on = BIT(data, 7);
 	uint8_t velocity = (data >> 8) & 0xff;
 
+	uint8_t midi_note = raw_note + 0x24;
 	if (note_on)
-		LOGMASKED(LOG_KEYBED, "keybed read: note-on raw=%d MIDI=%d vel=%d data=0x%04X\n",
-			raw_note, raw_note + 0x24, velocity, data);
+		LOGMASKED(LOG_KEYBED, "keybed read: note-on %s (MIDI %d) vel=%d\n",
+			midi_note_name(midi_note), midi_note, velocity);
 	else
-		LOGMASKED(LOG_KEYBED, "keybed read: note-off raw=%d MIDI=%d data=0x%04X\n",
-			raw_note, raw_note + 0x24, data);
+		LOGMASKED(LOG_KEYBED, "keybed read: note-off %s (MIDI %d)\n",
+			midi_note_name(midi_note), midi_note);
 
 	return data;
 }

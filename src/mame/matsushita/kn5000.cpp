@@ -129,6 +129,12 @@ public:
 		, m_cpanel_inta(0)
 		, m_subcpu_latch_write_count(0)
 		, m_maincpu_latch_write_count(0)
+		, m_subcpu_p7(0xff)
+		, m_subcpu_pz(0)
+		, m_subcpu_pe(0xff)
+		, m_subcpu_pf(0)
+		, m_dsp2_shift(0)
+		, m_dsp2_bit_count(0)
 	{ }
 
 	void kn5000(machine_config &config);
@@ -156,6 +162,14 @@ private:
 	uint8_t m_cpanel_inta;
 	uint32_t m_subcpu_latch_write_count;
 	uint32_t m_maincpu_latch_write_count;
+
+	// SubCPU GPIO port state for DSP routing
+	uint8_t m_subcpu_p7;     // Port 7: bit3=~WR, bit4=~RD, bit5=~CS1, bit6=C/~D
+	uint8_t m_subcpu_pz;     // Port Z: data bus to DSP1
+	uint8_t m_subcpu_pe;     // Port E: bit6=~CS2 (DSP2 chip select)
+	uint8_t m_subcpu_pf;     // Port F: bit0=SDA, bit2=SCLK (DSP2 serial)
+	uint16_t m_dsp2_shift;   // DSP2 serial shift register
+	uint8_t m_dsp2_bit_count; // DSP2 serial bit counter
 	virtual void machine_start() override ATTR_COLD;
 	virtual void machine_reset() override ATTR_COLD;
 
@@ -647,6 +661,12 @@ void kn5000_state::machine_start()
 	save_item(NAME(m_subcpu_latch_write_count));
 	save_item(NAME(m_maincpu_latch_write_count));
 	save_item(NAME(m_keybed_prev));
+	save_item(NAME(m_subcpu_p7));
+	save_item(NAME(m_subcpu_pz));
+	save_item(NAME(m_subcpu_pe));
+	save_item(NAME(m_subcpu_pf));
+	save_item(NAME(m_dsp2_shift));
+	save_item(NAME(m_dsp2_bit_count));
 
 	m_extension->program_map(m_maincpu->space(AS_PROGRAM));
 
@@ -673,6 +693,14 @@ void kn5000_state::machine_reset()
 
 	// Clear keybed state (device resets are handled by device_reset())
 	memset(m_keybed_prev, 0, sizeof(m_keybed_prev));
+
+	// Initialize SubCPU GPIO ports to deasserted state (all bits high)
+	m_subcpu_p7 = 0xff;
+	m_subcpu_pz = 0x00;
+	m_subcpu_pe = 0xff;
+	m_subcpu_pf = 0x00;
+	m_dsp2_shift = 0;
+	m_dsp2_bit_count = 0;
 }
 
 void kn5000_state::nvram2_init(nvram_device &device, void *data, size_t size)
@@ -877,6 +905,95 @@ void kn5000_state::kn5000(machine_config &config)
 			LOGMASKED(LOG_HANDSHAKE, "SSTAT: %d -> %d (PD=0x%02X) PC=%06X\n",
 				m_sstat, new_sstat, data, m_subcpu->pc());
 		m_sstat = new_sstat;
+	});
+
+
+	// SUBCPU PORT 7 (DSP1 parallel bus control):
+	//   bit 3 = ~WR (write strobe, active low)
+	//   bit 4 = ~RD (read strobe, active low)
+	//   bit 5 = ~CS1 (DSP1 chip select, active low)
+	//   bit 6 = C/~D (1=data, 0=command)
+	m_subcpu->port7_write().set([this](u8 data) {
+		m_subcpu_p7 = data;
+	});
+
+
+	// SUBCPU PORT Z (DSP1 parallel data bus):
+	//   Firmware writes data byte with LD (PZ), A while WR+CS are active
+	m_subcpu->portz_write().set([this](u8 data) {
+		m_subcpu_pz = data;
+
+		// Check if this is a DSP1 data transfer (WR asserted, CS1 selected)
+		bool wr_active = !BIT(m_subcpu_p7, 3);
+		bool cs1_active = !BIT(m_subcpu_p7, 5);
+
+		if (wr_active && cs1_active)
+		{
+			bool is_command = !BIT(m_subcpu_p7, 6);  // bit 6: 0=command, 1=data
+			if (is_command)
+				m_dsp1->parallel_command_w(data);
+			else
+				m_dsp1->parallel_data_w(data);
+		}
+	});
+
+
+	// SUBCPU PORT E:
+	//   bit 6 = ~CS2 (DSP2 chip select, active low)
+	m_subcpu->porte_write().set([this](u8 data) {
+		uint8_t old_pe = m_subcpu_pe;
+		m_subcpu_pe = data;
+
+		// CS2 deassert (rising edge of PE.6) — end of DSP2 serial transaction
+		if (!BIT(old_pe, 6) && BIT(data, 6))
+		{
+			if (m_dsp2_bit_count == 9)
+			{
+				// Command: 9 clocks = 1 framing pulse + 8 data bits
+				uint8_t byte = m_dsp2_shift & 0xff;
+				m_dsp2->parallel_command_w(byte);
+			}
+			else if (m_dsp2_bit_count == 8)
+			{
+				// Data: 8 clocks = 8 data bits
+				uint8_t byte = m_dsp2_shift & 0xff;
+				m_dsp2->parallel_data_w(byte);
+			}
+			m_dsp2_bit_count = 0;
+			m_dsp2_shift = 0;
+		}
+
+		// CS2 assert (falling edge) — start of DSP2 serial transaction
+		if (BIT(old_pe, 6) && !BIT(data, 6))
+		{
+			m_dsp2_bit_count = 0;
+			m_dsp2_shift = 0;
+		}
+	});
+
+
+	// SUBCPU PORT F (DSP2 bit-banged serial):
+	//   bit 0 = SDA (serial data to DSP2)
+	//   bit 2 = SCLK (serial clock to DSP2)
+	m_subcpu->portf_write().set([this](u8 data) {
+		uint8_t old_pf = m_subcpu_pf;
+		m_subcpu_pf = data;
+
+		// Detect SCLK rising edge (PF.2: 0->1) while CS2 is active
+		bool cs2_active = !BIT(m_subcpu_pe, 6);
+		if (!BIT(old_pf, 2) && BIT(data, 2) && cs2_active)
+		{
+			// Shift in data bit from PF.0 (MSB first)
+			m_dsp2_shift = (m_dsp2_shift << 1) | BIT(data, 0);
+			m_dsp2_bit_count++;
+		}
+	});
+
+
+	// SUBCPU PORT H (DSP status):
+	//   bit 0 = DSP ready (1=ready, 0=busy)
+	m_subcpu->porth_read().set([this]() -> u8 {
+		return 0x01;  // Always ready — prevents 8000-iteration timeout loops
 	});
 
 

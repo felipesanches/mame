@@ -18,9 +18,10 @@
 #include "emu.h"
 #include "mn19413.h"
 
-#define LOG_SERIAL (1U << 1)   // Serial byte reception
+#define LOG_SERIAL   (1U << 1)   // Serial byte reception
+#define LOG_PARALLEL (1U << 2)   // Parallel port command/data
 
-#define VERBOSE (LOG_SERIAL)
+#define VERBOSE (LOG_PARALLEL)
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(MN19413, mn19413_device, "mn19413", "MN19413 Effect DSP")
@@ -33,6 +34,7 @@ mn19413_device::mn19413_device(const machine_config &mconfig, const char *tag, d
 	, m_sclk_state(0)
 	, m_byte_count(0)
 	, m_current_command(0)
+	, m_par_cmd(0)
 	, m_txd_cb(*this)
 {
 }
@@ -45,6 +47,7 @@ void mn19413_device::device_start()
 	save_item(NAME(m_sclk_state));
 	save_item(NAME(m_byte_count));
 	save_item(NAME(m_current_command));
+	save_item(NAME(m_par_cmd));
 }
 
 void mn19413_device::device_reset()
@@ -55,6 +58,8 @@ void mn19413_device::device_reset()
 	m_sclk_state = 0;
 	m_byte_count = 0;
 	m_current_command = 0;
+	m_par_cmd = 0;
+	m_par_data.clear();
 }
 
 void mn19413_device::rxd(int state)
@@ -90,4 +95,40 @@ void mn19413_device::sclk(int state)
 	}
 
 	m_sclk_state = new_sclk;
+}
+
+//--------------------------------------------------------------------------
+//  Parallel port interface (delivered by driver from PF bit-bang decoding)
+//--------------------------------------------------------------------------
+
+void mn19413_device::parallel_command_w(uint8_t data)
+{
+	// New command starts — process any accumulated previous command
+	if (!m_par_data.empty())
+		process_command();
+
+	m_par_cmd = data;
+	m_par_data.clear();
+	LOGMASKED(LOG_PARALLEL, "parallel cmd 0x%02X\n", data);
+}
+
+void mn19413_device::parallel_data_w(uint8_t data)
+{
+	m_par_data.push_back(data);
+	LOGMASKED(LOG_PARALLEL, "parallel data 0x%02X (byte#%zu for cmd 0x%02X)\n",
+		data, m_par_data.size(), m_par_cmd);
+}
+
+void mn19413_device::process_command()
+{
+	if (m_par_data.empty())
+		return;
+
+	LOGMASKED(LOG_PARALLEL, "cmd 0x%02X complete: %zu data bytes [",
+		m_par_cmd, m_par_data.size());
+	for (size_t i = 0; i < m_par_data.size() && i < 8; i++)
+		LOGMASKED(LOG_PARALLEL, "%s0x%02X", i ? " " : "", m_par_data[i]);
+	if (m_par_data.size() > 8)
+		LOGMASKED(LOG_PARALLEL, " ...");
+	LOGMASKED(LOG_PARALLEL, "]\n");
 }
