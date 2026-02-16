@@ -7,7 +7,6 @@
 ******************************************************************************/
 
 #include "emu.h"
-#include <queue>
 #include "bus/technics/kn5000/hdae5000.h"
 #include "bus/midi/midi.h"
 #include "cpu/tlcs900/tmp94c241.h"
@@ -15,6 +14,9 @@
 #include "machine/gen_latch.h"
 #include "machine/nvram.h"
 #include "machine/upd765.h"
+#include "sound/ds3613gf3ba.h"
+#include "sound/mn19413.h"
+#include "sound/tc183c230002.h"
 #include "video/pc_vga.h"
 #include "screen.h"
 #include "kn5000.lh"
@@ -95,11 +97,10 @@ namespace {
 #define LOG_LATCH_DATA (1U << 2) // Latch read/write (all data bytes - very verbose)
 #define LOG_HANDSHAKE (1U << 3) // MSTAT/SSTAT handshake changes
 #define LOG_RESET    (1U << 4)  // Sub CPU reset control
-#define LOG_KEYBED   (1U << 5)  // Tone generator keybed HLE events
-#define LOG_DSP      (1U << 6)  // DSP1 register writes (effect/reverb params)
+#define LOG_KEYBED   (1U << 5)  // Keybed scan events (driver-side)
 #define LOG_ALL_LATCH (LOG_LATCH | LOG_LATCH_DATA)
 
-#define VERBOSE (LOG_LATCH | LOG_RESET | LOG_DSP)
+#define VERBOSE (LOG_LATCH | LOG_RESET)
 #include "logmacro.h"
 
 class kn5000_state : public driver_device
@@ -113,6 +114,9 @@ public:
 		, m_maincpu_latch(*this, "maincpu_latch")
 		, m_subcpu_latch(*this, "subcpu_latch")
 		, m_fdc(*this, "fdc")
+		, m_tonegen(*this, "tonegen")
+		, m_dsp1(*this, "dsp1")
+		, m_dsp2(*this, "dsp2")
 		, m_com_select(*this, "COM_SELECT")
 		, m_extension(*this, "extension")
 		, m_CPL_SEG(*this, "CPL_SEG%u", 0U)
@@ -136,6 +140,9 @@ private:
 	required_device<generic_latch_8_device> m_maincpu_latch;
 	required_device<generic_latch_8_device> m_subcpu_latch;
 	required_device<upd72067_device> m_fdc;
+	required_device<tc183c230002_device> m_tonegen;     // Tone Generator IC303 (TC183C230002)
+	required_device<ds3613gf3ba_device> m_dsp1;          // DSP1 — IC311 (DS3613GF-3BA), memory-mapped
+	required_device<mn19413_device> m_dsp2;              // DSP2 — IC310 (MN19413), serial
 	required_ioport m_com_select;
 	required_device<kn5000_extension_connector> m_extension;
 
@@ -156,17 +163,7 @@ private:
 	void subcpu_latch_w(uint8_t data);
 	void maincpu_latch_w(uint8_t data);
 
-	// Tone generator keybed HLE
-	uint16_t tonegen_status_r();
-	uint16_t tonegen_data_r();
-
-	// DSP1 register interface (memory-mapped at 0x130000/0x130002)
-	void dsp1_addr_w(uint16_t data);
-	void dsp1_data_w(uint16_t data);
-	uint8_t m_dsp1_addr;
-	uint8_t m_dsp1_regs[128];
-	struct keybed_event { uint16_t data; };
-	std::queue<keybed_event> m_keybed_queue;
+	// Keybed scan timer — polls MAME input ports and injects events into tonegen device
 	uint8_t m_keybed_prev[61];
 	emu_timer *m_keybed_timer;
 	TIMER_CALLBACK_MEMBER(keybed_scan);
@@ -208,268 +205,6 @@ void kn5000_state::maincpu_latch_w(uint8_t data)
 	m_maincpu_latch->write(data);
 }
 
-// Tone generator keybed HLE: status register at 0x110002
-// Bit 0 = data ready (queue non-empty), Bit 1 = 0 (note-on context)
-uint16_t kn5000_state::tonegen_status_r()
-{
-	return m_keybed_queue.empty() ? 0x0000 : 0x0001;
-}
-
-// Tone generator keybed HLE: data register at 0x110000
-// Returns 16-bit word: low byte = raw note (bit 7 = has velocity), high byte = velocity
-uint16_t kn5000_state::tonegen_data_r()
-{
-	if (m_keybed_queue.empty())
-		return 0x0000;
-
-	keybed_event ev = m_keybed_queue.front();
-	m_keybed_queue.pop();
-	return ev.data;
-}
-
-// DSP1 register interface (IC311)
-// Memory-mapped at SubCPU 0x130000 (address) / 0x130002 (data)
-//
-// Register layout: 4 channels x 32 registers
-//   Channel 0: 0x00-0x1F   Channel 1: 0x20-0x3F
-//   Channel 2: 0x40-0x5F   Channel 3: 0x60-0x7F
-//
-// Known per-channel registers (from DSP_Write_Channel / DSP_Init_Channels):
-//   0x10-0x17: Voice parameters (8 bytes, written by DSP_Write_Channel)
-//   0x1F:      Channel config  (written as 0x01 during init)
-//   0x00-0x0F: Unknown (possibly effect routing / algorithm)
-//   0x18-0x1E: Unknown (possibly effect parameters)
-//
-// DSP2 (IC302) uses GPIO bit-bang protocol via PZ port, not memory-mapped.
-// DSP2 debug strings in SubCPU firmware (at 0x0122CC-0x012397):
-//   "DSP %d reset."          "DSP %d anti reset."
-//   "EFF %d mute."           "DSP %d mute."          "DSP %d antimute."
-//   "EFF %d disconnect."     "EFF %d link."
-//   "argo change %d"         (algorithm/routing change)
-//   "EFF %d headder"         "EFF %d change %d"
-//   "EFF %d data change %d"  "EFF %d para%d edit %d"
-//   "EFF %d vol %d"
-// Effect slots 0-4, each 56 (0x38) bytes of parameters at SubCPU RAM 0x4496+.
-//
-// Effect type name table from MainCPU ROM at 0xE32A7A (128 entries, 16-char padded).
-// Parameter name table from MainCPU ROM at 0xE324D0 (84 entries).
-// These are used for semantic logging and future HLE implementation.
-
-static char const *const s_effect_type_names[] = {
-	"NO OPERATION",       // 0
-	"CHORUS",             // 1
-	"MODULATED CHORUS",   // 2
-	"ENHANCER",           // 3
-	"FLANGER",            // 4
-	"PHASER",             // 5
-	"ENSEMBLE",           // 6
-	nullptr,              // 7
-	"GATED REVERB",       // 8
-	"SINGLE DELAY",       // 9
-	"MULTI TAP DELAY",    // 10
-	"MODULATION DELAY",   // 11
-	nullptr,              // 12
-	nullptr,              // 13
-	nullptr,              // 14
-	"ROCK ROTARY",        // 15
-	"ROOM REVERB 1",      // 16
-	"ROOM REVERB 2",      // 17
-	"PLATE REVERB 1",     // 18
-	"PLATE REVERB 2",     // 19
-	"CONCERT REVERB 1",   // 20
-	"CONCERT REVERB 2",   // 21
-	"DARK REVERB 1",      // 22
-	"DARK REVERB 2",      // 23
-	"BRIGHT REVERB 1",    // 24
-	"BRIGHT REVERB 2",    // 25
-	"WAVE REVERB 1",      // 26
-	"WAVE REVERB 2",      // 27
-	nullptr,              // 28
-	nullptr,              // 29
-	nullptr,              // 30
-	nullptr,              // 31
-	"DISTORTION",         // 32
-	"OVERDRIVE",          // 33
-	"FUZZ",               // 34
-	"EXCITER",            // 35
-	"COMPRESSOR",         // 36
-	"SLOW ATTACKER",      // 37
-	"NOISE FLANGER",      // 38
-	"PARAMETRIC EQ",      // 39
-	nullptr,              // 40
-	nullptr,              // 41
-	nullptr,              // 42
-	nullptr,              // 43
-	"CEL",                // 44
-	"CELM",               // 45
-	nullptr,              // 46
-	nullptr,              // 47
-	"AUTO PAN",           // 48
-	"PITCH SHIFTER",      // 49
-	"VIBRATO",            // 50
-	"PEDAL WAH",          // 51
-	"AUTO WAH",           // 52
-	"ROTARY SPEAKER",     // 53
-	"RING MODULATOR",     // 54
-	"HARS EFFECT",        // 55
-	"MIX UP",             // 56
-	"STANDARD",           // 57
-	"PERCUSSIVE",         // 58
-	"SYMPHONIC",          // 59
-	"DEEP SPACE",         // 60
-	nullptr,              // 61
-	nullptr,              // 62
-	"STRING",             // 63
-	"S.DELAY+CHORUS",     // 64
-	"S.DELAY+S.DELAY",    // 65
-	"S.DELAY+FLANGER",    // 66
-	"S.DELAY+VIBRATO",    // 67
-	"S.DELAY+PHASER",     // 68
-	"PEDAL WAH+DELAY",    // 69
-	"AUTO WAH+S.DELAY",   // 70
-	"PEQ+CHORUS",         // 71
-	"PEQ+S.DELAY",        // 72
-	"PEQ+FLANGER",        // 73
-	"PEQ+VIBRATO",        // 74
-	"PEQ+COMPRESSOR",     // 75
-	nullptr,              // 76
-	nullptr,              // 77
-	nullptr,              // 78
-	"GEQ",                // 79
-	"DS_D",               // 80
-	"OVER_D",             // 81
-	nullptr,              // 82
-	nullptr,              // 83
-	nullptr,              // 84
-	nullptr,              // 85
-	nullptr,              // 86
-	nullptr,              // 87
-	"ROOM",               // 88
-	"KARAOKE",            // 89
-	"BATH ROOM",          // 90
-	"STAGE",              // 91
-	nullptr,              // 92
-	nullptr,              // 93
-	nullptr,              // 94
-	nullptr,              // 95
-	"PEQ+COMPR+DIST",     // 96
-	"PEQ+COMPR+OVERDR",   // 97
-	"PEQ+DIST+DELAY",     // 98
-	"PEQ+OVERDR+DELAY",   // 99
-};
-
-static char const *const s_effect_param_names[] = {
-	"VOLUME",             // 0
-	"VOLUME",             // 1
-	"REV SEND",           // 2
-	"DRIVE",              // 3
-	"ADJUST",             // 4
-	"EMPHASIS GAIN",      // 5
-	"DEPTH",              // 6
-	"LFO SPEED",          // 7
-	"SLOW LFO SPEED",     // 8
-	"FAST LFO BALANCE",   // 9
-	"RESONANCE",          // 10
-	"MANUAL",             // 11
-	"SLOW/FAST",          // 12
-	"TREBLE FAST",        // 13
-	"SLOW",               // 14
-	"WIND UP",            // 15
-	"WIND DOWN",          // 16
-	"BASS FAST",          // 17
-	"BASS SLOW",          // 18
-	"VOLUME ADJUST",      // 19
-	"OSC SPEED",          // 20
-	"DELAY L",            // 21
-	"DELAY R",            // 22
-	"FEEDBACK L",         // 23
-	"FEEDBACK R",         // 24
-	"DELAY DRY/WET",      // 25
-	"CHORUS DRY/WET",     // 26
-	"FLANGER DRY/WET",    // 27
-	"PHASER DRY/WET",     // 28
-	"LOW EMPHASIS FC",    // 29
-	"LOW EMPHASIS G",     // 30
-	"HIGH EMPHASIS FC",   // 31
-	"HIGH EMPHASIS G",    // 32
-	"REVERB TIME",        // 33
-	"PRE DELAY",          // 34
-	"HIGH DAMP GAIN",     // 35
-	"ER.LEVEL",           // 36
-	"PITCH L",            // 37
-	"PITCH R",            // 38
-	"THRESHOLD",          // 39
-	"RATIO",              // 40
-	"ATTACK SENS.",       // 41
-	"RELEASE SENS.",      // 42
-	"ATTACK RATE",        // 43
-	"RELEASE RATE",       // 44
-	"GATE TIME",          // 45
-	"MASK TIME",          // 46
-	"HARS TIME",          // 47
-	"LFO WAVEFORM",       // 48
-	"OSC WAVEFORM",       // 49
-	"BAND EMPHASIS FC",   // 50
-	"BAND EMPHASIS Q",    // 51
-	"BAND EMPHASIS G",    // 52
-	"LOW MIX",            // 53
-	"HIGH MIX",           // 54
-	"PHASE",              // 55
-	"FEEDBACK",           // 56
-	"SWEEP RANGE",        // 57
-	"WAH CENTER FC",      // 58
-	"HARS TIME L",        // 59
-	"HARS TIME R",        // 60
-	"BALANCE L",          // 61
-	"BALANCE R",          // 62
-	"FAST LFO SPEED L",   // 63
-	"FAST LFO SPEED R",   // 64
-	"MODULATION DEPTH",   // 65
-	"DELAY1 DRY/WET",     // 66
-	"DELAY2 DRY/WET",     // 67
-	"VIBRATO DRY/WET",    // 68
-	"WAH DRY/WET",        // 69
-	"FAST LFO SPEED",     // 70
-	"TREBLE DEPTH",       // 71
-	"FAST",               // 72
-	"BASS DEPTH",         // 73
-	"DELAY 1",            // 74
-	"DELAY 2",            // 75
-	"DELAY 3",            // 76
-	"DELAY 4",            // 77
-	"PAN 1",              // 78
-	"PAN 2",              // 79
-	"PAN 3",              // 80
-	"PAN 4",              // 81
-	"INTENSITY",          // 82
-	"EXCITE",             // 83
-};
-
-void kn5000_state::dsp1_addr_w(uint16_t data)
-{
-	m_dsp1_addr = data & 0x7f;
-}
-
-void kn5000_state::dsp1_data_w(uint16_t data)
-{
-	uint8_t val = data & 0xff;
-	m_dsp1_regs[m_dsp1_addr] = val;
-
-	int channel = (m_dsp1_addr >> 5) & 3;
-	int reg = m_dsp1_addr & 0x1f;
-
-	char const *desc;
-	if (reg >= 0x10 && reg <= 0x17)
-		desc = "voice";
-	else if (reg == 0x1f)
-		desc = "config";
-	else
-		desc = "unk";
-
-	LOGMASKED(LOG_DSP, "DSP1: ch%d %s[%d] = 0x%02X (addr=0x%02X)\n",
-		channel, desc, reg, val, m_dsp1_addr);
-}
-
 // Scan PC keyboard input ports and generate note-on/note-off events
 // Called every 1ms by timer, matching real IC303 hardware scan rate
 TIMER_CALLBACK_MEMBER(kn5000_state::keybed_scan)
@@ -489,7 +224,7 @@ TIMER_CALLBACK_MEMBER(kn5000_state::keybed_scan)
 			{
 				// Key pressed: data = (velocity << 8) | (raw_note | 0x80)
 				uint16_t data = (uint16_t(KEYBED_VELOCITY) << 8) | (raw_note | 0x80);
-				m_keybed_queue.push({data});
+				m_tonegen->inject_key_event(data);
 				LOGMASKED(LOG_KEYBED, "Keybed: note ON raw=%d MIDI=%d vel=%d data=0x%04X\n",
 					raw_note, raw_note + 0x24, KEYBED_VELOCITY, data);
 			}
@@ -497,7 +232,7 @@ TIMER_CALLBACK_MEMBER(kn5000_state::keybed_scan)
 			{
 				// Key released: data = (0xFF << 8) | raw_note
 				uint16_t data = (0xFF00) | raw_note;
-				m_keybed_queue.push({data});
+				m_tonegen->inject_key_event(data);
 				LOGMASKED(LOG_KEYBED, "Keybed: note OFF raw=%d MIDI=%d data=0x%04X\n",
 					raw_note, raw_note + 0x24, data);
 			}
@@ -527,17 +262,18 @@ void kn5000_state::maincpu_mem(address_map &map)
 void kn5000_state::subcpu_mem(address_map &map)
 {
 	map(0x000000, 0x0fffff).ram(); // 1Mbyte = 2 * 4Mbit DRAMs @ IC28, IC29
-	map(0x100000, 0x100003).noprw(); // Tone gen register config (write-only; writes harmlessly discarded)
-	map(0x110000, 0x110001).r(FUNC(kn5000_state::tonegen_data_r));   // Tone gen keybed data (HLE)
-	map(0x110002, 0x110003).r(FUNC(kn5000_state::tonegen_status_r)); // Tone gen keybed status (HLE)
+	map(0x100000, 0x100001).w(m_tonegen, FUNC(tc183c230002_device::config_addr_w));   // Tone gen IC303 config address
+	map(0x100002, 0x100003).rw(m_tonegen, FUNC(tc183c230002_device::config_data_r), FUNC(tc183c230002_device::config_data_w)); // Tone gen IC303 config data
+	map(0x110000, 0x110001).r(m_tonegen, FUNC(tc183c230002_device::keyboard_data_r));   // Tone gen IC303 keybed data (HLE)
+	map(0x110002, 0x110003).r(m_tonegen, FUNC(tc183c230002_device::keyboard_status_r)); // Tone gen IC303 keybed status (HLE)
 	map(0x120000, 0x12ffff).r(m_subcpu_latch, FUNC(generic_latch_8_device::read)); // @ IC22
 	map(0x120000, 0x12ffff).w(FUNC(kn5000_state::maincpu_latch_w)); // @ IC23 (logged wrapper)
-	map(0x130000, 0x130001).w(FUNC(kn5000_state::dsp1_addr_w));  // DSP1 @ IC311 address register
-	map(0x130002, 0x130003).w(FUNC(kn5000_state::dsp1_data_w));  // DSP1 @ IC311 data register
+	map(0x130000, 0x130001).w(m_dsp1, FUNC(ds3613gf3ba_device::addr_w));  // DSP1 (IC311) address register
+	map(0x130002, 0x130003).w(m_dsp1, FUNC(ds3613gf3ba_device::data_w));  // DSP1 (IC311) data register
 	map(0x1e0000, 0x1effff).noprw(); // Waveform/sample RAM (stub - not yet emulated)
 	map(0xfe0000, 0xffffff).rom().region("subcpu", 0); // 1Mbit MASK ROM @ IC30
 
-	// DSP2 @ IC302 uses serial #0 pins (bitbanging)
+	// DSP2 (IC310, MN19413) uses SubCPU serial port 0
 }
 
 static void kn5000_floppies(device_slot_interface &device)
@@ -908,8 +644,6 @@ void kn5000_state::machine_start()
 	save_item(NAME(m_subcpu_latch_write_count));
 	save_item(NAME(m_maincpu_latch_write_count));
 	save_item(NAME(m_keybed_prev));
-	save_item(NAME(m_dsp1_addr));
-	save_item(NAME(m_dsp1_regs));
 
 	m_extension->program_map(m_maincpu->space(AS_PROGRAM));
 
@@ -934,14 +668,8 @@ void kn5000_state::machine_reset()
 	m_checking_device_led_cn11 = 0;
 	m_checking_device_led_cn12 = 0;
 
-	// Clear keybed state
+	// Clear keybed state (device resets are handled by device_reset())
 	memset(m_keybed_prev, 0, sizeof(m_keybed_prev));
-	while (!m_keybed_queue.empty())
-		m_keybed_queue.pop();
-
-	// Clear DSP1 state
-	m_dsp1_addr = 0;
-	memset(m_dsp1_regs, 0, sizeof(m_dsp1_regs));
 }
 
 void kn5000_state::nvram2_init(nvram_device &device, void *data, size_t size)
@@ -1141,11 +869,21 @@ void kn5000_state::kn5000(machine_config &config)
 	});
 
 
+	// SubCPU serial port 0: DSP2 (IC310, MN19413)
+	m_subcpu->m_serial[0].lookup()->txd().set(m_dsp2, FUNC(mn19413_device::rxd));
+	m_subcpu->m_serial[0].lookup()->sclk_out().set(m_dsp2, FUNC(mn19413_device::sclk));
+
+
 	GENERIC_LATCH_8(config, m_maincpu_latch); // @ IC23
 	m_maincpu_latch->data_pending_callback().set_inputline(m_maincpu, TLCS900_INT0);
 
 	GENERIC_LATCH_8(config, m_subcpu_latch); //  @ IC22
 	m_subcpu_latch->data_pending_callback().set_inputline(m_subcpu, TLCS900_INT0);
+
+	/* Audio chips (HLE stubs with protocol logging) */
+	TC183C230002(config, m_tonegen, 0);  // IC303 — tone generator, memory-mapped at 0x100000/0x110000
+	DS3613GF3BA(config, m_dsp1, 0);      // IC311 — effect DSP, memory-mapped at 0x130000
+	MN19413(config, m_dsp2, 0);          // IC310 — effect DSP, serial via SubCPU port 0
 
 	UPD72067(config, m_fdc, 32'000'000); // actual controller is UPD72068GF-3B9 at IC208
 	m_fdc->intrq_wr_callback().set_inputline(m_maincpu, TLCS900_INT4);
