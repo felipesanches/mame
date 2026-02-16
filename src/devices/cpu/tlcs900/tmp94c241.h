@@ -151,6 +151,10 @@ protected:
 private:
 	int tlcs900_process_hdma(int channel);
 	void tlcs900_process_software_dma(int channel);
+
+	// DMA hexdump logging helpers
+	void dma_log_data(int channel, uint32_t data_val, int data_size, uint32_t dst_addr);
+	void dma_log_complete(int channel, char const *type, uint32_t src, uint32_t dst_end, uint8_t vec = 0);
 	void change_timer_flipflop(uint8_t flipflop, uint8_t operation);
 
 	// Ports
@@ -275,6 +279,13 @@ private:
 	uint8_t m_int_reg[18];
 	uint8_t m_iimc;
 	uint8_t m_dma_vector[4];
+
+	// DMA hexdump logging (debug only, not saved in state)
+	static constexpr int DMA_LOG_MAX = 256;
+	uint8_t m_dma_log_buf[4][DMA_LOG_MAX];
+	int m_dma_log_pos[4];
+	int m_dma_log_total[4];
+	uint32_t m_dma_log_dst_start[4];
 
 	// Chip Select/Wait Control
 	uint16_t m_block_cs[6];
