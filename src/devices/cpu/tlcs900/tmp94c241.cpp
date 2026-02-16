@@ -260,6 +260,8 @@ void tmp94c241_device::device_reset()
 	std::fill_n(&m_int_reg[0], 18, 0x00);
 	m_iimc = 0x00;
 	std::fill_n(&m_dma_vector[0], 4, 0x00);
+	std::fill_n(&m_dma_log_pos[0], 4, 0);
+	std::fill_n(&m_dma_log_total[0], 4, 0);
 	m_block_cs[0] = 0x0000;
 	m_block_cs[1] = 0x0000;
 	m_block_cs[2] = 0x1000; //FIXME!
@@ -932,6 +934,66 @@ void tmp94c241_device::internal_mem(address_map &map)
 //**************************************************************************
 
 //-------------------------------------------------
+//  DMA hexdump logging helpers
+//-------------------------------------------------
+
+void tmp94c241_device::dma_log_data(int channel, uint32_t data_val, int data_size, uint32_t dst_addr)
+{
+	if (m_dma_log_total[channel] == 0)
+		m_dma_log_dst_start[channel] = dst_addr;
+
+	for (int i = 0; i < data_size; i++)
+	{
+		if (m_dma_log_pos[channel] < DMA_LOG_MAX)
+			m_dma_log_buf[channel][m_dma_log_pos[channel]++] = (data_val >> (i * 8)) & 0xff;
+	}
+	m_dma_log_total[channel] += data_size;
+}
+
+void tmp94c241_device::dma_log_complete(int channel, char const *type, uint32_t src, uint32_t dst_end, uint8_t vec)
+{
+	int total = m_dma_log_total[channel];
+	int show = std::min(m_dma_log_pos[channel], total);
+
+	if (vec)
+		logerror("%s ch%d: [%06X]->[%06X] %d bytes (vec=%02X)\n",
+			type, channel, src, m_dma_log_dst_start[channel], total, vec);
+	else
+		logerror("%s ch%d: [%06X]->[%06X] %d bytes\n",
+			type, channel, src, m_dma_log_dst_start[channel], total);
+
+	for (int offset = 0; offset < show; offset += 16)
+	{
+		int line_len = std::min(16, show - offset);
+		char hex[52];
+		char ascii[17];
+		int hpos = 0;
+		for (int i = 0; i < 16; i++)
+		{
+			if (i < line_len)
+				hpos += snprintf(hex + hpos, sizeof(hex) - hpos, "%02X ", m_dma_log_buf[channel][offset + i]);
+			else
+				hpos += snprintf(hex + hpos, sizeof(hex) - hpos, "   ");
+		}
+		for (int i = 0; i < line_len; i++)
+		{
+			uint8_t c = m_dma_log_buf[channel][offset + i];
+			ascii[i] = (c >= 0x20 && c < 0x7f) ? c : '.';
+		}
+		ascii[line_len] = '\0';
+		logerror("  %06X: %s|%s|\n",
+			m_dma_log_dst_start[channel] + offset, hex, ascii);
+	}
+
+	if (total > show)
+		logerror("  ... (%d more bytes)\n", total - show);
+
+	m_dma_log_pos[channel] = 0;
+	m_dma_log_total[channel] = 0;
+}
+
+
+//-------------------------------------------------
 //  tlcs900_process_hdma - process a single HDMA
 //  transfer for a channel
 //-------------------------------------------------
@@ -976,7 +1038,6 @@ int tmp94c241_device::tlcs900_process_hdma(int channel)
 	// Use switch-based decoding matching TMP95C061 proven implementation
 	uint32_t data_val = 0;
 	int data_size = 0;
-	uint32_t src_addr = m_dmas[channel].d;
 	uint32_t dst_addr = m_dmad[channel].d;
 
 	switch (dmam & 0x1f)
@@ -1094,9 +1155,7 @@ int tmp94c241_device::tlcs900_process_hdma(int channel)
 	}
 
 	if (data_size > 0)
-		logerror("HDMA ch%d: [%06X]->[%06X] = %0*X  (count=%d)\n",
-			channel, src_addr, dst_addr, data_size * 2, data_val,
-			m_dmac[channel].w.l);
+		dma_log_data(channel, data_val, data_size, dst_addr);
 
 	// Decrement transfer count
 	m_dmac[channel].w.l -= 1;
@@ -1104,8 +1163,7 @@ int tmp94c241_device::tlcs900_process_hdma(int channel)
 	// Check for transfer completion
 	if (m_dmac[channel].w.l == 0)
 	{
-		logerror("HDMA ch%d complete: src=%06X dst=%06X (vec=%02X)\n",
-			channel, m_dmas[channel].d, m_dmad[channel].d, start_vector);
+		dma_log_complete(channel, "HDMA", m_dmas[channel].d, m_dmad[channel].d, start_vector);
 
 		// Clear DMA vector to disable channel
 		m_dma_vector[channel] = 0;
@@ -1145,7 +1203,6 @@ void tmp94c241_device::tlcs900_process_software_dma(int channel)
 	uint8_t dmam = m_dmam[channel].b.l;
 	uint32_t data_val = 0;
 	int data_size = 0;
-	uint32_t src_addr = m_dmas[channel].d;
 	uint32_t dst_addr = m_dmad[channel].d;
 
 	switch (dmam & 0x1f)
@@ -1223,17 +1280,14 @@ void tmp94c241_device::tlcs900_process_software_dma(int channel)
 	}
 
 	if (data_size > 0)
-		logerror("DMAR ch%d: [%06X]->[%06X] = %0*X  (count=%d)\n",
-			channel, src_addr, dst_addr, data_size * 2, data_val,
-			m_dmac[channel].w.l);
+		dma_log_data(channel, data_val, data_size, dst_addr);
 
 	m_dmac[channel].w.l -= 1;
 
 	// Check for transfer completion
 	if (m_dmac[channel].w.l == 0)
 	{
-		logerror("Software DMA ch%d complete: src=%06X dst=%06X\n",
-			channel, m_dmas[channel].d, m_dmad[channel].d);
+		dma_log_complete(channel, "DMAR", m_dmas[channel].d, m_dmad[channel].d);
 
 		// Set transfer completion interrupt flag (INTTC0-3)
 		switch (channel)
