@@ -51,9 +51,20 @@ protected:
 	virtual void device_reset() override ATTR_COLD;
 
 private:
+	// Per-voice state tracking (64 voices, 6-bit channel index)
+	struct voice_state {
+		uint16_t control;    // group 0x00 register value (key-on/idle/transition)
+		uint16_t volume;     // group 0x08 register value
+		bool active;         // derived: control == 0x8100
+	};
+
 	// Config register state
 	uint16_t m_config_addr;
 	uint16_t m_regs[4096];   // Indexed by 12-bit address
+
+	// Voice state
+	voice_state m_voices[64];
+	uint8_t m_active_count;  // number of currently active voices
 
 	// Keybed event queue (HLE)
 	std::queue<uint16_t> m_keybed_queue;
