@@ -23,6 +23,8 @@
 
 #pragma once
 
+#include <vector>
+
 class ds3613gf3ba_device : public device_t
 {
 public:
@@ -32,13 +34,23 @@ public:
 	void addr_w(uint16_t data);
 	void data_w(uint16_t data);
 
+	// Parallel port interface (P7/PZ protocol from SubCPU)
+	void parallel_command_w(uint8_t data);
+	void parallel_data_w(uint8_t data);
+
 protected:
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
 
 private:
+	void process_command();
+
 	uint8_t m_addr;        // Current register address (0x00-0x7F)
 	uint8_t m_regs[128];   // 4 channels x 32 registers
+
+	// Parallel port protocol state
+	uint8_t m_par_cmd;                  // Current command byte
+	std::vector<uint8_t> m_par_data;    // Data bytes for current command
 };
 
 // Effect type name table (from MainCPU ROM at 0xE32A7A, 128 entries)

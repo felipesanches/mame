@@ -26,6 +26,8 @@
 
 #pragma once
 
+#include <vector>
+
 class mn19413_device : public device_t
 {
 public:
@@ -35,6 +37,10 @@ public:
 	void rxd(int state);              // Serial data input (from CPU TX0)
 	void sclk(int state);             // Serial clock input (from CPU SCLK0)
 
+	// Parallel port interface (delivered by driver from PF bit-bang protocol)
+	void parallel_command_w(uint8_t data);
+	void parallel_data_w(uint8_t data);
+
 	// Callback to CPU serial port
 	auto txd() { return m_txd_cb.bind(); }
 
@@ -43,6 +49,8 @@ protected:
 	virtual void device_reset() override ATTR_COLD;
 
 private:
+	void process_command();
+
 	// Serial RX state
 	uint8_t m_rx_shift;               // Shift register for incoming bits
 	uint8_t m_rx_bit_count;           // Bits received in current byte
@@ -52,6 +60,10 @@ private:
 	// Protocol state
 	uint8_t m_byte_count;             // Bytes received in current transaction
 	uint8_t m_current_command;        // Last command byte received
+
+	// Parallel port protocol state (from driver-level PF bit-bang decoding)
+	uint8_t m_par_cmd;                // Current command byte
+	std::vector<uint8_t> m_par_data;  // Data bytes for current command
 
 	// Callback
 	devcb_write_line m_txd_cb;
