@@ -262,7 +262,7 @@ void kn5000_state::maincpu_mem(address_map &map)
 void kn5000_state::subcpu_mem(address_map &map)
 {
 	map(0x000000, 0x0fffff).ram(); // 1Mbyte = 2 * 4Mbit DRAMs @ IC28, IC29
-	map(0x100000, 0x100001).w(m_tonegen, FUNC(tc183c230002_device::config_addr_w));   // Tone gen IC303 config address
+	map(0x100000, 0x100001).rw(m_tonegen, FUNC(tc183c230002_device::config_addr_r), FUNC(tc183c230002_device::config_addr_w));   // Tone gen IC303 config address
 	map(0x100002, 0x100003).rw(m_tonegen, FUNC(tc183c230002_device::config_data_r), FUNC(tc183c230002_device::config_data_w)); // Tone gen IC303 config data
 	map(0x110000, 0x110001).r(m_tonegen, FUNC(tc183c230002_device::keyboard_data_r));   // Tone gen IC303 keybed data (HLE)
 	map(0x110002, 0x110003).r(m_tonegen, FUNC(tc183c230002_device::keyboard_status_r)); // Tone gen IC303 keybed status (HLE)

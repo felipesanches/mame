@@ -33,6 +33,7 @@ public:
 
 	// Memory-mapped register interface (SubCPU 0x100000-0x100003)
 	void config_addr_w(uint16_t data);
+	uint16_t config_addr_r();
 	void config_data_w(uint16_t data);
 	uint16_t config_data_r();
 

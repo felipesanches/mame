@@ -52,6 +52,11 @@ void tc183c230002_device::config_addr_w(uint16_t data)
 	m_config_addr = data & 0x0fff;
 }
 
+uint16_t tc183c230002_device::config_addr_r()
+{
+	return m_config_addr;
+}
+
 void tc183c230002_device::config_data_w(uint16_t data)
 {
 	m_regs[m_config_addr] = data;
