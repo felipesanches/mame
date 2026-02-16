@@ -981,78 +981,113 @@ int tmp94c241_device::tlcs900_process_hdma(int channel)
 	uint8_t dmam = m_dmam[channel].b.l;
 
 	// Use switch-based decoding matching TMP95C061 proven implementation
+	uint32_t data_val = 0;
+	int data_size = 0;
+	uint32_t src_addr = m_dmas[channel].d;
+	uint32_t dst_addr = m_dmad[channel].d;
+
 	switch (dmam & 0x1f)
 	{
 	case 0x00:
-		WRMEM(m_dmad[channel].d, RDMEM(m_dmas[channel].d));
+		data_val = RDMEM(m_dmas[channel].d);
+		WRMEM(m_dmad[channel].d, data_val);
 		m_dmad[channel].d += 1;
+		data_size = 1;
 		m_cycles += 8;
 		break;
 	case 0x01:
-		WRMEMW(m_dmad[channel].d, RDMEMW(m_dmas[channel].d));
+		data_val = RDMEMW(m_dmas[channel].d);
+		WRMEMW(m_dmad[channel].d, data_val);
 		m_dmad[channel].d += 2;
+		data_size = 2;
 		m_cycles += 8;
 		break;
 	case 0x02:
-		WRMEML(m_dmad[channel].d, RDMEML(m_dmas[channel].d));
+		data_val = RDMEML(m_dmas[channel].d);
+		WRMEML(m_dmad[channel].d, data_val);
 		m_dmad[channel].d += 4;
+		data_size = 4;
 		m_cycles += 12;
 		break;
 	case 0x04:
-		WRMEM(m_dmad[channel].d, RDMEM(m_dmas[channel].d));
+		data_val = RDMEM(m_dmas[channel].d);
+		WRMEM(m_dmad[channel].d, data_val);
 		m_dmad[channel].d -= 1;
+		data_size = 1;
 		m_cycles += 8;
 		break;
 	case 0x05:
-		WRMEMW(m_dmad[channel].d, RDMEMW(m_dmas[channel].d));
+		data_val = RDMEMW(m_dmas[channel].d);
+		WRMEMW(m_dmad[channel].d, data_val);
 		m_dmad[channel].d -= 2;
+		data_size = 2;
 		m_cycles += 8;
 		break;
 	case 0x06:
-		WRMEML(m_dmad[channel].d, RDMEML(m_dmas[channel].d));
+		data_val = RDMEML(m_dmas[channel].d);
+		WRMEML(m_dmad[channel].d, data_val);
 		m_dmad[channel].d -= 4;
+		data_size = 4;
 		m_cycles += 12;
 		break;
 	case 0x08:
-		WRMEM(m_dmad[channel].d, RDMEM(m_dmas[channel].d));
+		data_val = RDMEM(m_dmas[channel].d);
+		WRMEM(m_dmad[channel].d, data_val);
 		m_dmas[channel].d += 1;
+		data_size = 1;
 		m_cycles += 8;
 		break;
 	case 0x09:
-		WRMEMW(m_dmad[channel].d, RDMEMW(m_dmas[channel].d));
+		data_val = RDMEMW(m_dmas[channel].d);
+		WRMEMW(m_dmad[channel].d, data_val);
 		m_dmas[channel].d += 2;
+		data_size = 2;
 		m_cycles += 8;
 		break;
 	case 0x0a:
-		WRMEML(m_dmad[channel].d, RDMEML(m_dmas[channel].d));
+		data_val = RDMEML(m_dmas[channel].d);
+		WRMEML(m_dmad[channel].d, data_val);
 		m_dmas[channel].d += 4;
+		data_size = 4;
 		m_cycles += 12;
 		break;
 	case 0x0c:
-		WRMEM(m_dmad[channel].d, RDMEM(m_dmas[channel].d));
+		data_val = RDMEM(m_dmas[channel].d);
+		WRMEM(m_dmad[channel].d, data_val);
 		m_dmas[channel].d -= 1;
+		data_size = 1;
 		m_cycles += 8;
 		break;
 	case 0x0d:
-		WRMEMW(m_dmad[channel].d, RDMEMW(m_dmas[channel].d));
+		data_val = RDMEMW(m_dmas[channel].d);
+		WRMEMW(m_dmad[channel].d, data_val);
 		m_dmas[channel].d -= 2;
+		data_size = 2;
 		m_cycles += 8;
 		break;
 	case 0x0e:
-		WRMEML(m_dmad[channel].d, RDMEML(m_dmas[channel].d));
+		data_val = RDMEML(m_dmas[channel].d);
+		WRMEML(m_dmad[channel].d, data_val);
 		m_dmas[channel].d -= 4;
+		data_size = 4;
 		m_cycles += 12;
 		break;
 	case 0x10:
-		WRMEM(m_dmad[channel].d, RDMEM(m_dmas[channel].d));
+		data_val = RDMEM(m_dmas[channel].d);
+		WRMEM(m_dmad[channel].d, data_val);
+		data_size = 1;
 		m_cycles += 8;
 		break;
 	case 0x11:
-		WRMEMW(m_dmad[channel].d, RDMEMW(m_dmas[channel].d));
+		data_val = RDMEMW(m_dmas[channel].d);
+		WRMEMW(m_dmad[channel].d, data_val);
+		data_size = 2;
 		m_cycles += 8;
 		break;
 	case 0x12:
-		WRMEML(m_dmad[channel].d, RDMEML(m_dmas[channel].d));
+		data_val = RDMEML(m_dmas[channel].d);
+		WRMEML(m_dmad[channel].d, data_val);
+		data_size = 4;
 		m_cycles += 12;
 		break;
 	case 0x14:
@@ -1064,6 +1099,11 @@ int tmp94c241_device::tlcs900_process_hdma(int channel)
 		m_cycles += 8;
 		break;
 	}
+
+	if (data_size > 0)
+		logerror("HDMA ch%d: [%06X]->[%06X] = %0*X  (count=%d)\n",
+			channel, src_addr, dst_addr, data_size * 2, data_val,
+			m_dmac[channel].w.l);
 
 	// Decrement transfer count
 	m_dmac[channel].w.l -= 1;
@@ -1110,51 +1150,73 @@ void tmp94c241_device::tlcs900_process_software_dma(int channel)
 		return;  // No transfer to do
 
 	uint8_t dmam = m_dmam[channel].b.l;
+	uint32_t data_val = 0;
+	int data_size = 0;
+	uint32_t src_addr = m_dmas[channel].d;
+	uint32_t dst_addr = m_dmad[channel].d;
 
 	switch (dmam & 0x1f)
 	{
 	case 0x00:
-		WRMEM(m_dmad[channel].d, RDMEM(m_dmas[channel].d));
+		data_val = RDMEM(m_dmas[channel].d);
+		WRMEM(m_dmad[channel].d, data_val);
 		m_dmad[channel].d += 1;
+		data_size = 1;
 		m_cycles += 8;
 		break;
 	case 0x01:
-		WRMEMW(m_dmad[channel].d, RDMEMW(m_dmas[channel].d));
+		data_val = RDMEMW(m_dmas[channel].d);
+		WRMEMW(m_dmad[channel].d, data_val);
 		m_dmad[channel].d += 2;
+		data_size = 2;
 		m_cycles += 8;
 		break;
 	case 0x02:
-		WRMEML(m_dmad[channel].d, RDMEML(m_dmas[channel].d));
+		data_val = RDMEML(m_dmas[channel].d);
+		WRMEML(m_dmad[channel].d, data_val);
 		m_dmad[channel].d += 4;
+		data_size = 4;
 		m_cycles += 12;
 		break;
 	case 0x04:
-		WRMEM(m_dmad[channel].d, RDMEM(m_dmas[channel].d));
+		data_val = RDMEM(m_dmas[channel].d);
+		WRMEM(m_dmad[channel].d, data_val);
 		m_dmad[channel].d -= 1;
+		data_size = 1;
 		m_cycles += 8;
 		break;
 	case 0x08:
-		WRMEM(m_dmad[channel].d, RDMEM(m_dmas[channel].d));
+		data_val = RDMEM(m_dmas[channel].d);
+		WRMEM(m_dmad[channel].d, data_val);
 		m_dmas[channel].d += 1;
+		data_size = 1;
 		m_cycles += 8;
 		break;
 	case 0x09:
-		WRMEMW(m_dmad[channel].d, RDMEMW(m_dmas[channel].d));
+		data_val = RDMEMW(m_dmas[channel].d);
+		WRMEMW(m_dmad[channel].d, data_val);
 		m_dmas[channel].d += 2;
+		data_size = 2;
 		m_cycles += 8;
 		break;
 	case 0x0a:
-		WRMEML(m_dmad[channel].d, RDMEML(m_dmas[channel].d));
+		data_val = RDMEML(m_dmas[channel].d);
+		WRMEML(m_dmad[channel].d, data_val);
 		m_dmas[channel].d += 4;
+		data_size = 4;
 		m_cycles += 12;
 		break;
 	case 0x0c:
-		WRMEM(m_dmad[channel].d, RDMEM(m_dmas[channel].d));
+		data_val = RDMEM(m_dmas[channel].d);
+		WRMEM(m_dmad[channel].d, data_val);
 		m_dmas[channel].d -= 1;
+		data_size = 1;
 		m_cycles += 8;
 		break;
 	case 0x10:
-		WRMEM(m_dmad[channel].d, RDMEM(m_dmas[channel].d));
+		data_val = RDMEM(m_dmas[channel].d);
+		WRMEM(m_dmad[channel].d, data_val);
+		data_size = 1;
 		m_cycles += 8;
 		break;
 	case 0x14:
@@ -1166,6 +1228,11 @@ void tmp94c241_device::tlcs900_process_software_dma(int channel)
 		m_cycles += 8;
 		break;
 	}
+
+	if (data_size > 0)
+		logerror("DMAR ch%d: [%06X]->[%06X] = %0*X  (count=%d)\n",
+			channel, src_addr, dst_addr, data_size * 2, data_val,
+			m_dmac[channel].w.l);
 
 	m_dmac[channel].w.l -= 1;
 
