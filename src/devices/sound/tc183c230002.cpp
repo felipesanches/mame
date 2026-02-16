@@ -17,8 +17,9 @@
 
 #define LOG_REG    (1U << 1)   // Register read/write
 #define LOG_KEYBED (1U << 2)   // Keybed data/status reads
+#define LOG_VOICE  (1U << 3)   // Voice state transitions
 
-#define VERBOSE (LOG_REG | LOG_KEYBED)
+#define VERBOSE (LOG_REG | LOG_KEYBED | LOG_VOICE)
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(TC183C230002, tc183c230002_device, "tc183c230002", "TC183C230002 Tone Generator")
@@ -33,12 +34,26 @@ void tc183c230002_device::device_start()
 {
 	save_item(NAME(m_config_addr));
 	save_item(NAME(m_regs));
+	save_item(NAME(m_active_count));
+	for (int i = 0; i < 64; i++)
+	{
+		save_item(NAME(m_voices[i].control), i);
+		save_item(NAME(m_voices[i].volume), i);
+		save_item(NAME(m_voices[i].active), i);
+	}
 }
 
 void tc183c230002_device::device_reset()
 {
 	m_config_addr = 0;
 	std::fill(std::begin(m_regs), std::end(m_regs), 0);
+	m_active_count = 0;
+	for (auto &v : m_voices)
+	{
+		v.control = 0;
+		v.volume = 0;
+		v.active = false;
+	}
 	while (!m_keybed_queue.empty())
 		m_keybed_queue.pop();
 }
@@ -65,29 +80,54 @@ void tc183c230002_device::config_data_w(uint16_t data)
 	uint8_t bank    = (m_config_addr >> 6) & 0x03;
 	uint8_t channel = m_config_addr & 0x3f;
 
-	// Decode well-known register values for semantic logging
-	char const *desc = "";
-	if (group == 0x00)
+	// Register group names for semantic logging
+	char const *group_name;
+	switch (group)
 	{
-		if (data == 0x8100)
-			desc = " (voice key-on)";
-		else if (data == 0x7e00)
-			desc = " (voice idle)";
-		else if (data == 0x1200)
-			desc = " (voice transition)";
-	}
-	else if (group == 0x08)
-	{
-		if (data == 0xff00)
-			desc = " (volume mute)";
+	case 0x00: group_name = "ctrl";   break;
+	case 0x01: group_name = "pitch";  break;
+	case 0x03: group_name = "env";    break;
+	case 0x04: group_name = "filter"; break;
+	case 0x08: group_name = "vol";    break;
+	case 0x09: group_name = "pan";    break;
+	default:   group_name = nullptr;  break;
 	}
 
+	// Track voice state for group 0x00 (control) writes
+	if (group == 0x00 && channel < 64)
+	{
+		bool was_active = m_voices[channel].active;
+		m_voices[channel].control = data;
+		m_voices[channel].active = (data == 0x8100);
+
+		if (!was_active && m_voices[channel].active)
+		{
+			m_active_count++;
+			LOGMASKED(LOG_VOICE, "voice %d: idle -> key-on (active: %d)\n", channel, m_active_count);
+		}
+		else if (was_active && !m_voices[channel].active)
+		{
+			if (m_active_count > 0)
+				m_active_count--;
+			LOGMASKED(LOG_VOICE, "voice %d: key-on -> %s (active: %d)\n", channel,
+				(data == 0x7e00) ? "idle" : (data == 0x1200) ? "transition" : "off", m_active_count);
+		}
+	}
+
+	// Track volume for group 0x08
+	if (group == 0x08 && channel < 64)
+		m_voices[channel].volume = data;
+
+	// Log register writes
 	if (group == 0x02 || group == 0x0c || group == 0x0e)
-		LOGMASKED(LOG_REG, "reg global[0x%04X] = 0x%04X%s\n",
-			m_config_addr, data, desc);
+		LOGMASKED(LOG_REG, "reg global[0x%04X] = 0x%04X\n",
+			m_config_addr, data);
+	else if (group_name)
+		LOGMASKED(LOG_REG, "reg[%s bank=%d ch=%d] = 0x%04X\n",
+			group_name, bank, channel, data);
 	else
-		LOGMASKED(LOG_REG, "reg[grp=0x%02X bank=%d ch=%d] = 0x%04X%s\n",
-			group, bank, channel, data, desc);
+		LOGMASKED(LOG_REG, "reg[grp=0x%02X bank=%d ch=%d] = 0x%04X\n",
+			group, bank, channel, data);
 }
 
 uint16_t tc183c230002_device::config_data_r()
