@@ -245,8 +245,11 @@ void kn5000_state::maincpu_mem(address_map &map)
 {
 	map(0x000000, 0x0fffff).ram().share("nvram1"); // 1Mbyte = 2 * 4Mbit DRAMs @ IC9, IC10 (CS3)
 	// Button states and LED control are now handled via serial protocol to cpanel HLE device
-	//FIXME: map(0x110000, 0x11ffff).m(m_fdc, FUNC(upd765a_device::map)); // Floppy Controller @ IC208
-	//FIXME: map(0x120000, 0x12ffff).w(m_fdc, FUNC(upd765a_device::dack_w)); // Floppy DMA Acknowledge
+	// FDC IC208 (uPD72068): CPU A1 -> FDC A0
+	map(0x110008, 0x110008).rw(m_fdc, FUNC(upd72067_device::msr_r), FUNC(upd72067_device::auxcmd_w));
+	map(0x11000a, 0x11000a).rw(m_fdc, FUNC(upd72067_device::fifo_r), FUNC(upd72067_device::fifo_w));
+	// FDC DMA data port (software DMA ch3 transfers one byte per INT5/DRQ)
+	map(0x120000, 0x120000).rw(m_fdc, FUNC(upd72067_device::dma_r), FUNC(upd72067_device::dma_w));
 	map(0x140000, 0x14ffff).r(m_maincpu_latch, FUNC(generic_latch_8_device::read)); // @ IC23
 	map(0x140000, 0x14ffff).w(FUNC(kn5000_state::subcpu_latch_w)); // @ IC22 (logged wrapper)
 	map(0x1703b0, 0x1703df).m("vga", FUNC(mn89304_vga_device::io_map)); // LCD controller @ IC206
@@ -715,10 +718,10 @@ void kn5000_state::kn5000(machine_config &config)
 	TMP94C241(config, m_maincpu, 2 * 8_MHz_XTAL); // TMP94C241F @ IC5
 	// Address bus is set to 32 bits by the pins AM1=+5v and AM0=GND
 	m_maincpu->set_addrmap(AS_PROGRAM, &kn5000_state::maincpu_mem);
-	// Interrupt 4: FDCINT
-	// Interrupt 5: FDCIRQ
-	// Interrupt 6: FDC.H/D // NOTE: interrupt handler is empty
-	// Interrupt 7: FDC.I/O // NOTE: interrupt handler is empty
+	// Interrupt 4: FDC INTRQ (command completion)
+	// Interrupt 5: FDC DRQ (data request — firmware handles via software DMA channel 3)
+	// Interrupt 6: FDC.H/D (head load — handler is empty RETI)
+	// Interrupt 7: FDC.I/O (disk change — handler is empty RETI)
 	// Interrupt 9: HDDINT
 	// Interrupt A <edge>: ~CPSCK "Control Panel Serial Clock"
 	// ~NMI: SNS
@@ -757,7 +760,15 @@ void kn5000_state::kn5000(machine_config &config)
 	//   bit 0 (output) = FDCRST
 	//   bit 6 (input) = FD.I/O
 	m_maincpu->portd_write().set(m_fdc, FUNC(upd72067_device::reset_w)).bit(0);
-	// TODO: bit 6!
+	// Bit 6: FD.I/O — floppy disk change signal
+	m_maincpu->portd_read().set([this] () -> u8 {
+		u8 data = 0;
+		auto *conn = subdevice<floppy_connector>("fdc:0");
+		floppy_image_device *floppy = conn ? conn->get_device() : nullptr;
+		if (!floppy || floppy->dskchg_r())
+			data |= 0x40;
+		return data;
+	});
 
 
 	// MAINCPU PORT E:
@@ -888,18 +899,9 @@ void kn5000_state::kn5000(machine_config &config)
 	UPD72067(config, m_fdc, 32'000'000); // actual controller is UPD72068GF-3B9 at IC208
 	m_fdc->intrq_wr_callback().set_inputline(m_maincpu, TLCS900_INT4);
 	m_fdc->drq_wr_callback().set_inputline(m_maincpu, TLCS900_INT5);
-	// Review:
-	// Interrupt 4: FDCINT
-	// Interrupt 5: FDCIRQ
-
-
-	// NOTE: int6 and int7 handlers are empty routines
-	// Interrupt 6: FDC.H/D
-	// Interrupt 7: FDC.I/O
-	//
-	// m_fdc->hdl_wr_callback().set_inputline(m_maincpu, TLCS900_INT6);
-	// TODO: tc coming from maincpu TC0 signal
-	// m_fdc->??_wr_callback().set_inputline(m_maincpu, TLCS900_INT7);
+	// TODO: TC signal — maincpu Timer 0 output (TO0) wired to FDC TC input.
+	// TMP94C241 timer output pin callbacks not yet implemented in MAME.
+	// Multi-sector FDC transfers may not terminate correctly without TC.
 
 
 	FLOPPY_CONNECTOR(config, "fdc:0", kn5000_floppies, "35dd", floppy_image_device::default_mfm_floppy_formats).enable_sound(true);
