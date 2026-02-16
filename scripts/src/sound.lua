@@ -60,6 +60,34 @@ if SOUNDS["BEEP"] then
 	}
 end
 
+---------------------------------------------------
+-- Technics KN5000 audio chips
+--@src/devices/sound/tc183c230002.h,SOUNDS["TC183C230002"] = true
+--@src/devices/sound/ds3613gf3ba.h,SOUNDS["DS3613GF3BA"] = true
+--@src/devices/sound/mn19413.h,SOUNDS["MN19413"] = true
+---------------------------------------------------
+
+if SOUNDS["TC183C230002"] then
+	files {
+		MAME_DIR .. "src/devices/sound/tc183c230002.cpp",
+		MAME_DIR .. "src/devices/sound/tc183c230002.h",
+	}
+end
+
+if SOUNDS["DS3613GF3BA"] then
+	files {
+		MAME_DIR .. "src/devices/sound/ds3613gf3ba.cpp",
+		MAME_DIR .. "src/devices/sound/ds3613gf3ba.h",
+	}
+end
+
+if SOUNDS["MN19413"] then
+	files {
+		MAME_DIR .. "src/devices/sound/mn19413.cpp",
+		MAME_DIR .. "src/devices/sound/mn19413.h",
+	}
+end
+
 
 
 ---------------------------------------------------
