@@ -13,6 +13,28 @@
 
 #include "tlcs900.h"
 
+enum
+{
+	INTE45,
+	INTE67,
+	INTE89,
+	INTEAB,
+	INTET01,
+	INTET23,
+	INTET45,
+	INTET67,
+	INTET89,
+	INTETAB,
+	INTES0,
+	INTES1,
+	INTETC01,
+	INTETC23,
+	INTETC45,
+	INTETC67,
+	INTE0AD,
+	INTNMWDT
+};
+
 //**************************************************************************
 //  TYPE DEFINITIONS
 //**************************************************************************

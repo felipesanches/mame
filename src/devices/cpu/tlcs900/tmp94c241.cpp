@@ -24,28 +24,6 @@
 // device type definition
 DEFINE_DEVICE_TYPE(TMP94C241, tmp94c241_device, "tmp94c241", "Toshiba TMP94C241")
 
-enum
-{
-	INTE45,
-	INTE67,
-	INTE89,
-	INTEAB,
-	INTET01,
-	INTET23,
-	INTET45,
-	INTET67,
-	INTET89,
-	INTETAB,
-	INTES0,
-	INTES1,
-	INTETC01,
-	INTETC23,
-	INTETC45,
-	INTETC67,
-	INTE0AD,
-	INTNMWDT
-};
-
 static const struct {
 	uint8_t reg;
 	uint8_t iff;
@@ -372,9 +350,9 @@ void tmp94c241_device::dmar_w(uint8_t data)
 {
 	// DMAR register (0x109) - DMA software request trigger
 	// Writing bit N triggers ONE DMA transfer on channel N (same as HDMA).
-	// For example, the Technics KN5000 driver writes DMAR once per INT0
-	// to transfer a single byte from the inter-CPU latch, relying on the
-	// DMA count to track how many bytes remain in the current transfer block.
+	// The KN5000 firmware writes DMAR once per INT0 to transfer a single
+	// byte from the inter-CPU latch, relying on the DMA count to track
+	// how many bytes remain in the current transfer block.
 	for (int channel = 0; channel < 4; channel++)
 	{
 		if (BIT(data, channel))
@@ -853,7 +831,7 @@ void tmp94c241_device::port_w(uint8_t data)
 template <uint8_t P>
 uint8_t tmp94c241_device::port_r()
 {
-	/* Reading a port returns:
+	/* On real TMP94C241 hardware, reading a port returns:
 	   - Output latch value for bits configured as output (PXCR bit = 1)
 	   - External pin level for bits configured as input (PXCR bit = 0) */
 	uint8_t dir = m_port_control[P];
@@ -1146,7 +1124,7 @@ int tmp94c241_device::tlcs900_process_hdma(int channel)
 	// Check for transfer completion
 	if (m_dmac[channel].w.l == 0)
 	{
-		LOGMASKED(LOG_DMA, "HDMA ch%d complete: src=%06X dst=%06X (vec=%02X)\n",
+		logerror("HDMA ch%d complete: src=%06X dst=%06X (vec=%02X)\n",
 			channel, m_dmas[channel].d, m_dmad[channel].d, start_vector);
 
 		// Clear DMA vector to disable channel
@@ -1174,9 +1152,8 @@ int tmp94c241_device::tlcs900_process_hdma(int channel)
 //  tlcs900_process_software_dma - process a
 //  software-triggered DMA transfer (one unit).
 //  Each DMAR write transfers ONE unit, same as
-//  HDMA. E.g. the Technics KN5000 driver writes
-//  DMAR once per INT0 to receive one byte from
-//  the inter-CPU latch.
+//  HDMA. The firmware writes DMAR once per INT0
+//  to receive one byte from the inter-CPU latch.
 //  Fires INTTC when the count reaches zero.
 //-------------------------------------------------
 
@@ -1248,7 +1225,7 @@ void tmp94c241_device::tlcs900_process_software_dma(int channel)
 	// Check for transfer completion
 	if (m_dmac[channel].w.l == 0)
 	{
-		LOGMASKED(LOG_DMA, "Software DMA ch%d complete: src=%06X dst=%06X\n",
+		logerror("Software DMA ch%d complete: src=%06X dst=%06X\n",
 			channel, m_dmas[channel].d, m_dmad[channel].d);
 
 		// Set transfer completion interrupt flag (INTTC0-3)
@@ -1357,9 +1334,9 @@ void tmp94c241_device::tlcs900_check_irqs()
 
 		// Log only DMA completion interrupts (INTTC0/INTTC2) — key milestones
 		if (vector == 0x94)
-			LOGMASKED(LOG_IRQ, "IRQ: INTTC0 (DMA ch0 done) level=%d PC=%06X\n", level, m_pc.d);
+			logerror("IRQ: INTTC0 (DMA ch0 done) level=%d PC=%06X\n", level, m_pc.d);
 		else if (vector == 0x9c)
-			LOGMASKED(LOG_IRQ, "IRQ: INTTC2 (DMA ch2 done) level=%d PC=%06X\n", level, m_pc.d);
+			logerror("IRQ: INTTC2 (DMA ch2 done) level=%d PC=%06X\n", level, m_pc.d);
 
 		m_xssp.d -= 4;
 		WRMEML(m_xssp.d, m_pc.d);
@@ -1376,10 +1353,10 @@ void tmp94c241_device::tlcs900_check_irqs()
 
 		m_halted = 0;
 
-		// Clear taken IRQ
+		// Clear taken IRQ flag
 		m_int_reg[tmp94c241_irq_vector_map[irq].reg] &= ~ tmp94c241_irq_vector_map[irq].iff;
 
-		// Level-detect re-assertion: Level-triggered interrupt
+		// Level-detect re-assertion: On real hardware, level-triggered interrupt
 		// flags are continuously driven by the input level. Clearing the flag
 		// during dispatch has no lasting effect if the input is still asserted.
 		// Re-assert INT0 flag if input is still active in level-detect mode.
