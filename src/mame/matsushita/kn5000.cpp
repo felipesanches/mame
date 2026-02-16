@@ -7,14 +7,18 @@
 ******************************************************************************/
 
 #include "emu.h"
+#include <queue>
 #include "bus/technics/kn5000/hdae5000.h"
+#include "bus/midi/midi.h"
 #include "cpu/tlcs900/tmp94c241.h"
 #include "imagedev/floppy.h"
 #include "machine/gen_latch.h"
+#include "machine/nvram.h"
 #include "machine/upd765.h"
 #include "video/pc_vga.h"
 #include "screen.h"
 #include "kn5000.lh"
+#include "kn5000_cpanel.h"
 
 class mn89304_vga_device : public svga_device
 {
@@ -86,11 +90,23 @@ uint16_t mn89304_vga_device::offset()
 
 namespace {
 
+// Logging macros for inter-CPU communication debugging
+#define LOG_LATCH    (1U << 1)  // Latch read/write (command bytes only)
+#define LOG_LATCH_DATA (1U << 2) // Latch read/write (all data bytes - very verbose)
+#define LOG_HANDSHAKE (1U << 3) // MSTAT/SSTAT handshake changes
+#define LOG_RESET    (1U << 4)  // Sub CPU reset control
+#define LOG_KEYBED   (1U << 5)  // Tone generator keybed HLE events
+#define LOG_ALL_LATCH (LOG_LATCH | LOG_LATCH_DATA)
+
+#define VERBOSE (LOG_LATCH | LOG_RESET)
+#include "logmacro.h"
+
 class kn5000_state : public driver_device
 {
 public:
 	kn5000_state(const machine_config &mconfig, device_type type, const char *tag)
 		: driver_device(mconfig, type, tag)
+		, m_cpanel(*this, "cpanel")
 		, m_maincpu(*this, "maincpu")
 		, m_subcpu(*this, "subcpu")
 		, m_maincpu_latch(*this, "maincpu_latch")
@@ -100,18 +116,20 @@ public:
 		, m_extension(*this, "extension")
 		, m_CPL_SEG(*this, "CPL_SEG%u", 0U)
 		, m_CPR_SEG(*this, "CPR_SEG%u", 0U)
+		, m_keybed(*this, "KEY%u", 0U)
 		, m_checking_device_led_cn11(*this, "checking_device_led_cn11")
 		, m_checking_device_led_cn12(*this, "checking_device_led_cn12")
-		, m_CPL_LED(*this, "CPL_%u", 0U)
-		, m_CPR_LED(*this, "CPR_%u", 0U)
-		, m_led_row(0)
 		, m_mstat(0)
 		, m_sstat(0)
+		, m_cpanel_inta(0)
+		, m_subcpu_latch_write_count(0)
+		, m_maincpu_latch_write_count(0)
 	{ }
 
 	void kn5000(machine_config &config);
 
 private:
+	required_device<kn5000_cpanel_device> m_cpanel;
 	required_device<tmp94c241_device> m_maincpu;
 	required_device<tmp94c241_device> m_subcpu;
 	required_device<generic_latch_8_device> m_maincpu_latch;
@@ -122,58 +140,153 @@ private:
 
 	required_ioport_array<11> m_CPL_SEG; // buttons on "Control Panel Left" PCB
 	required_ioport_array<11> m_CPR_SEG; // buttons on "Control Panel Right" PCB
+	required_ioport_array<6> m_keybed;   // 61-key keyboard (6 ports x 12 bits, last port 1 key)
 	output_finder<> m_checking_device_led_cn11;
 	output_finder<> m_checking_device_led_cn12;
-	output_finder<50> m_CPL_LED;
-	output_finder<69> m_CPR_LED;
-	uint8_t m_led_row;
 	uint8_t m_mstat;
 	uint8_t m_sstat;
-
+	uint8_t m_cpanel_inta;
+	uint32_t m_subcpu_latch_write_count;
+	uint32_t m_maincpu_latch_write_count;
 	virtual void machine_start() override ATTR_COLD;
 	virtual void machine_reset() override ATTR_COLD;
 
-	uint8_t cpanel_left_buttons_r(offs_t offset);
-	uint8_t cpanel_right_buttons_r(offs_t offset);
-	void cpanel_leds_w(offs_t offset, uint8_t data);
+	// Latch logging wrappers
+	void subcpu_latch_w(uint8_t data);
+	void maincpu_latch_w(uint8_t data);
 
+	// Tone generator keybed HLE
+	uint16_t tonegen_status_r();
+	uint16_t tonegen_data_r();
+	struct keybed_event { uint16_t data; };
+	std::queue<keybed_event> m_keybed_queue;
+	uint8_t m_keybed_prev[61];
+	emu_timer *m_keybed_timer;
+	TIMER_CALLBACK_MEMBER(keybed_scan);
+	static constexpr uint8_t KEYBED_VELOCITY = 100; // fixed velocity for PC keyboard
+
+	void nvram2_init(nvram_device &device, void *data, size_t size);
 	void maincpu_mem(address_map &map) ATTR_COLD;
 	void subcpu_mem(address_map &map) ATTR_COLD;
 };
 
+void kn5000_state::subcpu_latch_w(uint8_t data)
+{
+	m_subcpu_latch_write_count++;
+	// Log command bytes (E1, E2, E3) and first few data bytes
+	if (data == 0xe1 || data == 0xe2 || data == 0xe3)
+		LOGMASKED(LOG_LATCH, "MainCPU -> SubCPU latch: cmd 0x%02X (write #%u) PC=%06X\n",
+			data, m_subcpu_latch_write_count, m_maincpu->pc());
+	else
+		LOGMASKED(LOG_LATCH_DATA, "MainCPU -> SubCPU latch: 0x%02X (write #%u)\n",
+			data, m_subcpu_latch_write_count);
+
+	// Force tight CPU interleaving so subcpu HDMA can process each byte
+	// before the next one is written. On real hardware, HDMA steals cycles
+	// between main CPU instructions.
+	machine().scheduler().perfect_quantum(attotime::from_usec(100));
+
+	m_subcpu_latch->write(data);
+}
+
+void kn5000_state::maincpu_latch_w(uint8_t data)
+{
+	m_maincpu_latch_write_count++;
+	if (data == 0xe1 || data == 0xe2 || data == 0xe3)
+		LOGMASKED(LOG_LATCH, "SubCPU -> MainCPU latch: cmd 0x%02X (write #%u) PC=%06X\n",
+			data, m_maincpu_latch_write_count, m_subcpu->pc());
+	else
+		LOGMASKED(LOG_LATCH_DATA, "SubCPU -> MainCPU latch: 0x%02X (write #%u)\n",
+			data, m_maincpu_latch_write_count);
+	m_maincpu_latch->write(data);
+}
+
+// Tone generator keybed HLE: status register at 0x110002
+// Bit 0 = data ready (queue non-empty), Bit 1 = 0 (note-on context)
+uint16_t kn5000_state::tonegen_status_r()
+{
+	return m_keybed_queue.empty() ? 0x0000 : 0x0001;
+}
+
+// Tone generator keybed HLE: data register at 0x110000
+// Returns 16-bit word: low byte = raw note (bit 7 = has velocity), high byte = velocity
+uint16_t kn5000_state::tonegen_data_r()
+{
+	if (m_keybed_queue.empty())
+		return 0x0000;
+
+	keybed_event ev = m_keybed_queue.front();
+	m_keybed_queue.pop();
+	return ev.data;
+}
+
+// Scan PC keyboard input ports and generate note-on/note-off events
+// Called every 1ms by timer, matching real IC303 hardware scan rate
+TIMER_CALLBACK_MEMBER(kn5000_state::keybed_scan)
+{
+	for (int port = 0; port < 6; port++)
+	{
+		uint16_t keys = m_keybed[port]->read();
+		int num_keys = (port < 5) ? 12 : 1; // last port has only 1 key (C7)
+
+		for (int bit = 0; bit < num_keys; bit++)
+		{
+			int raw_note = port * 12 + bit;
+			uint8_t pressed = (keys >> bit) & 1;
+			uint8_t prev = m_keybed_prev[raw_note];
+
+			if (pressed && !prev)
+			{
+				// Key pressed: data = (velocity << 8) | (raw_note | 0x80)
+				uint16_t data = (uint16_t(KEYBED_VELOCITY) << 8) | (raw_note | 0x80);
+				m_keybed_queue.push({data});
+				LOGMASKED(LOG_KEYBED, "Keybed: note ON raw=%d MIDI=%d vel=%d data=0x%04X\n",
+					raw_note, raw_note + 0x24, KEYBED_VELOCITY, data);
+			}
+			else if (!pressed && prev)
+			{
+				// Key released: data = (0xFF << 8) | raw_note
+				uint16_t data = (0xFF00) | raw_note;
+				m_keybed_queue.push({data});
+				LOGMASKED(LOG_KEYBED, "Keybed: note OFF raw=%d MIDI=%d data=0x%04X\n",
+					raw_note, raw_note + 0x24, data);
+			}
+			m_keybed_prev[raw_note] = pressed;
+		}
+	}
+}
+
 void kn5000_state::maincpu_mem(address_map &map)
 {
-	map(0x000000, 0x0fffff).ram(); // 1Mbyte = 2 * 4Mbit DRAMs @ IC9, IC10 (CS3)
-	map(0x008e4a, 0x008e54).r(FUNC(kn5000_state::cpanel_right_buttons_r));
-	map(0x008e5a, 0x008e64).r(FUNC(kn5000_state::cpanel_left_buttons_r));
-	map(0x008f38, 0x008f39).w(FUNC(kn5000_state::cpanel_leds_w));
+	map(0x000000, 0x0fffff).ram().share("nvram1"); // 1Mbyte = 2 * 4Mbit DRAMs @ IC9, IC10 (CS3)
+	// Button states and LED control are now handled via serial protocol to cpanel HLE device
 	//FIXME: map(0x110000, 0x11ffff).m(m_fdc, FUNC(upd765a_device::map)); // Floppy Controller @ IC208
 	//FIXME: map(0x120000, 0x12ffff).w(m_fdc, FUNC(upd765a_device::dack_w)); // Floppy DMA Acknowledge
 	map(0x140000, 0x14ffff).r(m_maincpu_latch, FUNC(generic_latch_8_device::read)); // @ IC23
-	map(0x140000, 0x14ffff).w(m_subcpu_latch, FUNC(generic_latch_8_device::write)); // @ IC22
+	map(0x140000, 0x14ffff).w(FUNC(kn5000_state::subcpu_latch_w)); // @ IC22 (logged wrapper)
 	map(0x1703b0, 0x1703df).m("vga", FUNC(mn89304_vga_device::io_map)); // LCD controller @ IC206
 	map(0x1a0000, 0x1dffff).rw("vga", FUNC(mn89304_vga_device::mem_linear_r), FUNC(mn89304_vga_device::mem_linear_w));
-	map(0x1e0000, 0x1fffff).ram(); // 1Mbit SRAM @ IC21 (CS0)  Note: I think this is the message "ERROR in back-up SRAM"
+	map(0x1e0000, 0x1fffff).ram().share("nvram2"); // 1Mbit SRAM @ IC21 (CS0)  Note: I think this is the message "ERROR in back-up SRAM"
 	map(0x300000, 0x3fffff).rom().region("custom_data", 0); // 8MBit FLASH ROM @ IC19 (CS5)
 	map(0x400000, 0x7fffff).rom().region("rhythm_data", 0); // 32MBit ROM @ IC14 (A22=1 and CS5)
-	//map(0x800000, 0x82ffff).rom().region("subprogram", 0); // not sure yet in which chip this is stored, but I suspect it should be IC19
+	// The subcpu payload is stored compressed in IC19 flash at 0x3E0000, which is part of the "custom_data" region above.
 	map(0x800000, 0x9fffff).mirror(0x200000).rom().region("table_data", 0); //2 * 8MBit ROMs @ IC1, IC3 (CS2)
 	map(0xe00000, 0xffffff).mask(0x1fffff).rom().region("program", 0); //2 * 8MBit FLASH ROMs @ IC4, IC6
 }
 
 void kn5000_state::subcpu_mem(address_map &map)
 {
-	// There seems to also be devices at 110000, 130000 and 1e0000
-
 	map(0x000000, 0x0fffff).ram(); // 1Mbyte = 2 * 4Mbit DRAMs @ IC28, IC29
-	//map(0x110000, 0x11????).rw(FUNC(kn5000_state::tone_generator_r), FUNC(kn5000_state::tone_generator_w)); // @ IC303
+	map(0x100000, 0x100003).noprw(); // Tone gen register config (write-only; writes harmlessly discarded)
+	map(0x110000, 0x110001).r(FUNC(kn5000_state::tonegen_data_r));   // Tone gen keybed data (HLE)
+	map(0x110002, 0x110003).r(FUNC(kn5000_state::tonegen_status_r)); // Tone gen keybed status (HLE)
 	map(0x120000, 0x12ffff).r(m_subcpu_latch, FUNC(generic_latch_8_device::read)); // @ IC22
-	map(0x120000, 0x12ffff).w(m_maincpu_latch, FUNC(generic_latch_8_device::write)); // @ IC23
-	//map(0x130000, 0x13????).rw(FUNC(kn5000_state::dsp1_r), FUNC(kn5000_state::dsp1_w)); // @ IC311
+	map(0x120000, 0x12ffff).w(FUNC(kn5000_state::maincpu_latch_w)); // @ IC23 (logged wrapper)
+	map(0x130000, 0x130003).noprw(); // DSP1 @ IC311 (stub - not yet emulated)
+	map(0x1e0000, 0x1effff).noprw(); // Waveform/sample RAM (stub - not yet emulated)
 	map(0xfe0000, 0xffffff).rom().region("subcpu", 0); // 1Mbit MASK ROM @ IC30
 
-	//Note:
-	// DSP2 @ IC302 uses a serial #0 pins but I think it is bitbanging those pins.
+	// DSP2 @ IC302 uses serial #0 pins (bitbanging)
 }
 
 static void kn5000_floppies(device_slot_interface &device)
@@ -251,7 +364,7 @@ static INPUT_PORTS_START(kn5000)
 	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DRUM KITS")
 
 	PORT_START("CPR_SEG2")  // SOUND GROUP
-	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("PIANO")
+	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("PIANO") PORT_CODE(KEYCODE_L)
 	PORT_BIT( 0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("GUITAR")
 	PORT_BIT( 0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("STRINGS & VOCAL")
 	PORT_BIT( 0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("BRASS")
@@ -316,7 +429,7 @@ static INPUT_PORTS_START(kn5000)
 	PORT_BIT( 0x04, IP_ACTIVE_HIGH, IPT_UNUSED )
 	PORT_BIT( 0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("R1/R2 OCTAVE -")
 	PORT_BIT( 0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("R1/R2 OCTAVE +")
-	PORT_BIT( 0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("START/STOP")
+	PORT_BIT( 0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("START/STOP") PORT_CODE(KEYCODE_SPACE)
 	PORT_BIT( 0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("SYNCHRO & BREAK")
 	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("TAP TEMPO")
 
@@ -333,10 +446,10 @@ static INPUT_PORTS_START(kn5000)
 	PORT_START("CPR_SEG10")  // MENU
 	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_UNUSED )
 	PORT_BIT( 0x02, IP_ACTIVE_HIGH, IPT_UNUSED )
-	PORT_BIT( 0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("MENU: SOUND")
-	PORT_BIT( 0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("MENU: CONTROL")
-	PORT_BIT( 0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("MENU: MIDI")
-	PORT_BIT( 0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("MENU: DISK")
+	PORT_BIT( 0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("MENU: SOUND") PORT_CODE(KEYCODE_B)
+	PORT_BIT( 0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("MENU: CONTROL") PORT_CODE(KEYCODE_N)
+	PORT_BIT( 0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("MENU: MIDI") PORT_CODE(KEYCODE_M)
+	PORT_BIT( 0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("MENU: DISK") PORT_CODE(KEYCODE_COMMA)
 	PORT_BIT( 0x40, IP_ACTIVE_HIGH, IPT_UNUSED )
 	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_UNUSED )
 
@@ -367,11 +480,11 @@ static INPUT_PORTS_START(kn5000)
 	PORT_BIT( 0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("INTRO & ENDING 2")
 	PORT_BIT( 0x10, IP_ACTIVE_HIGH, IPT_UNUSED )
 	PORT_BIT( 0x20, IP_ACTIVE_HIGH, IPT_UNUSED )
-	PORT_BIT( 0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("PAGE DOWN")
-	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("PAGE UP")
+	PORT_BIT( 0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("PAGE DOWN") PORT_CODE(KEYCODE_PGDN)
+	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("PAGE UP") PORT_CODE(KEYCODE_PGUP)
 
 	PORT_START("CPL_SEG3")
-	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DEMO")
+	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DEMO") PORT_CODE(KEYCODE_ENTER)
 	PORT_BIT( 0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("MSP BANK")
 	PORT_BIT( 0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("MSP MENU")
 	PORT_BIT( 0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("MSP STOP/RECORD")
@@ -411,229 +524,204 @@ static INPUT_PORTS_START(kn5000)
 	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("CUSTOM")
 
 	PORT_START("CPL_SEG7")
-	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("RIGHT 5")
-	PORT_BIT( 0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("RIGHT 4")
-	PORT_BIT( 0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DISPLAY HOLD")
-	PORT_BIT( 0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("EXIT")
-	PORT_BIT( 0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DOWN 7")
-	PORT_BIT( 0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("UP 7")
-	PORT_BIT( 0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DOWN 8")
-	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("UP 8")
+	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("RIGHT 5") PORT_CODE(KEYCODE_0)
+	PORT_BIT( 0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("RIGHT 4") PORT_CODE(KEYCODE_9)
+	PORT_BIT( 0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DISPLAY HOLD") PORT_CODE(KEYCODE_Z)
+	PORT_BIT( 0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("EXIT") PORT_CODE(KEYCODE_X)
+	PORT_BIT( 0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DOWN 7") PORT_CODE(KEYCODE_J)
+	PORT_BIT( 0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("UP 7") PORT_CODE(KEYCODE_U)
+	PORT_BIT( 0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DOWN 8") PORT_CODE(KEYCODE_K)
+	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("UP 8") PORT_CODE(KEYCODE_I)
 
 	PORT_START("CPL_SEG8")
-	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("RIGHT 3")
-	PORT_BIT( 0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("RIGHT 2")
-	PORT_BIT( 0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("RIGHT 1")
+	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("RIGHT 3") PORT_CODE(KEYCODE_8)
+	PORT_BIT( 0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("RIGHT 2") PORT_CODE(KEYCODE_7)
+	PORT_BIT( 0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("RIGHT 1") PORT_CODE(KEYCODE_6)
 	PORT_BIT( 0x08, IP_ACTIVE_HIGH, IPT_UNUSED )
-	PORT_BIT( 0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DOWN 5")
-	PORT_BIT( 0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("UP 5")
-	PORT_BIT( 0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DOWN 6")
-	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("UP 6")
+	PORT_BIT( 0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DOWN 5") PORT_CODE(KEYCODE_G)
+	PORT_BIT( 0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("UP 5") PORT_CODE(KEYCODE_T)
+	PORT_BIT( 0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DOWN 6") PORT_CODE(KEYCODE_H)
+	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("UP 6") PORT_CODE(KEYCODE_Y)
 
 	PORT_START("CPL_SEG9")
-	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("LEFT 5")
-	PORT_BIT( 0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("LEFT 4")
-	PORT_BIT( 0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("LEFT 3")
+	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("LEFT 5") PORT_CODE(KEYCODE_5)
+	PORT_BIT( 0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("LEFT 4") PORT_CODE(KEYCODE_4)
+	PORT_BIT( 0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("LEFT 3") PORT_CODE(KEYCODE_3)
 	PORT_BIT( 0x08, IP_ACTIVE_HIGH, IPT_UNUSED )
-	PORT_BIT( 0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DOWN 3")
-	PORT_BIT( 0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("UP 3")
-	PORT_BIT( 0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DOWN 4")
-	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("UP 4")
+	PORT_BIT( 0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DOWN 3") PORT_CODE(KEYCODE_D)
+	PORT_BIT( 0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("UP 3") PORT_CODE(KEYCODE_E)
+	PORT_BIT( 0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DOWN 4") PORT_CODE(KEYCODE_F)
+	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("UP 4") PORT_CODE(KEYCODE_R)
 
 	PORT_START("CPL_SEG10")
-	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("LEFT 2")
-	PORT_BIT( 0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("LEFT 1")
-	PORT_BIT( 0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("HELP")
-	PORT_BIT( 0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("OTHER PARTS/TR")
-	PORT_BIT( 0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DOWN 1")
-	PORT_BIT( 0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("UP 1")
-	PORT_BIT( 0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DOWN 2")
-	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("UP 2")
+	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("LEFT 2") PORT_CODE(KEYCODE_2)
+	PORT_BIT( 0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("LEFT 1") PORT_CODE(KEYCODE_1)
+	PORT_BIT( 0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("HELP") PORT_CODE(KEYCODE_SLASH)
+	PORT_BIT( 0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("OTHER PARTS/TR") PORT_CODE(KEYCODE_O)
+	PORT_BIT( 0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DOWN 1") PORT_CODE(KEYCODE_A)
+	PORT_BIT( 0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("UP 1") PORT_CODE(KEYCODE_Q)
+	PORT_BIT( 0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DOWN 2") PORT_CODE(KEYCODE_S)
+	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("UP 2") PORT_CODE(KEYCODE_W)
+
+	// 61-key keyboard (C2-C7) — directly connected to tone generator IC303
+	// IC303 does hardware key scanning; this HLE injects events at 0x110000
+	// PC keyboard mapping: Z-row = lower octave, Q-row = upper octave (piano layout)
+	// Base octave = C4 (raw notes 24-47 for the two mapped octaves)
+
+	PORT_START("KEY0")  // C2-B2 (raw notes 0-11, MIDI 36-47)
+	PORT_BIT( 0x001, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("C2")
+	PORT_BIT( 0x002, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("C#2")
+	PORT_BIT( 0x004, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("D2")
+	PORT_BIT( 0x008, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("D#2")
+	PORT_BIT( 0x010, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("E2")
+	PORT_BIT( 0x020, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("F2")
+	PORT_BIT( 0x040, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("F#2")
+	PORT_BIT( 0x080, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("G2")
+	PORT_BIT( 0x100, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("G#2")
+	PORT_BIT( 0x200, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("A2")
+	PORT_BIT( 0x400, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("A#2")
+	PORT_BIT( 0x800, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("B2")
+
+	PORT_START("KEY1")  // C3-B3 (raw notes 12-23, MIDI 48-59)
+	PORT_BIT( 0x001, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("C3")
+	PORT_BIT( 0x002, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("C#3")
+	PORT_BIT( 0x004, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("D3")
+	PORT_BIT( 0x008, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("D#3")
+	PORT_BIT( 0x010, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("E3")
+	PORT_BIT( 0x020, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("F3")
+	PORT_BIT( 0x040, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("F#3")
+	PORT_BIT( 0x080, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("G3")
+	PORT_BIT( 0x100, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("G#3")
+	PORT_BIT( 0x200, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("A3")
+	PORT_BIT( 0x400, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("A#3")
+	PORT_BIT( 0x800, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("B3")
+
+	// KEY2 and KEY3 have no default PORT_CODE assignments because all candidate
+	// keys (Z/S/X/D/C/V/G/B/H/N/J/M, Q/2/W/3/E/R/5/T/6/Y/7/U) conflict with
+	// control panel button mappings above. Use MAME's input configuration UI
+	// (Tab menu) to assign keyboard keys to these notes.
+
+	PORT_START("KEY2")  // C4-B4 (raw notes 24-35, MIDI 60-71) — Middle C octave
+	PORT_BIT( 0x001, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("C4")
+	PORT_BIT( 0x002, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("C#4")
+	PORT_BIT( 0x004, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("D4")
+	PORT_BIT( 0x008, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("D#4")
+	PORT_BIT( 0x010, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("E4")
+	PORT_BIT( 0x020, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("F4")
+	PORT_BIT( 0x040, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("F#4")
+	PORT_BIT( 0x080, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("G4")
+	PORT_BIT( 0x100, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("G#4")
+	PORT_BIT( 0x200, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("A4")
+	PORT_BIT( 0x400, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("A#4")
+	PORT_BIT( 0x800, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("B4")
+
+	PORT_START("KEY3")  // C5-B5 (raw notes 36-47, MIDI 72-83)
+	PORT_BIT( 0x001, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("C5")
+	PORT_BIT( 0x002, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("C#5")
+	PORT_BIT( 0x004, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("D5")
+	PORT_BIT( 0x008, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("D#5")
+	PORT_BIT( 0x010, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("E5")
+	PORT_BIT( 0x020, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("F5")
+	PORT_BIT( 0x040, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("F#5")
+	PORT_BIT( 0x080, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("G5")
+	PORT_BIT( 0x100, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("G#5")
+	PORT_BIT( 0x200, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("A5")
+	PORT_BIT( 0x400, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("A#5")
+	PORT_BIT( 0x800, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("B5")
+
+	PORT_START("KEY4")  // C6-B6 (raw notes 48-59, MIDI 84-95)
+	PORT_BIT( 0x001, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("C6")
+	PORT_BIT( 0x002, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("C#6")
+	PORT_BIT( 0x004, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("D6")
+	PORT_BIT( 0x008, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("D#6")
+	PORT_BIT( 0x010, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("E6")
+	PORT_BIT( 0x020, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("F6")
+	PORT_BIT( 0x040, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("F#6")
+	PORT_BIT( 0x080, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("G6")
+	PORT_BIT( 0x100, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("G#6")
+	PORT_BIT( 0x200, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("A6")
+	PORT_BIT( 0x400, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("A#6")
+	PORT_BIT( 0x800, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("B6")
+
+	PORT_START("KEY5")  // C7 (raw note 60, MIDI 96) — highest key
+	PORT_BIT( 0x001, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_NAME("C7")
+	PORT_BIT( 0xffe, IP_ACTIVE_HIGH, IPT_UNUSED )
 INPUT_PORTS_END
 
-
-uint8_t kn5000_state::cpanel_left_buttons_r(offs_t offset)
-{
-	return m_CPL_SEG[offset]->read();
-}
-
-uint8_t kn5000_state::cpanel_right_buttons_r(offs_t offset)
-{
-	return m_CPR_SEG[offset]->read();
-}
-
-
-void kn5000_state::cpanel_leds_w(offs_t offset, uint8_t data)
-{
-	if ((offset & 1) == 0)
-		m_led_row = data;
-
-	if ((offset & 1) == 1)
-	{
-		switch (m_led_row)
-		{
-			case 0x00:
-				m_CPR_LED[1] = BIT(data, 0); // D101 - EFFECT: SUSTAIN
-				m_CPR_LED[2] = BIT(data, 1); // D102 - EFFECT: DIGITAL EFFECT
-				m_CPR_LED[3] = BIT(data, 2); // D103 - EFFECT: DSP EFFECT
-				m_CPR_LED[4] = BIT(data, 3); // D104 - EFFECT: DIGITAL REVERB
-				m_CPR_LED[5] = BIT(data, 4); // D105 - EFFECT: ACCOUSTIC ILLUSION
-				m_CPR_LED[6] = BIT(data, 5); // D106 - SEQUENCER: PLAY
-				m_CPR_LED[7] = BIT(data, 6); // D107 - SEQUENCER: EASY REC
-				m_CPR_LED[8] = BIT(data, 7); // D108 - SEQUENCER: MENU
-				break;
-
-			case 0x01:
-				m_CPR_LED[9] = BIT(data, 0); // D109 - PIANO
-				m_CPR_LED[10] = BIT(data, 1); // D110 - GUITAR
-				m_CPR_LED[11] = BIT(data, 2); // D111 - STRINGS & VOCAL
-				m_CPR_LED[12] = BIT(data, 3); // D112 - BRASS
-				m_CPR_LED[13] = BIT(data, 4); // D113 - FLUTE
-				m_CPR_LED[14] = BIT(data, 5); // D114 - SAX & REED
-				m_CPR_LED[15] = BIT(data, 6); // D115 - MALLET & ORCH PERC
-				m_CPR_LED[16] = BIT(data, 7); // D116 - WORLD PERC
-				break;
-
-			case 0x02:
-				m_CPR_LED[17] = BIT(data, 0); // D117 - ORGAN & ACCORDION
-				m_CPR_LED[18] = BIT(data, 1); // D118 - ORCHESTRAL PAD
-				m_CPR_LED[19] = BIT(data, 2); // D119 - SYNTH
-				m_CPR_LED[20] = BIT(data, 3); // D120 - BASS
-				m_CPR_LED[21] = BIT(data, 4); // D121 - DIGITAL DRAWBAR
-				m_CPR_LED[22] = BIT(data, 5); // D122 - ACCORDION REGISTER
-				m_CPR_LED[23] = BIT(data, 6); // D123 - GM SPECIAL
-				m_CPR_LED[24] = BIT(data, 7); // D124 - DRUM KITS
-				break;
-
-			case 0x03:
-				m_CPR_LED[25] = BIT(data, 0); // D125 - PANEL MEMORY 1
-				m_CPR_LED[26] = BIT(data, 1); // D126 - PANEL MEMORY 2
-				m_CPR_LED[27] = BIT(data, 2); // D127 - PANEL MEMORY 3
-				m_CPR_LED[28] = BIT(data, 3); // D128 - PANEL MEMORY 4
-				m_CPR_LED[29] = BIT(data, 4); // D129 - PANEL MEMORY 5
-				m_CPR_LED[30] = BIT(data, 5); // D130 - PANEL MEMORY 6
-				m_CPR_LED[31] = BIT(data, 6); // D131 - PANEL MEMORY 7
-				m_CPR_LED[32] = BIT(data, 7); // D132 - PANEL MEMORY 8
-				break;
-
-			case 0x04:
-				m_CPR_LED[33] = BIT(data, 0); // D133 - PART SELECT: LEFT
-				m_CPR_LED[34] = BIT(data, 1); // D134 - PART SELECT: RIGHT 2
-				m_CPR_LED[35] = BIT(data, 2); // D135 - PART SELECT: RIGHT 1
-				m_CPR_LED[36] = BIT(data, 3); // D136 - ENTERTAINER
-				m_CPR_LED[37] = BIT(data, 4); // D137 - CONDUCTOR: LEFT
-				m_CPR_LED[38] = BIT(data, 5); // D138 - CONDUCTOR: RIGHT 2
-				m_CPR_LED[39] = BIT(data, 6); // D139 - CONDUCTOR: RIGHT 1
-				m_CPR_LED[40] = BIT(data, 7); // D140 - TECHNI CHORD
-				break;
-
-			case 0x08:
-				m_CPR_LED[49] = BIT(data, 0); // D149 - MENU: SOUND
-				m_CPR_LED[50] = BIT(data, 1); // D150 - MENU: CONTROL
-				m_CPR_LED[51] = BIT(data, 2); // D151 - MENU: MIDI
-				m_CPR_LED[52] = BIT(data, 3); // D152 - MENU: DISK
-				break;
-
-			case 0x0a:
-				m_CPR_LED[57] = BIT(data, 0); // D157 - MEMORY A
-				m_CPR_LED[58] = BIT(data, 1); // D158 - MEMORY B
-				break;
-
-			case 0x0b:
-				m_CPR_LED[61] = BIT(data, 0); // D161 - SYNCHRO & BREAK
-				m_CPR_LED[62] = BIT(data, 1); // D162 - R1/R2 OCTAVE MINUS
-				m_CPR_LED[63] = BIT(data, 2); // D163 - R1/R2 OCTAVE PLUS
-				m_CPR_LED[64] = BIT(data, 3); // D164 - BANK VIEW
-				break;
-
-			case 0x0c:
-				m_CPR_LED[65] = BIT(data, 0); // D165 - START/STOP 1 BEAT
-				m_CPR_LED[66] = BIT(data, 1); // D166 - START/STOP 2 BEAT
-				m_CPR_LED[67] = BIT(data, 2); // D167 - START/STOP 3 BEAT
-				m_CPR_LED[68] = BIT(data, 3); // D168 - START/STOP 4 BEAT
-				break;
-
-			case 0xc0:
-				m_CPL_LED[1] = BIT(data, 0); // D101 - COMPOSER: MEMORY
-				m_CPL_LED[2] = BIT(data, 1); // D102 - COMPOSER: MENU
-				m_CPL_LED[3] = BIT(data, 2); // D103 - SOUND ARRANGER: SET
-				m_CPL_LED[4] = BIT(data, 3); // D104 - SOUND ARRANGER: ON/OFF
-				m_CPL_LED[5] = BIT(data, 4); // D105 - MUSIC STYLIST
-				m_CPL_LED[6] = BIT(data, 5); // D106 - FADE IN
-				m_CPL_LED[7] = BIT(data, 6); // D107 - FADE OUT
-				m_CPL_LED[8] = BIT(data, 7); // D108 - DISPLAY HOLD
-				break;
-
-			case 0xc1:
-				m_CPL_LED[9] = BIT(data, 0); // D109 - U.S. TRAD
-				m_CPL_LED[10] = BIT(data, 1); // D110 - COUNTRY
-				m_CPL_LED[11] = BIT(data, 2); // D111 - LATIN
-				m_CPL_LED[12] = BIT(data, 3); // D112 - MARCH & WALTZ
-				m_CPL_LED[13] = BIT(data, 4); // D113 - PARTY TIME
-				m_CPL_LED[14] = BIT(data, 5); // D114 - SHOW TIME & TRAD DANCE
-				m_CPL_LED[15] = BIT(data, 6); // D115 - WORLD
-				m_CPL_LED[16] = BIT(data, 7); // D116 - CUSTOM
-				break;
-
-			case 0xc2:
-				m_CPL_LED[17] = BIT(data, 0); // D117 - STANDARD ROCK
-				m_CPL_LED[18] = BIT(data, 1); // D118 - R & ROLL & BLUES
-				m_CPL_LED[19] = BIT(data, 2); // D119 - POP & BALLAD
-				m_CPL_LED[20] = BIT(data, 3); // D120 - FUNK & FUSION
-				m_CPL_LED[21] = BIT(data, 4); // D121 - SOUL & MODERN DANCE
-				m_CPL_LED[22] = BIT(data, 5); // D122 - BIG BAND & SWING
-				m_CPL_LED[23] = BIT(data, 6); // D123 - JAZZ COMBO
-				m_CPL_LED[24] = BIT(data, 7); // D124 - MANUAL SEQUENCE PADS: MENU
-				break;
-
-			case 0xc3:
-				m_CPL_LED[25] = BIT(data, 0); // D125 - VARIATION & MSA 1
-				m_CPL_LED[26] = BIT(data, 1); // D126 - VARIATION & MSA 2
-				m_CPL_LED[27] = BIT(data, 2); // D127 - VARIATION & MSA 3
-				m_CPL_LED[28] = BIT(data, 3); // D128 - VARIATION & MSA 4
-				m_CPL_LED[29] = BIT(data, 4); // D129 - MUSIC STYLE ARRANGER
-				m_CPL_LED[30] = BIT(data, 5); // D130 - AUTO PLAY CHORD
-				break;
-
-			case 0xc4:
-				m_CPL_LED[33] = BIT(data, 0); // D133 - FILL IN 1
-				m_CPL_LED[34] = BIT(data, 1); // D134 - FILL IN 2
-				m_CPL_LED[35] = BIT(data, 2); // D135 - INTRO & ENDING 1
-				m_CPL_LED[36] = BIT(data, 3); // D136 - INTRO & ENDING 2
-				m_CPL_LED[37] = BIT(data, 4); // D137 - SPLIT POINT INDICATOR (LEFT)
-				m_CPL_LED[38] = BIT(data, 5); // D138 - SPLIT POINT INDICATOR (CENTER)
-				m_CPL_LED[39] = BIT(data, 6); // D139 - SPLIT POINT INDICATOR (RIGHT)
-				m_CPL_LED[40] = BIT(data, 7); // D140 - TEMPO/PROGRAM
-				break;
-
-			case 0xc8:
-				m_CPL_LED[49] = BIT(data, 0); // D149 - OTHER PARTS/TR
-				break;
-
-			case 0xff:
-				break;
-		}
-	}
-	return;
-}
 
 void kn5000_state::machine_start()
 {
 	save_item(NAME(m_mstat));
 	save_item(NAME(m_sstat));
+	save_item(NAME(m_cpanel_inta));
+	save_item(NAME(m_subcpu_latch_write_count));
+	save_item(NAME(m_maincpu_latch_write_count));
+	save_item(NAME(m_keybed_prev));
 
 	m_extension->program_map(m_maincpu->space(AS_PROGRAM));
 
 	m_checking_device_led_cn11.resolve();
 	m_checking_device_led_cn12.resolve();
-	m_CPL_LED.resolve();
-	m_CPR_LED.resolve();
+
+	// Connect button input ports to control panel HLE device
+	for (int i = 0; i < 11; i++)
+	{
+		m_cpanel->set_cpl_port(i, m_CPL_SEG[i].target());
+		m_cpanel->set_cpr_port(i, m_CPR_SEG[i].target());
+	}
+
+	// Keybed scan timer: poll keyboard input ports every 1ms
+	memset(m_keybed_prev, 0, sizeof(m_keybed_prev));
+	m_keybed_timer = timer_alloc(FUNC(kn5000_state::keybed_scan), this);
+	m_keybed_timer->adjust(attotime::from_msec(1), 0, attotime::from_msec(1));
 }
 
 void kn5000_state::machine_reset()
 {
 	m_checking_device_led_cn11 = 0;
 	m_checking_device_led_cn12 = 0;
+
+	// Clear keybed state
+	memset(m_keybed_prev, 0, sizeof(m_keybed_prev));
+	while (!m_keybed_queue.empty())
+		m_keybed_queue.pop();
+}
+
+void kn5000_state::nvram2_init(nvram_device &device, void *data, size_t size)
+{
+	// Initialize NVRAM with factory defaults from program ROM.
+	// On real hardware, NVRAM (backup SRAM) is pre-programmed at the factory.
+	// Without valid data, the firmware fails header/checksum validation and
+	// skips Sub-CPU payload transfer, causing incomplete initialization.
+	//
+	// Factory defaults location in v10 ROM: offset 0x0A0150 (0x72A6 bytes)
+	// Header: "KN5000 SOUND RAM" (16 bytes), followed by settings data.
+	// Checksum: one's complement of sum of 0x24B8 LE words from offset 0x10,
+	// stored at offset 0x72A8.
+	uint8_t *dest = reinterpret_cast<uint8_t *>(data);
+	memset(dest, 0, size);
+
+	const uint8_t *rom = memregion("program")->base();
+	static constexpr uint32_t FACTORY_DEFAULTS_ROM_OFFSET = 0x0A0150;
+	static constexpr uint32_t FACTORY_DEFAULTS_SIZE = 0x72A6;
+	static constexpr uint32_t CHECKSUM_WORD_COUNT = 0x24B8;
+	static constexpr uint32_t CHECKSUM_DATA_OFFSET = 0x10;
+	static constexpr uint32_t CHECKSUM_STORE_OFFSET = 0x72A8;
+
+	memcpy(dest, rom + FACTORY_DEFAULTS_ROM_OFFSET, FACTORY_DEFAULTS_SIZE);
+
+	// Compute checksum matching firmware's validation routine (LABEL_FEF93B):
+	// ADD DE, (XWA+) loop over 0x24B8 words, then CPL DE
+	uint16_t sum = 0;
+	for (uint32_t i = 0; i < CHECKSUM_WORD_COUNT; i++)
+	{
+		uint32_t offset = CHECKSUM_DATA_OFFSET + i * 2;
+		uint16_t word = dest[offset] | (dest[offset + 1] << 8);
+		sum += word;
+	}
+	uint16_t checksum = ~sum;
+	dest[CHECKSUM_STORE_OFFSET] = checksum & 0xFF;
+	dest[CHECKSUM_STORE_OFFSET + 1] = (checksum >> 8) & 0xFF;
 }
 
 void kn5000_state::kn5000(machine_config &config)
@@ -644,8 +732,8 @@ void kn5000_state::kn5000(machine_config &config)
 	m_maincpu->set_addrmap(AS_PROGRAM, &kn5000_state::maincpu_mem);
 	// Interrupt 4: FDCINT
 	// Interrupt 5: FDCIRQ
-	// Interrupt 6: FDC.H/D
-	// Interrupt 7: FDC.I/O
+	// Interrupt 6: FDC.H/D // NOTE: interrupt handler is empty
+	// Interrupt 7: FDC.I/O // NOTE: interrupt handler is empty
 	// Interrupt 9: HDDINT
 	// Interrupt A <edge>: ~CPSCK "Control Panel Serial Clock"
 	// ~NMI: SNS
@@ -665,7 +753,10 @@ void kn5000_state::kn5000(machine_config &config)
 	// MAINCPU PORT A:
 	//   bit 0 (output) = sub_cpu ~RESET / SRST
 	m_maincpu->porta_write().set([this] (u8 data) {
-		m_subcpu->set_input_line(INPUT_LINE_RESET, BIT(data, 0) ? CLEAR_LINE : ASSERT_LINE);
+		bool reset_released = BIT(data, 0);
+		LOGMASKED(LOG_RESET, "SubCPU reset: %s (PA=0x%02X) PC=%06X\n",
+			reset_released ? "RELEASED" : "ASSERTED", data, m_maincpu->pc());
+		m_subcpu->set_input_line(INPUT_LINE_RESET, reset_released ? CLEAR_LINE : ASSERT_LINE);
 	});
 
 	// MAINCPU PORT C:
@@ -688,13 +779,17 @@ void kn5000_state::kn5000(machine_config &config)
 	//   bit 0 (input) = +5v
 	//   bit 2 (input) = HDDRDY
 	//   bit 4 (?) = MICSNS
-	m_maincpu->porte_read().set_constant(1); //checked at EF05A6 (v10 ROM)
-	// FIXME: Bit 0 should only be 1 if the
-	// optional hard-drive extension board is disabled;
+	//   bit 5 (input) = INTA (control panel interrupt)
+	m_maincpu->porte_read().set([this] {
+		// Bit 0: +5v (always 1 when no HDD extension)
+		// Bit 5: INTA from control panel (active HIGH — firmware checks BIT 5,(PE); JR NZ)
+		return 0x01 | (m_cpanel_inta ? 0x20 : 0x00);
+	});
 
 
 	// MAINCPU PORT F:
 	//   bit 2 (OUTPUT) = Something related to "RESET CONTROL" circuits?
+	m_maincpu->portf_read().set_constant(1 << 6); //checked at FC437A (v10 ROM)
 
 
 	// MAINCPU PORT G:
@@ -723,13 +818,36 @@ void kn5000_state::kn5000(machine_config &config)
 		return m_com_select->read() | (m_sstat << 2);
 	});
 	m_maincpu->portz_write().set([this] (u8 data) {
-		m_mstat = data & 3;
+		uint8_t new_mstat = data & 3;
+		if (new_mstat != m_mstat)
+			LOGMASKED(LOG_HANDSHAKE, "MSTAT: %d -> %d (PZ=0x%02X) PC=%06X\n",
+				m_mstat, new_mstat, data, m_maincpu->pc());
+		m_mstat = new_mstat;
 	});
 
 
 	// RX0/TX0 = MRXD/MTXD
+	auto &mdin(MIDI_PORT(config, "mdin"));
+	midiin_slot(mdin);
+	mdin.rxd_handler().set(m_maincpu->m_serial[0], FUNC(tmp94c241_serial_device::rxd));
+
+	// TODO: MIDI output
+	// midiout_slot(MIDI_PORT(config, "mdout"));
+
 	// RX1/TX1 = CPDATA
-	// SCLK1   = CPSCK
+	// SCLK1 = CPSCK
+	auto &m_cpanel(KN5000_CPANEL(config, "cpanel"));
+	m_maincpu->m_serial[1].lookup()->txd().set(m_cpanel, FUNC(kn5000_cpanel_device::rxd));
+	m_maincpu->m_serial[1].lookup()->sclk_out().set(m_cpanel, FUNC(kn5000_cpanel_device::sioclk));
+	m_maincpu->m_serial[1].lookup()->tx_start().set(m_cpanel, FUNC(kn5000_cpanel_device::tx_start));
+	m_cpanel.txd().set(m_maincpu->m_serial[1], FUNC(tmp94c241_serial_device::rxd));
+	m_cpanel.sclk_out().set(m_maincpu->m_serial[1], FUNC(tmp94c241_serial_device::sioclk));
+	m_cpanel.inta().set([this] (int state) {
+		m_cpanel_inta = state;
+		// Assert/deassert INTA interrupt on the CPU (active on rising edge)
+		m_maincpu->set_input_line(TLCS900_INTA, state ? ASSERT_LINE : CLEAR_LINE);
+	});
+
 
 	// AN0 = EXP (expression pedal?)
 	// AN1 = AFT
@@ -758,7 +876,11 @@ void kn5000_state::kn5000(machine_config &config)
 		return (BIT(m_mstat, 0) << 2) | (BIT(m_mstat, 1) << 4);
 	});
 	m_subcpu->portd_write().set([this] (u8 data) {
-		m_sstat = data & 3;
+		uint8_t new_sstat = data & 3;
+		if (new_sstat != m_sstat)
+			LOGMASKED(LOG_HANDSHAKE, "SSTAT: %d -> %d (PD=0x%02X) PC=%06X\n",
+				m_sstat, new_sstat, data, m_subcpu->pc());
+		m_sstat = new_sstat;
 	});
 
 
@@ -771,14 +893,19 @@ void kn5000_state::kn5000(machine_config &config)
 	UPD72067(config, m_fdc, 32'000'000); // actual controller is UPD72068GF-3B9 at IC208
 	m_fdc->intrq_wr_callback().set_inputline(m_maincpu, TLCS900_INT4);
 	m_fdc->drq_wr_callback().set_inputline(m_maincpu, TLCS900_INT5);
-	m_fdc->hdl_wr_callback().set_inputline(m_maincpu, TLCS900_INT6);
-	// TODO: tc coming from maincpu TC0 signal
-	//m_fdc->??_wr_callback().set_inputline(m_maincpu, TLCS900_INT7);
-	//FIXME:
+	// Review:
 	// Interrupt 4: FDCINT
 	// Interrupt 5: FDCIRQ
+
+
+	// NOTE: int6 and int7 handlers are empty routines
 	// Interrupt 6: FDC.H/D
 	// Interrupt 7: FDC.I/O
+	//
+	// m_fdc->hdl_wr_callback().set_inputline(m_maincpu, TLCS900_INT6);
+	// TODO: tc coming from maincpu TC0 signal
+	// m_fdc->??_wr_callback().set_inputline(m_maincpu, TLCS900_INT7);
+
 
 	FLOPPY_CONNECTOR(config, "fdc:0", kn5000_floppies, "35dd", floppy_image_device::default_mfm_floppy_formats).enable_sound(true);
 
@@ -798,6 +925,9 @@ void kn5000_state::kn5000(machine_config &config)
 	vga.set_vram_size(0x80000);
 	// iochrdy tied to refresh pin and SA19, A21 and A20 to GND
 	// TODO: VGA.A18 signal, banking? From maincpu thru a T7W139F decoder
+
+	NVRAM(config, "nvram1", nvram_device::DEFAULT_ALL_0);
+	NVRAM(config, "nvram2").set_custom_handler(FUNC(kn5000_state::nvram2_init));
 
 	config.set_default_layout(layout_kn5000);
 }
@@ -837,17 +967,6 @@ ROM_START(kn5000)
 
 	// Note: I've never seen boards with versions 1 or 2.
 
-	// Note: Even though this "subprogram" address range contain executable code for the subcpu, it is actually loaded by the maincpu
-	//       from a flash rom and then transfered to the subcpu RAM via the inter-cpu communications latches at some point during boot.
-	ROM_REGION16_LE(0x30000, "subprogram", 0)
-	ROMX_LOAD("kn5000_subprogram_v142.rom", 0x000000, 0x030000, CRC(fe3b640a) SHA1(5c3a2b9311318c19e1a29ca460dea693bcb2c405), ROM_BIOS(0)) // v10
-	ROMX_LOAD("kn5000_subprogram_v142.rom", 0x000000, 0x030000, CRC(fe3b640a) SHA1(5c3a2b9311318c19e1a29ca460dea693bcb2c405), ROM_BIOS(1)) // v9
-	ROMX_LOAD("kn5000_subprogram_v141.rom", 0x000000, 0x030000, CRC(4f6ea155) SHA1(39b0dd7b23abd3cdfedce65dd4fef0e2ab16ab69), ROM_BIOS(2)) // v8
-	ROMX_LOAD("kn5000_subprogram_v141.rom", 0x000000, 0x030000, CRC(4f6ea155) SHA1(39b0dd7b23abd3cdfedce65dd4fef0e2ab16ab69), ROM_BIOS(3)) // v7
-	ROMX_LOAD("kn5000_subprogram_v140.rom", 0x000000, 0x030000, CRC(d9a537aa) SHA1(b7f471522ab3125e5eb42c7368d57a56084ce32a), ROM_BIOS(4)) // v6
-	ROMX_LOAD("kn5000_subprogram_v140.rom", 0x000000, 0x030000, CRC(d9a537aa) SHA1(b7f471522ab3125e5eb42c7368d57a56084ce32a), ROM_BIOS(5)) // v5
-	ROMX_LOAD("kn5000_subprogram_v139.rom", 0x000000, 0x030000, NO_DUMP, ROM_BIOS(6)) // v4
-
 	ROM_REGION16_LE(0x20000, "subcpu", 0)
 	ROM_LOAD("kn5000_subcpu_boot.ic30", 0x00000, 0x20000, BAD_DUMP CRC(a45ceb77) SHA1(d29429a9a1ef7a718fa88c1aa38d0f7238ba5d94)) // Ranges fe0800-ff7800 and ff9800-fff000 not dumped yet. Assumed here as being filled with 0xFF.
 
@@ -859,6 +978,16 @@ ROM_START(kn5000)
 	ROM_LOAD("kn5000_custom_data_rom.ic19", 0x000000, 0x100000, CRC(5de11a6b) SHA1(4709f815d3d03ce749c51f4af78c62bf4a5e3d94))
 	// IC19 is a flash ROM. The contents here were dumped from a system that had it already programmed by the initial data disk.
 	// Maybe it could also be declared as NVRAM here?
+	//
+	// The subcpu payload is stored compressed (LZSS SLIDE4K format) in IC19 flash at address 0x3E0000 (offset 0xE0000).
+	// During boot, the maincpu decompresses it and transfers it to the subcpu RAM via the inter-cpu latches.
+	// The compressed payloads below were extracted from the system update floppy disk images.
+	ROMX_LOAD("kn5000_subprogram_v142_compressed.rom", 0x0e0000, 0x16c13, CRC(f81e598f) SHA1(13718900afd55cb2e5ff0be213ba1f5dd14bc174), ROM_BIOS(0)) // v10
+	ROMX_LOAD("kn5000_subprogram_v142_compressed.rom", 0x0e0000, 0x16c13, CRC(f81e598f) SHA1(13718900afd55cb2e5ff0be213ba1f5dd14bc174), ROM_BIOS(1)) // v9
+	ROMX_LOAD("kn5000_subprogram_v141_compressed.rom", 0x0e0000, 0x16bfd, CRC(c6d4ad98) SHA1(ac9791441ceb13748a2196a0a6a400431d6aed5e), ROM_BIOS(2)) // v8
+	ROMX_LOAD("kn5000_subprogram_v141_compressed.rom", 0x0e0000, 0x16bfd, CRC(c6d4ad98) SHA1(ac9791441ceb13748a2196a0a6a400431d6aed5e), ROM_BIOS(3)) // v7
+	ROMX_LOAD("kn5000_subprogram_v140_compressed.rom", 0x0e0000, 0x16bc4, CRC(5b182629) SHA1(13098dd150c5a6083a5d15a63d5d785802d8e8ae), ROM_BIOS(4)) // v6
+	ROMX_LOAD("kn5000_subprogram_v140_compressed.rom", 0x0e0000, 0x16bc4, CRC(5b182629) SHA1(13098dd150c5a6083a5d15a63d5d785802d8e8ae), ROM_BIOS(5)) // v5
 
 	ROM_REGION16_LE(0x400000, "rhythm_data", 0)
 	ROM_LOAD("kn5000_rhythm_data_rom.ic14", 0x000000, 0x400000, CRC(76d11a5e) SHA1(e4b572d318c9fe7ba00e5b44ea783e89da9c68bd))
