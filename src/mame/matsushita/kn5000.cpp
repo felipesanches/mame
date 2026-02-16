@@ -229,9 +229,29 @@ uint16_t kn5000_state::tonegen_data_r()
 
 // DSP1 register interface (IC311)
 // Memory-mapped at SubCPU 0x130000 (address) / 0x130002 (data)
-// Register layout: 4 channels x 32 registers, channels at 0x00/0x20/0x40/0x60
-// Known registers per channel: 8 voice params at ch*32+0x10 through ch*32+0x17
-// Config registers: 0x1F, 0x3F, 0x5F, 0x7F
+//
+// Register layout: 4 channels x 32 registers
+//   Channel 0: 0x00-0x1F   Channel 1: 0x20-0x3F
+//   Channel 2: 0x40-0x5F   Channel 3: 0x60-0x7F
+//
+// Known per-channel registers (from DSP_Write_Channel / DSP_Init_Channels):
+//   0x10-0x17: Voice parameters (8 bytes, written by DSP_Write_Channel)
+//   0x1F:      Channel config  (written as 0x01 during init)
+//   0x00-0x0F: Unknown (possibly effect routing / algorithm)
+//   0x18-0x1E: Unknown (possibly effect parameters)
+//
+// DSP2 (IC302) uses GPIO bit-bang protocol via PZ port, not memory-mapped.
+// DSP2 debug strings in SubCPU firmware (at 0x0122CC-0x012397):
+//   "DSP %d reset."          "DSP %d anti reset."
+//   "EFF %d mute."           "DSP %d mute."          "DSP %d antimute."
+//   "EFF %d disconnect."     "EFF %d link."
+//   "argo change %d"         (algorithm/routing change)
+//   "EFF %d headder"         "EFF %d change %d"
+//   "EFF %d data change %d"  "EFF %d para%d edit %d"
+//   "EFF %d vol %d"
+// No text effect type names exist in ROM - effects are purely numeric indices.
+// Effect slots 0-4, each 56 (0x38) bytes of parameters at SubCPU RAM 0x4496+.
+
 void kn5000_state::dsp1_addr_w(uint16_t data)
 {
 	m_dsp1_addr = data & 0x7f;
@@ -244,8 +264,17 @@ void kn5000_state::dsp1_data_w(uint16_t data)
 
 	int channel = (m_dsp1_addr >> 5) & 3;
 	int reg = m_dsp1_addr & 0x1f;
-	LOGMASKED(LOG_DSP, "DSP1: ch%d reg[0x%02X] = 0x%02X (addr=0x%02X)\n",
-		channel, reg, val, m_dsp1_addr);
+
+	char const *desc;
+	if (reg >= 0x10 && reg <= 0x17)
+		desc = "voice";
+	else if (reg == 0x1f)
+		desc = "config";
+	else
+		desc = "unk";
+
+	LOGMASKED(LOG_DSP, "DSP1: ch%d %s[%d] = 0x%02X (addr=0x%02X)\n",
+		channel, desc, reg, val, m_dsp1_addr);
 }
 
 // Scan PC keyboard input ports and generate note-on/note-off events
