@@ -947,16 +947,17 @@ void kn5000_state::kn5000(machine_config &config)
 		// CS2 deassert (rising edge of PE.6) — end of DSP2 serial transaction
 		if (!BIT(old_pe, 6) && BIT(data, 6))
 		{
-			if (m_dsp2_bit_count == 9)
+			// Both routines have a trailing SCLK pulse after the data loop,
+			// so actual counts are: command=10 (1 framing + 8 data + 1 trailing),
+			// data=9 (8 data + 1 trailing). Shift right by 1 to discard trailing bit.
+			if (m_dsp2_bit_count == 10)
 			{
-				// Command: 9 clocks = 1 framing pulse + 8 data bits
-				uint8_t byte = m_dsp2_shift & 0xff;
+				uint8_t byte = (m_dsp2_shift >> 1) & 0xff;
 				m_dsp2->parallel_command_w(byte);
 			}
-			else if (m_dsp2_bit_count == 8)
+			else if (m_dsp2_bit_count == 9)
 			{
-				// Data: 8 clocks = 8 data bits
-				uint8_t byte = m_dsp2_shift & 0xff;
+				uint8_t byte = (m_dsp2_shift >> 1) & 0xff;
 				m_dsp2->parallel_data_w(byte);
 			}
 			m_dsp2_bit_count = 0;
