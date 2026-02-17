@@ -188,10 +188,6 @@ private:
 	TIMER_CALLBACK_MEMBER(keybed_scan);
 	static constexpr uint8_t KEYBED_VELOCITY = 100; // fixed velocity for PC keyboard
 
-	// Diagnostic: periodic PC heartbeat for timing analysis
-	emu_timer *m_heartbeat_timer;
-	TIMER_CALLBACK_MEMBER(heartbeat);
-
 	void nvram2_init(nvram_device &device, void *data, size_t size);
 	void maincpu_mem(address_map &map) ATTR_COLD;
 	void subcpu_mem(address_map &map) ATTR_COLD;
@@ -262,19 +258,18 @@ void kn5000_state::maincpu_latch_w(uint8_t data)
 
 uint8_t kn5000_state::subcpu_latch_r()
 {
-	bool was_pending = m_subcpu_latch->pending_r();
 	uint8_t val = m_subcpu_latch->read();
-	TLOGMASKED(LOG_LATCH, "SubCPU reads latch: 0x%02X (was_pending=%d) PC=%06X\n",
-		val, was_pending ? 1 : 0, m_subcpu->pc());
+	// Synchronously clear INT0 level to prevent stale m_level re-assertion.
+	// generic_latch::read() calls set_input_line(INT0, CLEAR) which defers
+	// via synchronize(), leaving m_level stale until the timeslice ends.
+	m_subcpu->clear_int0_level();
 	return val;
 }
 
 uint8_t kn5000_state::maincpu_latch_r()
 {
-	bool was_pending = m_maincpu_latch->pending_r();
 	uint8_t val = m_maincpu_latch->read();
-	TLOGMASKED(LOG_LATCH, "MainCPU reads latch: 0x%02X (was_pending=%d) PC=%06X\n",
-		val, was_pending ? 1 : 0, m_maincpu->pc());
+	m_maincpu->clear_int0_level();
 	return val;
 }
 
@@ -312,13 +307,6 @@ TIMER_CALLBACK_MEMBER(kn5000_state::keybed_scan)
 			m_keybed_prev[raw_note] = pressed;
 		}
 	}
-}
-
-// Diagnostic: log MainCPU and SubCPU PCs every 500ms for timing analysis
-TIMER_CALLBACK_MEMBER(kn5000_state::heartbeat)
-{
-	TLOGMASKED(LOG_LATCH, "HEARTBEAT: MainCPU PC=%06X  SubCPU PC=%06X\n",
-		m_maincpu->pc(), m_subcpu->pc());
 }
 
 void kn5000_state::maincpu_mem(address_map &map)
@@ -750,10 +738,6 @@ void kn5000_state::machine_start()
 	memset(m_keybed_prev, 0, sizeof(m_keybed_prev));
 	m_keybed_timer = timer_alloc(FUNC(kn5000_state::keybed_scan), this);
 	m_keybed_timer->adjust(attotime::from_msec(1), 0, attotime::from_msec(1));
-
-	// Diagnostic heartbeat: log CPU PCs every 500ms for boot timing analysis
-	m_heartbeat_timer = timer_alloc(FUNC(kn5000_state::heartbeat), this);
-	m_heartbeat_timer->adjust(attotime::from_msec(500), 0, attotime::from_msec(500));
 }
 
 void kn5000_state::machine_reset()

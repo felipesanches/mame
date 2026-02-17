@@ -287,6 +287,25 @@ void tmp94c241_device::device_reset()
 	m_check_irqs = 1;
 }
 
+
+//-------------------------------------------------
+//  clear_int0_level - synchronously clear INT0
+//  level and interrupt flag. Called from the driver
+//  when the latch is read, to work around the
+//  deferred synchronize() in set_input_line which
+//  leaves m_level stale until the timeslice ends.
+//-------------------------------------------------
+
+void tmp94c241_device::clear_int0_level()
+{
+	if (m_level[TLCS900_INT0] != CLEAR_LINE)
+	{
+		m_level[TLCS900_INT0] = CLEAR_LINE;
+		m_int_reg[INTE0AD] &= ~0x08;
+		m_check_irqs = 1;
+	}
+}
+
 uint8_t tmp94c241_device::inte_r(offs_t offset)
 {
 	return m_int_reg[offset];
@@ -340,10 +359,6 @@ void tmp94c241_device::intclr_w(uint8_t data)
 
 void tmp94c241_device::dmav_w(offs_t offset, uint8_t data)
 {
-	if (offset < 4)
-		logerror("@%10.6f DMA%dV = 0x%02X (DMAC%d=%d, DMAS%d=0x%06X, DMAD%d=0x%06X) PC=%06X\n",
-			machine().time().as_double(), offset, data, offset, m_dmac[offset].w.l,
-			offset, m_dmas[offset].d, offset, m_dmad[offset].d, m_pc.d);
 	m_dma_vector[offset] = data;
 }
 
@@ -1032,23 +1047,7 @@ int tmp94c241_device::tlcs900_process_hdma(int channel)
 
 	// Check if the interrupt flag is set (DMA trigger condition)
 	if (!(m_int_reg[tmp94c241_irq_vector_map[irq].reg] & tmp94c241_irq_vector_map[irq].iff))
-	{
-		// Diagnostic: log when DMA ch2 is configured but trigger not firing
-		if (channel == 2 && m_hdma_ch2_diag_counter > 0)
-		{
-			m_hdma_ch2_diag_counter--;
-			if ((m_hdma_ch2_diag_counter % 10000) == 0)
-				logerror("HDMA ch2 diag: vec=0x%02X irq_reg=0x%02X irq_flag=0x%02X t8run=0x%02X timer2=%d treg2=%d SR=0x%04X PC=%06X\n",
-					start_vector, m_int_reg[tmp94c241_irq_vector_map[irq].reg],
-					tmp94c241_irq_vector_map[irq].iff, m_t8run,
-					m_timer_8[2], m_treg_8[TREG2],
-					m_sr.w.l, m_pc.d);
-		}
 		return 0;  // Interrupt not pending
-	}
-	// Reset diagnostic counter when ch2 actually fires
-	if (channel == 2)
-		m_hdma_ch2_diag_counter = 100000;
 
 	// Decode DMAM mode register
 	// TMP94C241 DMAM format (same as TMP95C061):
@@ -1184,13 +1183,6 @@ int tmp94c241_device::tlcs900_process_hdma(int channel)
 	if (data_size > 0)
 		dma_log_data(channel, data_val, data_size, dst_addr);
 
-	// Diagnostic: log each HDMA ch0 transfer for E2 debugging
-	if (channel == 0)
-		logerror("@%10.6f HDMA ch0 xfer: data=0x%02X DMAC0=%d→%d dst=0x%06X PC=%06X\n",
-			machine().time().as_double(), data_val & 0xFF,
-			m_dmac[channel].w.l, m_dmac[channel].w.l - 1,
-			dst_addr, m_pc.d);
-
 	// Decrement transfer count
 	m_dmac[channel].w.l -= 1;
 
@@ -1211,13 +1203,6 @@ int tmp94c241_device::tlcs900_process_hdma(int channel)
 			case 3: m_int_reg[INTETC23] |= 0x80; break;
 		}
 		m_check_irqs = 1;
-
-		// Diagnostic: log HDMA completion with current IFF for priority analysis
-		if (channel == 0 || channel == 2)
-			logerror("@%10.6f HDMA ch%d COMPLETE: INTETC01=0x%02X INTETC23=0x%02X IFF=%d SR=0x%04X PC=%06X\n",
-				machine().time().as_double(), channel,
-				m_int_reg[INTETC01], m_int_reg[INTETC23],
-				(m_sr.b.h & 0x70) >> 4, m_sr.w.l, m_pc.d);
 	}
 
 	// Clear the triggering interrupt flag
@@ -1429,40 +1414,10 @@ void tmp94c241_device::tlcs900_check_irqs()
 		}
 	}
 
-	// Diagnostic: detect when INTTC0/INTTC2 flags are set but masked by IFF
-	if (irq < 0)
-	{
-		int iff = (m_sr.b.h & 0x70) >> 4;
-		bool inttc0_pending = (m_int_reg[INTETC01] & 0x08) && (irq_vectors[m_int_reg[INTETC01] & 0x07] < 0 || (m_int_reg[INTETC01] & 0x07) < iff);
-		bool inttc2_pending = (m_int_reg[INTETC23] & 0x08) && (irq_vectors[m_int_reg[INTETC23] & 0x07] < 0 || (m_int_reg[INTETC23] & 0x07) < iff);
-		if (inttc0_pending || inttc2_pending)
-		{
-			static int masked_count = 0;
-			masked_count++;
-			if (masked_count <= 5 || (masked_count % 10000) == 0)
-				logerror("@%10.6f check_irqs: MASKED %s%s level=%d/%d IFF=%d PC=%06X (count=%d)\n",
-					machine().time().as_double(),
-					inttc0_pending ? "INTTC0" : "",
-					inttc2_pending ? "INTTC2" : "",
-					m_int_reg[INTETC01] & 0x07,
-					m_int_reg[INTETC23] & 0x07,
-					iff, m_pc.d, masked_count);
-		}
-	}
-
 	// Take IRQ
 	if (irq >= 0)
 	{
 		uint8_t vector = tmp94c241_irq_vector_map[irq].vector;
-
-		// Log key interrupt dispatches
-		if (vector == 0x94)
-			logerror("@%10.6f IRQ: INTTC0 (DMA ch0 done) level=%d PC=%06X\n", machine().time().as_double(), level, m_pc.d);
-		else if (vector == 0x9c)
-			logerror("@%10.6f IRQ: INTTC2 (DMA ch2 done) level=%d PC=%06X\n", machine().time().as_double(), level, m_pc.d);
-		else if (vector == 0x28)
-			logerror("@%10.6f IRQ: INT0 (ISR dispatch) level=%d IFF=%d DMA0V=0x%02X PC=%06X\n",
-				machine().time().as_double(), level, (m_sr.b.h & 0x70) >> 4, m_dma_vector[0], m_pc.d);
 
 		m_xssp.d -= 4;
 		WRMEML(m_xssp.d, m_pc.d);
@@ -1762,20 +1717,12 @@ void tmp94c241_device::execute_set_input(int input, int level)
 					// Leave HALT state
 					m_halted = 0;
 					m_int_reg[INTE0AD] |= 0x08;
-					logerror("@%10.6f INT0 edge detected (%s → ASSERT) INTE0AD=0x%02X PC=%06X\n",
-						machine().time().as_double(),
-						(m_level[TLCS900_INT0] == CLEAR_LINE) ? "CLEAR" : "ASSERT",
-						m_int_reg[INTE0AD], m_pc.d);
 				}
 				m_level[TLCS900_INT0] = level;
 			}
 			else
 			{
 				// Level detect
-				logerror("@%10.6f INT0 level %s INTE0AD=0x%02X PC=%06X\n",
-					machine().time().as_double(),
-					(level == ASSERT_LINE) ? "ASSERT" : "CLEAR",
-					m_int_reg[INTE0AD], m_pc.d);
 				update_int_reg(INTE0AD, 0x08);
 			}
 			break;
