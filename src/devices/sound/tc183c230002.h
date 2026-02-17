@@ -68,6 +68,9 @@ private:
 
 	// Keybed event queue (HLE)
 	std::queue<uint16_t> m_keybed_queue;
+
+	// Diagnostic: track keybed poll rate
+	uint32_t m_keybed_poll_count;
 };
 
 DECLARE_DEVICE_TYPE(TC183C230002, tc183c230002_device)

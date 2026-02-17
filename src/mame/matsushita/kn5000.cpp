@@ -100,7 +100,7 @@ namespace {
 #define LOG_KEYBED   (1U << 5)  // Keybed scan events (driver-side)
 #define LOG_ALL_LATCH (LOG_LATCH | LOG_LATCH_DATA)
 
-#define VERBOSE (LOG_LATCH | LOG_RESET | LOG_HANDSHAKE)
+#define VERBOSE (LOG_LATCH | LOG_RESET | LOG_HANDSHAKE | LOG_KEYBED)
 #include "logmacro.h"
 
 class kn5000_state : public driver_device
