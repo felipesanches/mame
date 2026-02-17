@@ -1720,12 +1720,20 @@ void tmp94c241_device::execute_set_input(int input, int level)
 					// Leave HALT state
 					m_halted = 0;
 					m_int_reg[INTE0AD] |= 0x08;
+					logerror("@%10.6f INT0 edge detected (%s → ASSERT) INTE0AD=0x%02X PC=%06X\n",
+						machine().time().as_double(),
+						(m_level[TLCS900_INT0] == CLEAR_LINE) ? "CLEAR" : "ASSERT",
+						m_int_reg[INTE0AD], m_pc.d);
 				}
 				m_level[TLCS900_INT0] = level;
 			}
 			else
 			{
 				// Level detect
+				logerror("@%10.6f INT0 level %s INTE0AD=0x%02X PC=%06X\n",
+					machine().time().as_double(),
+					(level == ASSERT_LINE) ? "ASSERT" : "CLEAR",
+					m_int_reg[INTE0AD], m_pc.d);
 				update_int_reg(INTE0AD, 0x08);
 			}
 			break;

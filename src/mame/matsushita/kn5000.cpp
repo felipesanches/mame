@@ -178,7 +178,9 @@ private:
 
 	// Latch logging wrappers
 	void subcpu_latch_w(uint8_t data);
+	uint8_t subcpu_latch_r();
 	void maincpu_latch_w(uint8_t data);
+	uint8_t maincpu_latch_r();
 
 	// Keybed scan timer — polls MAME input ports and injects events into tonegen device
 	uint8_t m_keybed_prev[61];
@@ -258,6 +260,24 @@ void kn5000_state::maincpu_latch_w(uint8_t data)
 	m_subcpu->abort_timeslice();
 }
 
+uint8_t kn5000_state::subcpu_latch_r()
+{
+	bool was_pending = m_subcpu_latch->pending_r();
+	uint8_t val = m_subcpu_latch->read();
+	TLOGMASKED(LOG_LATCH, "SubCPU reads latch: 0x%02X (was_pending=%d) PC=%06X\n",
+		val, was_pending ? 1 : 0, m_subcpu->pc());
+	return val;
+}
+
+uint8_t kn5000_state::maincpu_latch_r()
+{
+	bool was_pending = m_maincpu_latch->pending_r();
+	uint8_t val = m_maincpu_latch->read();
+	TLOGMASKED(LOG_LATCH, "MainCPU reads latch: 0x%02X (was_pending=%d) PC=%06X\n",
+		val, was_pending ? 1 : 0, m_maincpu->pc());
+	return val;
+}
+
 // Scan PC keyboard input ports and generate note-on/note-off events
 // Called every 1ms by timer, matching real IC303 hardware scan rate
 TIMER_CALLBACK_MEMBER(kn5000_state::keybed_scan)
@@ -310,7 +330,7 @@ void kn5000_state::maincpu_mem(address_map &map)
 	map(0x11000a, 0x11000a).rw(m_fdc, FUNC(upd72067_device::fifo_r), FUNC(upd72067_device::fifo_w));
 	// FDC DMA data port (software DMA ch3 transfers one byte per INT5/DRQ)
 	map(0x120000, 0x120000).rw(m_fdc, FUNC(upd72067_device::dma_r), FUNC(upd72067_device::dma_w));
-	map(0x140000, 0x14ffff).r(m_maincpu_latch, FUNC(generic_latch_8_device::read)); // @ IC23
+	map(0x140000, 0x14ffff).r(FUNC(kn5000_state::maincpu_latch_r)); // @ IC23 (logged wrapper)
 	map(0x140000, 0x14ffff).w(FUNC(kn5000_state::subcpu_latch_w)); // @ IC22 (logged wrapper)
 	map(0x1703b0, 0x1703df).m("vga", FUNC(mn89304_vga_device::io_map)); // LCD controller @ IC206
 	map(0x1a0000, 0x1dffff).rw("vga", FUNC(mn89304_vga_device::mem_linear_r), FUNC(mn89304_vga_device::mem_linear_w));
@@ -329,7 +349,7 @@ void kn5000_state::subcpu_mem(address_map &map)
 	map(0x100002, 0x100003).rw(m_tonegen, FUNC(tc183c230002_device::config_data_r), FUNC(tc183c230002_device::config_data_w)); // Tone gen IC303 config data
 	map(0x110000, 0x110001).r(m_tonegen, FUNC(tc183c230002_device::keyboard_data_r));   // Tone gen IC303 keybed data (HLE)
 	map(0x110002, 0x110003).r(m_tonegen, FUNC(tc183c230002_device::keyboard_status_r)); // Tone gen IC303 keybed status (HLE)
-	map(0x120000, 0x12ffff).r(m_subcpu_latch, FUNC(generic_latch_8_device::read)); // @ IC22
+	map(0x120000, 0x12ffff).r(FUNC(kn5000_state::subcpu_latch_r)); // @ IC22 (logged wrapper)
 	map(0x120000, 0x12ffff).w(FUNC(kn5000_state::maincpu_latch_w)); // @ IC23 (logged wrapper)
 	map(0x130000, 0x130001).w(m_dsp1, FUNC(ds3613gf3ba_device::addr_w));  // DSP1 (IC311) address register
 	map(0x130002, 0x130003).w(m_dsp1, FUNC(ds3613gf3ba_device::data_w));  // DSP1 (IC311) data register
