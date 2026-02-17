@@ -280,6 +280,9 @@ private:
 	uint8_t m_iimc;
 	uint8_t m_dma_vector[4];
 
+	// Diagnostic counter for HDMA ch2 debugging
+	int m_hdma_ch2_diag_counter = 0;
+
 	// DMA hexdump logging (debug only, not saved in state)
 	static constexpr int DMA_LOG_MAX = 256;
 	uint8_t m_dma_log_buf[4][DMA_LOG_MAX];

@@ -1021,7 +1021,23 @@ int tmp94c241_device::tlcs900_process_hdma(int channel)
 
 	// Check if the interrupt flag is set (DMA trigger condition)
 	if (!(m_int_reg[tmp94c241_irq_vector_map[irq].reg] & tmp94c241_irq_vector_map[irq].iff))
+	{
+		// Diagnostic: log when DMA ch2 is configured but trigger not firing
+		if (channel == 2 && m_hdma_ch2_diag_counter > 0)
+		{
+			m_hdma_ch2_diag_counter--;
+			if ((m_hdma_ch2_diag_counter % 10000) == 0)
+				logerror("HDMA ch2 diag: vec=0x%02X irq_reg=0x%02X irq_flag=0x%02X t8run=0x%02X timer2=%d treg2=%d SR=0x%04X PC=%06X\n",
+					start_vector, m_int_reg[tmp94c241_irq_vector_map[irq].reg],
+					tmp94c241_irq_vector_map[irq].iff, m_t8run,
+					m_timer_8[2], m_treg_8[TREG2],
+					m_sr.w.l, m_pc.d);
+		}
 		return 0;  // Interrupt not pending
+	}
+	// Reset diagnostic counter when ch2 actually fires
+	if (channel == 2)
+		m_hdma_ch2_diag_counter = 100000;
 
 	// Decode DMAM mode register
 	// TMP94C241 DMAM format (same as TMP95C061):
@@ -1417,17 +1433,33 @@ void tmp94c241_device::tlcs900_check_irqs()
 		// Clear taken IRQ flag
 		m_int_reg[tmp94c241_irq_vector_map[irq].reg] &= ~ tmp94c241_irq_vector_map[irq].iff;
 
-		// Level-detect re-assertion: On real hardware, level-triggered interrupt
-		// flags are continuously driven by the input level. Clearing the flag
-		// during dispatch has no lasting effect if the input is still asserted.
-		// Re-assert INT0 flag if input is still active in level-detect mode.
+		// Level-detect re-assertion for INT0: On real hardware, reading the
+		// latch immediately deasserts INT0 (within the same clock cycle).
+		// In MAME, the deassert goes through set_input_line → synchronize(),
+		// creating a window where m_level is stale (still ASSERT_LINE).
+		// When HDMA is configured for INT0, do NOT re-assert the flag here —
+		// HDMA manages the flag itself (set on trigger, cleared after transfer).
+		// Re-asserting would cause spurious HDMA reads of stale latch data.
 		if (tmp94c241_irq_vector_map[irq].reg == INTE0AD &&
 			tmp94c241_irq_vector_map[irq].iff == 0x08 &&
 			!(m_iimc & 0x02) &&
 			m_level[TLCS900_INT0] == ASSERT_LINE)
 		{
-			m_int_reg[INTE0AD] |= 0x08;
-			m_check_irqs = 1;
+			// Check if any DMA channel is configured for INT0's start vector
+			bool hdma_steals_int0 = false;
+			for (int ch = 0; ch < 4; ch++)
+			{
+				if (m_dma_vector[ch] == 0x0a) // INT0 DMA start vector
+				{
+					hdma_steals_int0 = true;
+					break;
+				}
+			}
+			if (!hdma_steals_int0)
+			{
+				m_int_reg[INTE0AD] |= 0x08;
+				m_check_irqs = 1;
+			}
 		}
 
 		// notify the debugger
