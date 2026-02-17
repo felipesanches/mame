@@ -230,8 +230,8 @@ uint16_t tc183c230002_device::keyboard_status_r()
 	m_keybed_poll_count++;
 	// Log every 10000th poll as heartbeat to verify SubCPU main loop is running
 	if ((m_keybed_poll_count % 10000) == 0)
-		LOGMASKED(LOG_KEYBED, "keybed poll heartbeat: %u polls, queue=%s\n",
-			m_keybed_poll_count, m_keybed_queue.empty() ? "empty" : "has data");
+		LOGMASKED(LOG_KEYBED, "@%10.6f keybed poll heartbeat: %u polls, queue=%s\n",
+			machine().time().as_double(), m_keybed_poll_count, m_keybed_queue.empty() ? "empty" : "has data");
 	return status;
 }
 

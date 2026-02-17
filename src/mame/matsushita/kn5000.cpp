@@ -103,6 +103,9 @@ namespace {
 #define VERBOSE (LOG_LATCH | LOG_RESET | LOG_HANDSHAKE | LOG_KEYBED)
 #include "logmacro.h"
 
+// Timestamped logging: prepend emulated time in seconds to each message
+#define TLOGMASKED(mask, fmt, ...) LOGMASKED(mask, "@%10.6f " fmt, machine().time().as_double(), ##__VA_ARGS__)
+
 class kn5000_state : public driver_device
 {
 public:
@@ -193,10 +196,10 @@ void kn5000_state::subcpu_latch_w(uint8_t data)
 	m_subcpu_latch_write_count++;
 	// Log command bytes (E1, E2, E3) and first few data bytes
 	if (data == 0xe1 || data == 0xe2 || data == 0xe3)
-		LOGMASKED(LOG_LATCH, "MainCPU -> SubCPU latch: cmd 0x%02X (write #%u) PC=%06X\n",
+		TLOGMASKED(LOG_LATCH, "MainCPU -> SubCPU latch: cmd 0x%02X (write #%u) PC=%06X\n",
 			data, m_subcpu_latch_write_count, m_maincpu->pc());
 	else
-		LOGMASKED(LOG_LATCH_DATA, "MainCPU -> SubCPU latch: 0x%02X (write #%u)\n",
+		TLOGMASKED(LOG_LATCH_DATA, "MainCPU -> SubCPU latch: 0x%02X (write #%u)\n",
 			data, m_subcpu_latch_write_count);
 
 	// Force tight CPU interleaving so subcpu HDMA can process each byte
@@ -218,10 +221,10 @@ void kn5000_state::maincpu_latch_w(uint8_t data)
 {
 	m_maincpu_latch_write_count++;
 	if (data == 0xe1 || data == 0xe2 || data == 0xe3)
-		LOGMASKED(LOG_LATCH, "SubCPU -> MainCPU latch: cmd 0x%02X (write #%u) PC=%06X\n",
+		TLOGMASKED(LOG_LATCH, "SubCPU -> MainCPU latch: cmd 0x%02X (write #%u) PC=%06X\n",
 			data, m_maincpu_latch_write_count, m_subcpu->pc());
 	else
-		LOGMASKED(LOG_LATCH_DATA, "SubCPU -> MainCPU latch: 0x%02X (write #%u)\n",
+		TLOGMASKED(LOG_LATCH_DATA, "SubCPU -> MainCPU latch: 0x%02X (write #%u)\n",
 			data, m_maincpu_latch_write_count);
 
 	// Force tight CPU interleaving so maincpu DMAR can read each byte
@@ -256,7 +259,7 @@ TIMER_CALLBACK_MEMBER(kn5000_state::keybed_scan)
 				// Key pressed: data = (velocity << 8) | (raw_note | 0x80)
 				uint16_t data = (uint16_t(KEYBED_VELOCITY) << 8) | (raw_note | 0x80);
 				m_tonegen->inject_key_event(data);
-				LOGMASKED(LOG_KEYBED, "Keybed: note ON raw=%d MIDI=%d vel=%d data=0x%04X\n",
+				TLOGMASKED(LOG_KEYBED, "Keybed: note ON raw=%d MIDI=%d vel=%d data=0x%04X\n",
 					raw_note, raw_note + 0x24, KEYBED_VELOCITY, data);
 			}
 			else if (!pressed && prev)
@@ -264,7 +267,7 @@ TIMER_CALLBACK_MEMBER(kn5000_state::keybed_scan)
 				// Key released: data = (0xFF << 8) | raw_note
 				uint16_t data = (0xFF00) | raw_note;
 				m_tonegen->inject_key_event(data);
-				LOGMASKED(LOG_KEYBED, "Keybed: note OFF raw=%d MIDI=%d data=0x%04X\n",
+				TLOGMASKED(LOG_KEYBED, "Keybed: note OFF raw=%d MIDI=%d data=0x%04X\n",
 					raw_note, raw_note + 0x24, data);
 			}
 			m_keybed_prev[raw_note] = pressed;
@@ -787,7 +790,7 @@ void kn5000_state::kn5000(machine_config &config)
 	//   bit 0 (output) = sub_cpu ~RESET / SRST
 	m_maincpu->porta_write().set([this] (u8 data) {
 		bool reset_released = BIT(data, 0);
-		LOGMASKED(LOG_RESET, "SubCPU reset: %s (PA=0x%02X) PC=%06X\n",
+		TLOGMASKED(LOG_RESET, "SubCPU reset: %s (PA=0x%02X) PC=%06X\n",
 			reset_released ? "RELEASED" : "ASSERTED", data, m_maincpu->pc());
 		m_subcpu->set_input_line(INPUT_LINE_RESET, reset_released ? CLEAR_LINE : ASSERT_LINE);
 	});
@@ -861,7 +864,7 @@ void kn5000_state::kn5000(machine_config &config)
 	m_maincpu->portz_write().set([this] (u8 data) {
 		uint8_t new_mstat = data & 3;
 		if (new_mstat != m_mstat)
-			LOGMASKED(LOG_HANDSHAKE, "MSTAT: %d -> %d (PZ=0x%02X) PC=%06X\n",
+			TLOGMASKED(LOG_HANDSHAKE, "MSTAT: %d -> %d (PZ=0x%02X) PC=%06X\n",
 				m_mstat, new_mstat, data, m_maincpu->pc());
 		m_mstat = new_mstat;
 	});
@@ -919,7 +922,7 @@ void kn5000_state::kn5000(machine_config &config)
 	m_subcpu->portd_write().set([this] (u8 data) {
 		uint8_t new_sstat = data & 3;
 		if (new_sstat != m_sstat)
-			LOGMASKED(LOG_HANDSHAKE, "SSTAT: %d -> %d (PD=0x%02X) PC=%06X\n",
+			TLOGMASKED(LOG_HANDSHAKE, "SSTAT: %d -> %d (PD=0x%02X) PC=%06X\n",
 				m_sstat, new_sstat, data, m_subcpu->pc());
 		m_sstat = new_sstat;
 	});

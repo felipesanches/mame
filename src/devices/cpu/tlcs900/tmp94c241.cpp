@@ -956,11 +956,11 @@ void tmp94c241_device::dma_log_complete(int channel, char const *type, uint32_t 
 	int show = std::min(m_dma_log_pos[channel], total);
 
 	if (vec)
-		logerror("%s ch%d: [%06X]->[%06X] %d bytes (vec=%02X)\n",
-			type, channel, src, m_dma_log_dst_start[channel], total, vec);
+		logerror("@%10.6f %s ch%d: [%06X]->[%06X] %d bytes (vec=%02X)\n",
+			machine().time().as_double(), type, channel, src, m_dma_log_dst_start[channel], total, vec);
 	else
-		logerror("%s ch%d: [%06X]->[%06X] %d bytes\n",
-			type, channel, src, m_dma_log_dst_start[channel], total);
+		logerror("@%10.6f %s ch%d: [%06X]->[%06X] %d bytes\n",
+			machine().time().as_double(), type, channel, src, m_dma_log_dst_start[channel], total);
 
 	for (int offset = 0; offset < show; offset += 16)
 	{
@@ -1411,9 +1411,9 @@ void tmp94c241_device::tlcs900_check_irqs()
 
 		// Log only DMA completion interrupts (INTTC0/INTTC2) — key milestones
 		if (vector == 0x94)
-			logerror("IRQ: INTTC0 (DMA ch0 done) level=%d PC=%06X\n", level, m_pc.d);
+			logerror("@%10.6f IRQ: INTTC0 (DMA ch0 done) level=%d PC=%06X\n", machine().time().as_double(), level, m_pc.d);
 		else if (vector == 0x9c)
-			logerror("IRQ: INTTC2 (DMA ch2 done) level=%d PC=%06X\n", level, m_pc.d);
+			logerror("@%10.6f IRQ: INTTC2 (DMA ch2 done) level=%d PC=%06X\n", machine().time().as_double(), level, m_pc.d);
 
 		m_xssp.d -= 4;
 		WRMEML(m_xssp.d, m_pc.d);
