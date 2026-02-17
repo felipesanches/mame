@@ -28,7 +28,7 @@
 #define LOG_BUTTONS  (1U << 3)
 #define LOG_LEDS     (1U << 4)
 
-#define VERBOSE 0
+#define VERBOSE (LOG_BUTTONS)
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(KN5000_CPANEL, kn5000_cpanel_device, "kn5000_cpanel", "KN5000 Control Panel HLE")
