@@ -100,7 +100,7 @@ namespace {
 #define LOG_KEYBED   (1U << 5)  // Keybed scan events (driver-side)
 #define LOG_ALL_LATCH (LOG_LATCH | LOG_LATCH_DATA)
 
-#define VERBOSE (LOG_LATCH | LOG_RESET)
+#define VERBOSE (LOG_LATCH | LOG_RESET | LOG_HANDSHAKE)
 #include "logmacro.h"
 
 class kn5000_state : public driver_device
@@ -216,6 +216,13 @@ void kn5000_state::maincpu_latch_w(uint8_t data)
 	else
 		LOGMASKED(LOG_LATCH_DATA, "SubCPU -> MainCPU latch: 0x%02X (write #%u)\n",
 			data, m_maincpu_latch_write_count);
+
+	// Force tight CPU interleaving so maincpu DMAR can read each byte
+	// before the next one is written. Without this, subcpu HDMA ch2 can
+	// write multiple bytes to the latch during a single timeslice,
+	// overwriting unread data.
+	machine().scheduler().perfect_quantum(attotime::from_usec(100));
+
 	m_maincpu_latch->write(data);
 }
 
