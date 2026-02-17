@@ -205,6 +205,13 @@ void kn5000_state::subcpu_latch_w(uint8_t data)
 	machine().scheduler().perfect_quantum(attotime::from_usec(100));
 
 	m_subcpu_latch->write(data);
+
+	// Abort the current timeslice immediately. perfect_quantum only affects
+	// FUTURE scheduling decisions — the writing CPU (maincpu) would otherwise
+	// continue its timeslice and potentially write more bytes before the
+	// subcpu gets a chance to read. Each latch write must be followed by a
+	// context switch so the receiver can process it via HDMA.
+	m_maincpu->abort_timeslice();
 }
 
 void kn5000_state::maincpu_latch_w(uint8_t data)
@@ -224,6 +231,9 @@ void kn5000_state::maincpu_latch_w(uint8_t data)
 	machine().scheduler().perfect_quantum(attotime::from_usec(100));
 
 	m_maincpu_latch->write(data);
+
+	// Abort the current timeslice immediately — see subcpu_latch_w comment.
+	m_subcpu->abort_timeslice();
 }
 
 // Scan PC keyboard input ports and generate note-on/note-off events
@@ -851,9 +861,17 @@ void kn5000_state::kn5000(machine_config &config)
 	m_maincpu->portz_write().set([this] (u8 data) {
 		uint8_t new_mstat = data & 3;
 		if (new_mstat != m_mstat)
+		{
 			LOGMASKED(LOG_HANDSHAKE, "MSTAT: %d -> %d (PZ=0x%02X) PC=%06X\n",
 				m_mstat, new_mstat, data, m_maincpu->pc());
-		m_mstat = new_mstat;
+			m_mstat = new_mstat;
+			// Force context switch so SubCPU sees handshake changes promptly.
+			// Critical for MSTAT1 transitions which gate DMA_Chunk_Start.
+			machine().scheduler().perfect_quantum(attotime::from_usec(100));
+			m_maincpu->abort_timeslice();
+		}
+		else
+			m_mstat = new_mstat;
 	});
 
 
@@ -909,9 +927,16 @@ void kn5000_state::kn5000(machine_config &config)
 	m_subcpu->portd_write().set([this] (u8 data) {
 		uint8_t new_sstat = data & 3;
 		if (new_sstat != m_sstat)
+		{
 			LOGMASKED(LOG_HANDSHAKE, "SSTAT: %d -> %d (PD=0x%02X) PC=%06X\n",
 				m_sstat, new_sstat, data, m_subcpu->pc());
-		m_sstat = new_sstat;
+			m_sstat = new_sstat;
+			// Force context switch so MainCPU sees handshake changes promptly.
+			machine().scheduler().perfect_quantum(attotime::from_usec(100));
+			m_subcpu->abort_timeslice();
+		}
+		else
+			m_sstat = new_sstat;
 	});
 
 
