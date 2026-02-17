@@ -13,6 +13,14 @@
 
     See header for known commands and debug strings.
 
+    Parallel port command protocol (bit-banged via PF pins):
+      0x30 — Register/parameter write (4 data bytes: 0, addr, value_hi, value_lo)
+      0x03 — End parameter block (latch pending writes)
+
+    NOTE: Due to the bit-banged serial framing, all bytes currently
+    arrive via parallel_data_w() as a single stream under cmd 0x00.
+    The stream contains embedded 0x30 sub-commands every 5 bytes.
+
 ***************************************************************************/
 
 #include "emu.h"
@@ -109,14 +117,39 @@ void mn19413_device::parallel_command_w(uint8_t data)
 
 	m_par_cmd = data;
 	m_par_data.clear();
-	LOGMASKED(LOG_PARALLEL, "parallel cmd 0x%02X\n", data);
+
+	// Log no-data commands immediately
+	switch (data)
+	{
+	case 0x03:
+		LOGMASKED(LOG_PARALLEL, "END BLOCK (latch pending writes)\n");
+		break;
+	default:
+		break;
+	}
 }
 
 void mn19413_device::parallel_data_w(uint8_t data)
 {
 	m_par_data.push_back(data);
-	LOGMASKED(LOG_PARALLEL, "parallel data 0x%02X (byte#%zu for cmd 0x%02X)\n",
-		data, m_par_data.size(), m_par_cmd);
+
+	// Decode embedded 0x30 register write frames in the data stream.
+	// The firmware sends: cmd 0x30, data 0x00, data addr, data val_hi, data val_lo
+	// But due to bit-bang framing issues, all bytes arrive as "data" under cmd 0x00.
+	// Detect 5-byte frames: [0x30, 0x00, addr, val_hi, val_lo]
+	size_t sz = m_par_data.size();
+	if (sz >= 5 && (sz % 5) == 0)
+	{
+		size_t base = sz - 5;
+		uint8_t sub_cmd = m_par_data[base];
+		if (sub_cmd == 0x30 && m_par_data[base + 1] == 0x00)
+		{
+			uint8_t addr = m_par_data[base + 2];
+			uint16_t value = (uint16_t(m_par_data[base + 3]) << 8) | m_par_data[base + 4];
+			LOGMASKED(LOG_PARALLEL, "REG WRITE addr=0x%02X value=0x%04X\n", addr, value);
+			return;
+		}
+	}
 }
 
 void mn19413_device::process_command()
@@ -124,11 +157,39 @@ void mn19413_device::process_command()
 	if (m_par_data.empty())
 		return;
 
-	LOGMASKED(LOG_PARALLEL, "cmd 0x%02X complete: %zu data bytes [",
-		m_par_cmd, m_par_data.size());
-	for (size_t i = 0; i < m_par_data.size() && i < 8; i++)
-		LOGMASKED(LOG_PARALLEL, "%s0x%02X", i ? " " : "", m_par_data[i]);
-	if (m_par_data.size() > 8)
-		LOGMASKED(LOG_PARALLEL, " ...");
-	LOGMASKED(LOG_PARALLEL, "]\n");
+	switch (m_par_cmd)
+	{
+	case 0x30: // Register write: data[0]=0, data[1]=addr, data[2..3]=value
+		if (m_par_data.size() >= 4)
+		{
+			uint8_t addr = m_par_data[1];
+			uint16_t value = (uint16_t(m_par_data[2]) << 8) | m_par_data[3];
+			LOGMASKED(LOG_PARALLEL, "REG WRITE addr=0x%02X value=0x%04X\n", addr, value);
+		}
+		else
+		{
+			LOGMASKED(LOG_PARALLEL, "REG WRITE (incomplete: %zu bytes)\n", m_par_data.size());
+		}
+		break;
+
+	default:
+		// Summarize the accumulated data stream
+		if (m_par_data.size() > 0)
+		{
+			// Count embedded 0x30 sub-commands
+			size_t reg_writes = 0;
+			for (size_t i = 0; i + 4 < m_par_data.size(); i += 5)
+			{
+				if (m_par_data[i] == 0x30 && m_par_data[i + 1] == 0x00)
+					reg_writes++;
+			}
+			if (reg_writes > 0)
+				LOGMASKED(LOG_PARALLEL, "STREAM cmd=0x%02X: %zu bytes (%zu reg writes)\n",
+					m_par_cmd, m_par_data.size(), reg_writes);
+			else
+				LOGMASKED(LOG_PARALLEL, "CMD 0x%02X: %zu data bytes\n",
+					m_par_cmd, m_par_data.size());
+		}
+		break;
+	}
 }
