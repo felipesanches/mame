@@ -80,6 +80,7 @@ void tc183c230002_device::device_start()
 	save_item(NAME(m_config_addr));
 	save_item(NAME(m_regs));
 	save_item(NAME(m_active_count));
+	save_item(NAME(m_keybed_poll_count));
 	for (int i = 0; i < 64; i++)
 	{
 		save_item(NAME(m_voices[i].control), i);
@@ -93,6 +94,7 @@ void tc183c230002_device::device_reset()
 	m_config_addr = 0;
 	std::fill(std::begin(m_regs), std::end(m_regs), 0);
 	m_active_count = 0;
+	m_keybed_poll_count = 0;
 	for (auto &v : m_voices)
 	{
 		v.control = 0;
@@ -225,6 +227,11 @@ uint16_t tc183c230002_device::keyboard_status_r()
 {
 	// Bit 0 = data ready (queue non-empty)
 	uint16_t status = m_keybed_queue.empty() ? 0x0000 : 0x0001;
+	m_keybed_poll_count++;
+	// Log every 10000th poll as heartbeat to verify SubCPU main loop is running
+	if ((m_keybed_poll_count % 10000) == 0)
+		LOGMASKED(LOG_KEYBED, "keybed poll heartbeat: %u polls, queue=%s\n",
+			m_keybed_poll_count, m_keybed_queue.empty() ? "empty" : "has data");
 	return status;
 }
 
