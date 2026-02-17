@@ -211,6 +211,17 @@ void kn5000_state::subcpu_latch_w(uint8_t data)
 	// between main CPU instructions.
 	machine().scheduler().perfect_quantum(attotime::from_usec(100));
 
+	// Force-clear the latch pending state before writing. On real hardware,
+	// each latch write generates a new INT0 edge regardless of whether the
+	// previous value was read. But generic_latch's data_pending_callback only
+	// fires on state CHANGES — if the latch is already marked "written" (e.g.
+	// because the receiver's INT0 handler exited without reading due to a
+	// handshake flag), subsequent writes silently update the value without
+	// triggering INT0. This caused the SubCPU to miss the E2 command during
+	// boot, resulting in a 10-second timeout loop.
+	if (m_subcpu_latch->pending_r())
+		m_subcpu_latch->acknowledge_w(0);
+
 	m_subcpu_latch->write(data);
 
 	// Abort the current timeslice immediately. perfect_quantum only affects
@@ -236,6 +247,10 @@ void kn5000_state::maincpu_latch_w(uint8_t data)
 	// write multiple bytes to the latch during a single timeslice,
 	// overwriting unread data.
 	machine().scheduler().perfect_quantum(attotime::from_usec(100));
+
+	// Force-clear pending state — see subcpu_latch_w for detailed explanation.
+	if (m_maincpu_latch->pending_r())
+		m_maincpu_latch->acknowledge_w(0);
 
 	m_maincpu_latch->write(data);
 
