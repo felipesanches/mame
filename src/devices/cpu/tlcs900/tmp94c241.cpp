@@ -1200,6 +1200,13 @@ int tmp94c241_device::tlcs900_process_hdma(int channel)
 			case 3: m_int_reg[INTETC23] |= 0x80; break;
 		}
 		m_check_irqs = 1;
+
+		// Diagnostic: log HDMA completion with current IFF for priority analysis
+		if (channel == 0 || channel == 2)
+			logerror("@%10.6f HDMA ch%d COMPLETE: INTETC01=0x%02X INTETC23=0x%02X IFF=%d SR=0x%04X PC=%06X\n",
+				machine().time().as_double(), channel,
+				m_int_reg[INTETC01], m_int_reg[INTETC23],
+				(m_sr.b.h & 0x70) >> 4, m_sr.w.l, m_pc.d);
 	}
 
 	// Clear the triggering interrupt flag
@@ -1408,6 +1415,27 @@ void tmp94c241_device::tlcs900_check_irqs()
 		{
 			irq = irq_vectors[i];
 			level = i + 1;
+		}
+	}
+
+	// Diagnostic: detect when INTTC0/INTTC2 flags are set but masked by IFF
+	if (irq < 0)
+	{
+		int iff = (m_sr.b.h & 0x70) >> 4;
+		bool inttc0_pending = (m_int_reg[INTETC01] & 0x08) && (irq_vectors[m_int_reg[INTETC01] & 0x07] < 0 || (m_int_reg[INTETC01] & 0x07) < iff);
+		bool inttc2_pending = (m_int_reg[INTETC23] & 0x08) && (irq_vectors[m_int_reg[INTETC23] & 0x07] < 0 || (m_int_reg[INTETC23] & 0x07) < iff);
+		if (inttc0_pending || inttc2_pending)
+		{
+			static int masked_count = 0;
+			masked_count++;
+			if (masked_count <= 5 || (masked_count % 10000) == 0)
+				logerror("@%10.6f check_irqs: MASKED %s%s level=%d/%d IFF=%d PC=%06X (count=%d)\n",
+					machine().time().as_double(),
+					inttc0_pending ? "INTTC0" : "",
+					inttc2_pending ? "INTTC2" : "",
+					m_int_reg[INTETC01] & 0x07,
+					m_int_reg[INTETC23] & 0x07,
+					iff, m_pc.d, masked_count);
 		}
 	}
 
