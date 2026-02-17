@@ -333,6 +333,10 @@ void tmp94c241_device::intclr_w(uint8_t data)
 
 void tmp94c241_device::dmav_w(offs_t offset, uint8_t data)
 {
+	if (offset < 4)
+		logerror("@%10.6f DMA%dV = 0x%02X (DMAC%d=%d, DMAS%d=0x%06X, DMAD%d=0x%06X) PC=%06X\n",
+			machine().time().as_double(), offset, data, offset, m_dmac[offset].w.l,
+			offset, m_dmas[offset].d, offset, m_dmad[offset].d, m_pc.d);
 	m_dma_vector[offset] = data;
 }
 
@@ -1173,6 +1177,13 @@ int tmp94c241_device::tlcs900_process_hdma(int channel)
 	if (data_size > 0)
 		dma_log_data(channel, data_val, data_size, dst_addr);
 
+	// Diagnostic: log each HDMA ch0 transfer for E2 debugging
+	if (channel == 0)
+		logerror("@%10.6f HDMA ch0 xfer: data=0x%02X DMAC0=%d→%d dst=0x%06X PC=%06X\n",
+			machine().time().as_double(), data_val & 0xFF,
+			m_dmac[channel].w.l, m_dmac[channel].w.l - 1,
+			dst_addr, m_pc.d);
+
 	// Decrement transfer count
 	m_dmac[channel].w.l -= 1;
 
@@ -1437,11 +1448,14 @@ void tmp94c241_device::tlcs900_check_irqs()
 	{
 		uint8_t vector = tmp94c241_irq_vector_map[irq].vector;
 
-		// Log only DMA completion interrupts (INTTC0/INTTC2) — key milestones
+		// Log key interrupt dispatches
 		if (vector == 0x94)
 			logerror("@%10.6f IRQ: INTTC0 (DMA ch0 done) level=%d PC=%06X\n", machine().time().as_double(), level, m_pc.d);
 		else if (vector == 0x9c)
 			logerror("@%10.6f IRQ: INTTC2 (DMA ch2 done) level=%d PC=%06X\n", machine().time().as_double(), level, m_pc.d);
+		else if (vector == 0x28)
+			logerror("@%10.6f IRQ: INT0 (ISR dispatch) level=%d IFF=%d DMA0V=0x%02X PC=%06X\n",
+				machine().time().as_double(), level, (m_sr.b.h & 0x70) >> 4, m_dma_vector[0], m_pc.d);
 
 		m_xssp.d -= 4;
 		WRMEML(m_xssp.d, m_pc.d);
