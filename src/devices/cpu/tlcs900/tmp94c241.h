@@ -128,6 +128,11 @@ public:
 	auto portz_read()  { return m_port_read[PORT_Z].bind(); }
 	auto portz_write() { return m_port_write[PORT_Z].bind(); }
 
+	// Synchronously clear INT0 level and interrupt flag.
+	// Called from driver latch-read wrappers to work around
+	// set_input_line's deferred synchronize() mechanism.
+	void clear_int0_level();
+
 protected:
 	// device_t implementation
 	virtual void device_config_complete() override ATTR_COLD;
@@ -279,9 +284,6 @@ private:
 	uint8_t m_int_reg[18];
 	uint8_t m_iimc;
 	uint8_t m_dma_vector[4];
-
-	// Diagnostic counter for HDMA ch2 debugging
-	int m_hdma_ch2_diag_counter = 0;
 
 	// DMA hexdump logging (debug only, not saved in state)
 	static constexpr int DMA_LOG_MAX = 256;
