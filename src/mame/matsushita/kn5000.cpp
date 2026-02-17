@@ -98,9 +98,10 @@ namespace {
 #define LOG_HANDSHAKE (1U << 3) // MSTAT/SSTAT handshake changes
 #define LOG_RESET    (1U << 4)  // Sub CPU reset control
 #define LOG_KEYBED   (1U << 5)  // Keybed scan events (driver-side)
+#define LOG_HEARTBEAT (1U << 6) // Periodic CPU PC snapshot (1 second interval)
 #define LOG_ALL_LATCH (LOG_LATCH | LOG_LATCH_DATA)
 
-#define VERBOSE (LOG_LATCH | LOG_RESET | LOG_HANDSHAKE | LOG_KEYBED)
+#define VERBOSE (LOG_LATCH | LOG_RESET | LOG_HANDSHAKE | LOG_KEYBED | LOG_HEARTBEAT)
 #include "logmacro.h"
 
 // Timestamped logging: prepend emulated time in seconds to each message
@@ -187,6 +188,10 @@ private:
 	emu_timer *m_keybed_timer;
 	TIMER_CALLBACK_MEMBER(keybed_scan);
 	static constexpr uint8_t KEYBED_VELOCITY = 100; // fixed velocity for PC keyboard
+
+	// Diagnostic heartbeat for hang detection
+	emu_timer *m_heartbeat_timer;
+	TIMER_CALLBACK_MEMBER(heartbeat);
 
 	void nvram2_init(nvram_device &device, void *data, size_t size);
 	void maincpu_mem(address_map &map) ATTR_COLD;
@@ -307,6 +312,13 @@ TIMER_CALLBACK_MEMBER(kn5000_state::keybed_scan)
 			m_keybed_prev[raw_note] = pressed;
 		}
 	}
+}
+
+// Diagnostic: snapshot CPU PCs every second for hang detection
+TIMER_CALLBACK_MEMBER(kn5000_state::heartbeat)
+{
+	TLOGMASKED(LOG_HEARTBEAT, "HEARTBEAT: MainCPU PC=%06X  SubCPU PC=%06X\n",
+		m_maincpu->pc(), m_subcpu->pc());
 }
 
 void kn5000_state::maincpu_mem(address_map &map)
@@ -738,6 +750,10 @@ void kn5000_state::machine_start()
 	memset(m_keybed_prev, 0, sizeof(m_keybed_prev));
 	m_keybed_timer = timer_alloc(FUNC(kn5000_state::keybed_scan), this);
 	m_keybed_timer->adjust(attotime::from_msec(1), 0, attotime::from_msec(1));
+
+	// Heartbeat: snapshot CPU PCs every second for hang detection
+	m_heartbeat_timer = timer_alloc(FUNC(kn5000_state::heartbeat), this);
+	m_heartbeat_timer->adjust(attotime::from_seconds(1), 0, attotime::from_seconds(1));
 }
 
 void kn5000_state::machine_reset()
