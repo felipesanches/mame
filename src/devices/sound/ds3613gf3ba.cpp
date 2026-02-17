@@ -13,6 +13,17 @@
     Effect type/parameter name tables extracted from MainCPU ROM.
     These are used for semantic logging of effect configuration.
 
+    Parallel port command protocol (from SubCPU firmware analysis):
+      0x01 — Voice/parameter bulk write (variable length)
+      0x02 — Coefficient/table upload (variable length)
+      0x03 — End parameter block (latch pending writes)
+      0x04 — DSP init/config (5 data bytes)
+      0x09 — Status/mode register (2 data bytes)
+      0x0C — Control register (3 data bytes)
+      0x0F — Sync/timing marker (no data)
+      0x10 — Reset (no data)
+      0x30 — Register write (4 data bytes: 0, addr, value_hi, value_lo)
+
 ***************************************************************************/
 
 #include "emu.h"
@@ -85,30 +96,131 @@ void ds3613gf3ba_device::parallel_command_w(uint8_t data)
 
 	m_par_cmd = data;
 	m_par_data.clear();
-	LOGMASKED(LOG_PARALLEL, "parallel cmd 0x%02X\n", data);
+
+	// Log no-data commands immediately with their meaning
+	switch (data)
+	{
+	case 0x03:
+		LOGMASKED(LOG_PARALLEL, "END BLOCK (latch pending writes)\n");
+		break;
+	case 0x0f:
+		LOGMASKED(LOG_PARALLEL, "SYNC\n");
+		break;
+	case 0x10:
+		LOGMASKED(LOG_PARALLEL, "RESET\n");
+		break;
+	default:
+		// Commands that expect data will be decoded in process_command()
+		break;
+	}
 }
 
 void ds3613gf3ba_device::parallel_data_w(uint8_t data)
 {
 	m_par_data.push_back(data);
-	LOGMASKED(LOG_PARALLEL, "parallel data 0x%02X (byte#%zu for cmd 0x%02X)\n",
-		data, m_par_data.size(), m_par_cmd);
 }
 
 void ds3613gf3ba_device::process_command()
 {
-	// Semantic interpretation of accumulated command + data
-	// Command byte meanings are derived from SubCPU bytecode interpreter analysis
 	if (m_par_data.empty())
 		return;
 
-	LOGMASKED(LOG_PARALLEL, "cmd 0x%02X complete: %zu data bytes [",
-		m_par_cmd, m_par_data.size());
-	for (size_t i = 0; i < m_par_data.size() && i < 8; i++)
-		LOGMASKED(LOG_PARALLEL, "%s0x%02X", i ? " " : "", m_par_data[i]);
-	if (m_par_data.size() > 8)
-		LOGMASKED(LOG_PARALLEL, " ...");
-	LOGMASKED(LOG_PARALLEL, "]\n");
+	switch (m_par_cmd)
+	{
+	case 0x30: // Register write: data[0]=0, data[1]=addr, data[2..3]=value
+		if (m_par_data.size() >= 4)
+		{
+			uint8_t addr = m_par_data[1];
+			uint16_t value = (uint16_t(m_par_data[2]) << 8) | m_par_data[3];
+			LOGMASKED(LOG_PARALLEL, "REG WRITE addr=0x%02X value=0x%04X\n", addr, value);
+		}
+		else
+		{
+			LOGMASKED(LOG_PARALLEL, "REG WRITE (incomplete: %zu bytes)\n", m_par_data.size());
+		}
+		break;
+
+	case 0x01: // Voice/parameter bulk write
+		if (m_par_data.size() >= 2)
+		{
+			uint8_t mode = m_par_data[0];
+			uint8_t param = m_par_data[1];
+			if (mode == 0x01 && m_par_data.size() >= 7)
+			{
+				// Effect parameter: [0x01, 0x60, offset, sub, p1, p2, p3]
+				LOGMASKED(LOG_PARALLEL, "EFFECT PARAM mode=0x%02X base=0x%02X",
+					mode, param);
+				for (size_t i = 2; i < m_par_data.size() && i < 7; i++)
+					LOGMASKED(LOG_PARALLEL, " 0x%02X", m_par_data[i]);
+				LOGMASKED(LOG_PARALLEL, "\n");
+			}
+			else if (mode == 0x00)
+			{
+				// Voice/tone config data
+				LOGMASKED(LOG_PARALLEL, "VOICE DATA index=0x%02X (%zu bytes)\n",
+					param, m_par_data.size());
+			}
+			else
+			{
+				LOGMASKED(LOG_PARALLEL, "PARAM WRITE mode=0x%02X param=0x%02X (%zu bytes)\n",
+					mode, param, m_par_data.size());
+			}
+		}
+		else
+		{
+			LOGMASKED(LOG_PARALLEL, "PARAM WRITE (%zu bytes)\n", m_par_data.size());
+		}
+		break;
+
+	case 0x02: // Coefficient/table upload
+		if (m_par_data.size() >= 2)
+		{
+			LOGMASKED(LOG_PARALLEL, "COEFF UPLOAD header=[0x%02X 0x%02X] (%zu bytes)\n",
+				m_par_data[0], m_par_data[1], m_par_data.size());
+		}
+		else
+		{
+			LOGMASKED(LOG_PARALLEL, "COEFF UPLOAD (%zu bytes)\n", m_par_data.size());
+		}
+		break;
+
+	case 0x04: // Init/config (5 bytes)
+		LOGMASKED(LOG_PARALLEL, "INIT CONFIG [");
+		for (size_t i = 0; i < m_par_data.size(); i++)
+			LOGMASKED(LOG_PARALLEL, "%s0x%02X", i ? " " : "", m_par_data[i]);
+		LOGMASKED(LOG_PARALLEL, "]\n");
+		break;
+
+	case 0x09: // Status/mode (2 bytes)
+		if (m_par_data.size() >= 2)
+		{
+			uint16_t value = (uint16_t(m_par_data[0]) << 8) | m_par_data[1];
+			LOGMASKED(LOG_PARALLEL, "STATUS/MODE value=0x%04X\n", value);
+		}
+		else
+		{
+			LOGMASKED(LOG_PARALLEL, "STATUS/MODE (%zu bytes)\n", m_par_data.size());
+		}
+		break;
+
+	case 0x0c: // Control (3 bytes)
+		LOGMASKED(LOG_PARALLEL, "CONTROL [");
+		for (size_t i = 0; i < m_par_data.size(); i++)
+			LOGMASKED(LOG_PARALLEL, "%s0x%02X", i ? " " : "", m_par_data[i]);
+		LOGMASKED(LOG_PARALLEL, "]\n");
+		break;
+
+	default:
+		// Unknown command - hex dump
+		LOGMASKED(LOG_PARALLEL, "CMD 0x%02X (%zu bytes) [",
+			m_par_cmd, m_par_data.size());
+		for (size_t i = 0; i < m_par_data.size() && i < 16; i++)
+			LOGMASKED(LOG_PARALLEL, "%s0x%02X", i ? " " : "", m_par_data[i]);
+		if (m_par_data.size() > 16)
+			LOGMASKED(LOG_PARALLEL, " ...");
+		LOGMASKED(LOG_PARALLEL, "]\n");
+		break;
+	}
 }
 
 //--------------------------------------------------------------------------

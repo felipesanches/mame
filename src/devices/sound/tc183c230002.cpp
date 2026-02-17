@@ -10,6 +10,26 @@
 
     See header for register layout documentation.
 
+    Register groups (from config address bits 11:8):
+      0x00 — Voice control (bank 0: gate, bank 1: enable, bank 2: sustain, bank 3: FX routing)
+      0x01 — Pitch (bank 0: note, bank 1: bend range, bank 2: fine tune)
+      0x02 — Global config
+      0x03 — Envelope
+      0x04 — Filter (banks 0-3: cutoff/resonance)
+      0x05 — FX send A
+      0x06 — FX send B
+      0x08 — Volume
+      0x09 — Pan
+      0x0A — FX send C
+      0x0C — Global config 2
+      0x0E — Global config 3
+
+    Voice control bank 0 known values:
+      0x8100 — Key on (start envelope)
+      0x7E00 — Key off (release)
+      0x1200 — Release trigger
+      0x0000 — Voice off
+
 ***************************************************************************/
 
 #include "emu.h"
@@ -34,6 +54,19 @@ static const char *midi_note_name(uint8_t note)
 	if (note > 127) return "?";
 	snprintf(buf, sizeof(buf), "%s%d", NAMES[note % 12], (note / 12) - 1);
 	return buf;
+}
+
+// Describe a voice control bank 0 value
+static const char *ctrl_bank0_desc(uint16_t data)
+{
+	switch (data)
+	{
+	case 0x8100: return "KEY ON";
+	case 0x7e00: return "KEY OFF";
+	case 0x1200: return "RELEASE";
+	case 0x0000: return "OFF";
+	default:     return nullptr;
+	}
 }
 
 tc183c230002_device::tc183c230002_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
@@ -100,8 +133,11 @@ void tc183c230002_device::config_data_w(uint16_t data)
 	case 0x01: group_name = "pitch";  break;
 	case 0x03: group_name = "env";    break;
 	case 0x04: group_name = "filter"; break;
+	case 0x05: group_name = "fxA";    break;
+	case 0x06: group_name = "fxB";    break;
 	case 0x08: group_name = "vol";    break;
 	case 0x09: group_name = "pan";    break;
+	case 0x0a: group_name = "fxC";    break;
 	default:   group_name = nullptr;  break;
 	}
 
@@ -132,16 +168,46 @@ void tc183c230002_device::config_data_w(uint16_t data)
 	if (group == 0x08 && channel < 64)
 		m_voices[channel].volume = data;
 
-	// Log register writes
+	// Log register writes with semantic descriptions
 	if (group == 0x02 || group == 0x0c || group == 0x0e)
+	{
 		LOGMASKED(LOG_REG, "reg global[0x%04X] = 0x%04X\n",
 			m_config_addr, data);
+	}
 	else if (group_name)
-		LOGMASKED(LOG_REG, "reg[%s bank=%d ch=%d] = 0x%04X\n",
-			group_name, bank, channel, data);
+	{
+		// Build description suffix for known value meanings
+		char desc[64] = "";
+		if (group == 0x00 && bank == 0)
+		{
+			char const *d = ctrl_bank0_desc(data);
+			if (d) snprintf(desc, sizeof(desc), " (%s)", d);
+		}
+		else if (group == 0x00 && bank == 1)
+		{
+			if (data == 0x0002) snprintf(desc, sizeof(desc), " (ENABLED)");
+			else if (data == 0x0000) snprintf(desc, sizeof(desc), " (DISABLED)");
+		}
+		else if (group == 0x00 && bank == 2)
+		{
+			if (data == 0x8000) snprintf(desc, sizeof(desc), " (SUSTAIN ON)");
+			else if (data == 0x0000) snprintf(desc, sizeof(desc), " (SUSTAIN OFF)");
+		}
+		else if (group == 0x08)
+		{
+			// Volume: high byte is level (0xFF=max), bit 7 of low byte is enable
+			uint8_t level = (data >> 8) & 0xff;
+			snprintf(desc, sizeof(desc), " (%d%%)", level * 100 / 255);
+		}
+
+		LOGMASKED(LOG_REG, "reg[%s bank=%d ch=%d] = 0x%04X%s\n",
+			group_name, bank, channel, data, desc);
+	}
 	else
+	{
 		LOGMASKED(LOG_REG, "reg[grp=0x%02X bank=%d ch=%d] = 0x%04X\n",
 			group, bank, channel, data);
+	}
 }
 
 uint16_t tc183c230002_device::config_data_r()
