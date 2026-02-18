@@ -101,9 +101,10 @@ namespace {
 #define LOG_HEARTBEAT (1U << 6) // Periodic CPU PC snapshot (1 second interval)
 #define LOG_COMIF    (1U << 7)  // Computer interface (SubCPU SC1 serial port)
 #define LOG_SEQBUF   (1U << 8)  // Sequencer ring buffer pointer changes
+#define LOG_AUDIOMIX (1U << 9)  // Audio mixer/attenuator at 0x150000
 #define LOG_ALL_LATCH (LOG_LATCH | LOG_LATCH_DATA)
 
-#define VERBOSE (LOG_LATCH | LOG_RESET | LOG_HANDSHAKE | LOG_KEYBED | LOG_HEARTBEAT | LOG_COMIF | LOG_SEQBUF)
+#define VERBOSE (LOG_LATCH | LOG_RESET | LOG_HANDSHAKE | LOG_KEYBED | LOG_HEARTBEAT | LOG_COMIF | LOG_SEQBUF | LOG_AUDIOMIX)
 #include "logmacro.h"
 
 // Timestamped logging: prepend emulated time in seconds to each message
@@ -146,6 +147,7 @@ public:
 		, m_comif_shift(0)
 		, m_comif_bit_count(0)
 		, m_comif_receiving(false)
+		, m_audiomix_addr(0)
 	{ }
 
 	void kn5000(machine_config &config);
@@ -188,6 +190,10 @@ private:
 	uint8_t m_comif_shift;        // Shift register for received bits
 	uint8_t m_comif_bit_count;    // Bits accumulated in current byte
 	bool m_comif_receiving;       // True after tx_start, until byte complete
+
+	// Audio mixer/attenuator at 0x150000 (register-indirect)
+	uint8_t m_audiomix_addr;              // Current register address
+	uint8_t m_audiomix_regs[256];         // Register file
 	virtual void machine_start() override ATTR_COLD;
 	virtual void machine_reset() override ATTR_COLD;
 
@@ -206,6 +212,11 @@ private:
 	// Diagnostic heartbeat for hang detection
 	emu_timer *m_heartbeat_timer;
 	TIMER_CALLBACK_MEMBER(heartbeat);
+
+	// Audio mixer/attenuator at 0x150000 (register-indirect interface)
+	void audiomix_addr_w(uint8_t data);
+	void audiomix_data_w(uint8_t data);
+	uint8_t audiomix_data_r();
 
 	void nvram2_init(nvram_device &device, void *data, size_t size);
 	void maincpu_mem(address_map &map) ATTR_COLD;
@@ -335,6 +346,33 @@ TIMER_CALLBACK_MEMBER(kn5000_state::heartbeat)
 		m_maincpu->pc(), m_subcpu->pc());
 }
 
+// Audio mixer/attenuator — register-indirect device at 0x150000/0x150002
+// Firmware writes address to 0x150000, then data to 0x150002.
+// Register map (from init code at EF17F4):
+//   0x10-0x17, 0x90-0x97: 8 channel pairs (level/attenuation)
+//   0x1F, 0x3F, 0x5F, 0x7F: channel group enable (stride 0x20)
+void kn5000_state::audiomix_addr_w(uint8_t data)
+{
+	m_audiomix_addr = data;
+	TLOGMASKED(LOG_AUDIOMIX, "AudioMix: addr = 0x%02X  PC=%06X\n",
+		data, m_maincpu->pc());
+}
+
+void kn5000_state::audiomix_data_w(uint8_t data)
+{
+	TLOGMASKED(LOG_AUDIOMIX, "AudioMix: reg[0x%02X] = 0x%02X  PC=%06X\n",
+		m_audiomix_addr, data, m_maincpu->pc());
+	m_audiomix_regs[m_audiomix_addr] = data;
+}
+
+uint8_t kn5000_state::audiomix_data_r()
+{
+	uint8_t val = m_audiomix_regs[m_audiomix_addr];
+	TLOGMASKED(LOG_AUDIOMIX, "AudioMix: reg[0x%02X] read = 0x%02X  PC=%06X\n",
+		m_audiomix_addr, val, m_maincpu->pc());
+	return val;
+}
+
 void kn5000_state::maincpu_mem(address_map &map)
 {
 	map(0x000000, 0x0fffff).ram().share("nvram1"); // 1Mbyte = 2 * 4Mbit DRAMs @ IC9, IC10 (CS3)
@@ -346,6 +384,8 @@ void kn5000_state::maincpu_mem(address_map &map)
 	map(0x120000, 0x120000).rw(m_fdc, FUNC(upd72067_device::dma_r), FUNC(upd72067_device::dma_w));
 	map(0x140000, 0x14ffff).r(FUNC(kn5000_state::maincpu_latch_r)); // @ IC23 (logged wrapper)
 	map(0x140000, 0x14ffff).w(FUNC(kn5000_state::subcpu_latch_w)); // @ IC22 (logged wrapper)
+	map(0x150000, 0x150000).w(FUNC(kn5000_state::audiomix_addr_w));  // Audio mixer address port
+	map(0x150002, 0x150002).rw(FUNC(kn5000_state::audiomix_data_r), FUNC(kn5000_state::audiomix_data_w)); // Audio mixer data port
 	map(0x1703b0, 0x1703df).m("vga", FUNC(mn89304_vga_device::io_map)); // LCD controller @ IC206
 	map(0x1a0000, 0x1dffff).rw("vga", FUNC(mn89304_vga_device::mem_linear_r), FUNC(mn89304_vga_device::mem_linear_w));
 	map(0x1e0000, 0x1fffff).ram().share("nvram2"); // 1Mbit SRAM @ IC21 (CS0)  Note: I think this is the message "ERROR in back-up SRAM"
@@ -752,6 +792,8 @@ void kn5000_state::machine_start()
 	save_item(NAME(m_comif_shift));
 	save_item(NAME(m_comif_bit_count));
 	save_item(NAME(m_comif_receiving));
+	save_item(NAME(m_audiomix_addr));
+	save_item(NAME(m_audiomix_regs));
 
 	m_extension->program_map(m_maincpu->space(AS_PROGRAM));
 
@@ -814,6 +856,8 @@ void kn5000_state::machine_reset()
 	m_comif_shift = 0;
 	m_comif_bit_count = 0;
 	m_comif_receiving = false;
+	m_audiomix_addr = 0;
+	memset(m_audiomix_regs, 0, sizeof(m_audiomix_regs));
 }
 
 void kn5000_state::nvram2_init(nvram_device &device, void *data, size_t size)
