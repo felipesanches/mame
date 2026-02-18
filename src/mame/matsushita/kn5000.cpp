@@ -868,6 +868,44 @@ void kn5000_state::machine_start()
 		{
 			m_putc_mrx_bf_hits++;
 		});
+
+	// One-shot detection taps for DEMO mode code path
+	// Addresses aligned to 16-bit word boundaries (required by bus width)
+	// DemoMode_Main_Operation at 0xF8696F → tap at 0xF8696E
+	m_maincpu->space(AS_PROGRAM).install_read_tap(
+		0xf8696e, 0xf8696f,
+		"demo_main_op_detect",
+		[this](offs_t offset, u16 &data, u16 mem_mask)
+		{
+			TLOGMASKED(LOG_SEQBUF, "*** DemoMode_Main_Operation entered! PC=%06X\n", m_maincpu->pc());
+		});
+
+	// DemoMode_Initialize at 0xF869E3 → tap at 0xF869E2
+	m_maincpu->space(AS_PROGRAM).install_read_tap(
+		0xf869e2, 0xf869e3,
+		"demo_init_detect",
+		[this](offs_t offset, u16 &data, u16 mem_mask)
+		{
+			TLOGMASKED(LOG_SEQBUF, "*** DemoMode_Initialize entered! PC=%06X\n", m_maincpu->pc());
+		});
+
+	// Seq_StartMainControl at 0xF846BF → tap at 0xF846BE
+	m_maincpu->space(AS_PROGRAM).install_read_tap(
+		0xf846be, 0xf846bf,
+		"seq_start_main_detect",
+		[this](offs_t offset, u16 &data, u16 mem_mask)
+		{
+			TLOGMASKED(LOG_SEQBUF, "*** Seq_StartMainControl entered! PC=%06X\n", m_maincpu->pc());
+		});
+
+	// Seq_StartMainControlAlt at 0xF846CF → tap at 0xF846CE
+	m_maincpu->space(AS_PROGRAM).install_read_tap(
+		0xf846ce, 0xf846cf,
+		"seq_start_alt_detect",
+		[this](offs_t offset, u16 &data, u16 mem_mask)
+		{
+			TLOGMASKED(LOG_SEQBUF, "*** Seq_StartMainControlAlt entered! PC=%06X\n", m_maincpu->pc());
+		});
 }
 
 void kn5000_state::machine_reset()
