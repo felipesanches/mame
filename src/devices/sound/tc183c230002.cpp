@@ -222,18 +222,25 @@ void tc183c230002_device::config_data_w(uint16_t data)
 	default:   group_name = nullptr;  break;
 	}
 
-	// Track voice state for group 0x00, bank 0 (control) writes only
+	// Track voice state for group 0x00, bank 0 (control) writes only.
+	// The firmware writes a sequence: 0x8100 (key-on) → 0xF0FF (playing) → 0x7E00 (key-off).
+	// Only react to specific known gate values for audio; ignore transitional values like 0xF0FF.
 	if (group == 0x00 && bank == 0 && channel < 64)
 	{
-		m_stream->update();
-
-		bool was_active = m_voices[channel].active;
 		m_voices[channel].control = data;
-		m_voices[channel].active = (data == 0x8100);
 
-		if (!was_active && m_voices[channel].active)
+		switch (data)
 		{
-			// Key-on: try to associate with a pending keybed note
+		case 0x8100: // KEY ON
+		{
+			m_stream->update();
+			bool was_active = m_voices[channel].active;
+			m_voices[channel].active = true;
+
+			if (!was_active)
+				m_active_count++;
+
+			// Try to associate with a pending keybed note
 			pending_note pn;
 			if (pop_pending_note(pn))
 			{
@@ -246,49 +253,62 @@ void tc183c230002_device::config_data_w(uint16_t data)
 
 				LOGMASKED(LOG_VOICE, "voice %d: key-on note=%s (MIDI %d) vel=%d freq=%.1f Hz (active: %d/64)\n",
 					channel, midi_note_name(pn.midi_note), pn.midi_note,
-					pn.velocity, m_voices[channel].frequency, m_active_count + 1);
+					pn.velocity, m_voices[channel].frequency, m_active_count);
 			}
 			else
 			{
 				// No pending note — init sequence or programmatic key-on, no audio
 				LOGMASKED(LOG_VOICE, "voice %d: key-on (no pending note, silent) vol=0x%04X (active: %d/64)\n",
-					channel, m_voices[channel].volume, m_active_count + 1);
+					channel, m_voices[channel].volume, m_active_count);
 			}
-
-			m_active_count++;
+			break;
 		}
-		else if (was_active && !m_voices[channel].active)
-		{
-			if (m_active_count > 0)
-				m_active_count--;
 
-			// Start release phase for audible voices
-			if (data == 0x7e00 || data == 0x1200)
+		case 0x7e00: // KEY OFF — release envelope
+		case 0x1200: // RELEASE
+			m_stream->update();
+			if (m_voices[channel].active)
 			{
-				m_voices[channel].releasing = true;
+				m_voices[channel].active = false;
+				if (m_active_count > 0)
+					m_active_count--;
 			}
-			else
-			{
-				// Immediate off
-				m_voices[channel].env_level = 0.0;
-				m_voices[channel].releasing = false;
-			}
-
+			m_voices[channel].releasing = true;
 			LOGMASKED(LOG_VOICE, "voice %d: %s (active: %d/64)\n", channel,
-				(data == 0x7e00) ? "key-off" : (data == 0x1200) ? "release" : "off",
-				m_active_count);
+				(data == 0x7e00) ? "key-off" : "release", m_active_count);
+			break;
+
+		case 0x0000: // OFF — immediate silence
+			m_stream->update();
+			if (m_voices[channel].active)
+			{
+				m_voices[channel].active = false;
+				if (m_active_count > 0)
+					m_active_count--;
+			}
+			m_voices[channel].env_level = 0.0;
+			m_voices[channel].releasing = false;
+			LOGMASKED(LOG_VOICE, "voice %d: off (active: %d/64)\n", channel, m_active_count);
+			break;
+
+		default:
+			// Transitional values (e.g. 0xF0FF) — no audio state change
+			LOGMASKED(LOG_VOICE, "voice %d: ctrl=0x%04X (active: %d/64)\n",
+				channel, data, m_active_count);
+			break;
 		}
 	}
 
-	// Track volume for group 0x08
-	if (group == 0x08 && channel < 64)
+	// Track volume for group 0x08, bank 0 only (main voice volume).
+	// Banks 1-3 are sub-parameters (e.g. FX send levels) — not used for audio gain.
+	if (group == 0x08 && bank == 0 && channel < 64)
 	{
 		m_stream->update();
 		m_voices[channel].volume = data;
 	}
 
-	// Track pan for group 0x09
-	if (group == 0x09 && channel < 64)
+	// Track pan for group 0x09, bank 0 only (main pan position).
+	if (group == 0x09 && bank == 0 && channel < 64)
 	{
 		m_stream->update();
 		m_voices[channel].pan = data;
