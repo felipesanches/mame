@@ -100,9 +100,10 @@ namespace {
 #define LOG_KEYBED   (1U << 5)  // Keybed scan events (driver-side)
 #define LOG_HEARTBEAT (1U << 6) // Periodic CPU PC snapshot (1 second interval)
 #define LOG_COMIF    (1U << 7)  // Computer interface (SubCPU SC1 serial port)
+#define LOG_SEQBUF   (1U << 8)  // Sequencer ring buffer pointer changes
 #define LOG_ALL_LATCH (LOG_LATCH | LOG_LATCH_DATA)
 
-#define VERBOSE (LOG_LATCH | LOG_RESET | LOG_HANDSHAKE | LOG_KEYBED | LOG_HEARTBEAT | LOG_COMIF)
+#define VERBOSE (LOG_LATCH | LOG_RESET | LOG_HANDSHAKE | LOG_KEYBED | LOG_HEARTBEAT | LOG_COMIF | LOG_SEQBUF)
 #include "logmacro.h"
 
 // Timestamped logging: prepend emulated time in seconds to each message
@@ -772,6 +773,25 @@ void kn5000_state::machine_start()
 	// Heartbeat: snapshot CPU PCs every second for hang detection
 	m_heartbeat_timer = timer_alloc(FUNC(kn5000_state::heartbeat), this);
 	m_heartbeat_timer->adjust(attotime::from_seconds(1), 0, attotime::from_seconds(1));
+
+	// Sequencer ring buffer write tap: monitor pointer changes at 0x01F370-0x01F37A
+	// Ring buffer header layout (base=0x01F37B, little-endian 16-bit words):
+	//   0x01F371 (base-10): saved read pointer
+	//   0x01F373 (base-8):  current read pointer
+	//   0x01F375 (base-6):  saved write pointer
+	//   0x01F377 (base-4):  current write pointer
+	//   0x01F379 (base-2):  capacity remaining
+	//
+	// The firmware uses LDW (word store) to update these pointers.
+	// On the 16-bit bus, each LDW generates one tap call at the aligned word address.
+	m_maincpu->space(AS_PROGRAM).install_write_tap(
+		0x01f370, 0x01f37b,
+		"seqbuf_ptr_w",
+		[this](offs_t offset, u16 &data, u16 mem_mask)
+		{
+			TLOGMASKED(LOG_SEQBUF, "SeqBuf write @%06X = %04X (mask=%04X) PC=%06X\n",
+				offset, data, mem_mask, m_maincpu->pc());
+		});
 }
 
 void kn5000_state::machine_reset()
