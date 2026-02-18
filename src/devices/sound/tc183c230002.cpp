@@ -138,6 +138,7 @@ void tc183c230002_device::device_start()
 	save_item(NAME(m_pending_head));
 	save_item(NAME(m_pending_tail));
 	save_item(NAME(m_pending_count));
+	save_item(NAME(m_init_keyon_count));
 	for (int i = 0; i < MAX_PENDING_NOTES; i++)
 	{
 		save_item(NAME(m_pending_notes[i].midi_note), i);
@@ -168,6 +169,7 @@ void tc183c230002_device::device_reset()
 	m_pending_head = 0;
 	m_pending_tail = 0;
 	m_pending_count = 0;
+	m_init_keyon_count = 0;
 	for (auto &v : m_voices)
 	{
 		v.control = 0;
@@ -257,13 +259,16 @@ void tc183c230002_device::config_data_w(uint16_t data)
 					channel, midi_note_name(pn.midi_note), pn.midi_note,
 					pn.velocity, m_voices[channel].frequency, m_active_count);
 			}
-			else if (m_voices[channel].pitch != 0)
+			else if (m_voices[channel].pitch != 0 && m_init_keyon_count >= 64)
 			{
 				// No keybed note — derive pitch from the pitch register.
-				// Heuristic: upper byte of pitch reg + 24 ≈ MIDI note number.
-				// Based on observed: MIDI 60 (C4) → pitch reg 0x244E (upper byte 0x24=36, 36+24=60).
-				uint8_t estimated_note = ((m_voices[channel].pitch >> 8) & 0xff) + 24;
-				if (estimated_note > 127) estimated_note = 127;
+				// Heuristic: low byte of pitch reg - 18 ≈ MIDI note number.
+				// Based on observed: MIDI 60 (C4) → pitch reg 0x244E (low byte 0x4E=78, 78-18=60).
+				// High byte contains waveform/mode flags, not pitch data.
+				int raw_note = (m_voices[channel].pitch & 0xff) - 18;
+				if (raw_note < 0) raw_note = 0;
+				if (raw_note > 127) raw_note = 127;
+				uint8_t estimated_note = uint8_t(raw_note);
 
 				m_voices[channel].midi_note = estimated_note;
 				m_voices[channel].velocity = 200;  // default velocity for programmatic notes
@@ -278,9 +283,11 @@ void tc183c230002_device::config_data_w(uint16_t data)
 			}
 			else
 			{
-				// No pending note and no pitch register — truly silent
-				LOGMASKED(LOG_VOICE, "voice %d: key-on (no note source, silent) vol=0x%04X (active: %d/64)\n",
-					channel, m_voices[channel].volume, m_active_count);
+				// Init sequence (first 64 pitch-fallback key-ons) or no pitch — silent
+				if (m_init_keyon_count < 64)
+					m_init_keyon_count++;
+				LOGMASKED(LOG_VOICE, "voice %d: key-on (init/silent, count=%d) vol=0x%04X (active: %d/64)\n",
+					channel, m_init_keyon_count, m_voices[channel].volume, m_active_count);
 			}
 			break;
 		}
