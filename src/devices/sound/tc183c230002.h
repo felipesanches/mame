@@ -59,6 +59,7 @@ private:
 	// Per-voice state tracking (64 voices, 6-bit channel index)
 	struct voice_state {
 		uint16_t control;    // group 0x00 register value (key-on/idle/transition)
+		uint16_t pitch;      // group 0x01 bank 0 register value
 		uint16_t volume;     // group 0x08 register value
 		uint16_t pan;        // group 0x09 register value
 		bool active;         // derived: control == 0x8100

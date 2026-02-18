@@ -146,6 +146,7 @@ void tc183c230002_device::device_start()
 	for (int i = 0; i < 64; i++)
 	{
 		save_item(NAME(m_voices[i].control), i);
+		save_item(NAME(m_voices[i].pitch), i);
 		save_item(NAME(m_voices[i].volume), i);
 		save_item(NAME(m_voices[i].pan), i);
 		save_item(NAME(m_voices[i].active), i);
@@ -170,6 +171,7 @@ void tc183c230002_device::device_reset()
 	for (auto &v : m_voices)
 	{
 		v.control = 0;
+		v.pitch = 0;
 		v.volume = 0;
 		v.pan = 0;
 		v.active = false;
@@ -255,10 +257,29 @@ void tc183c230002_device::config_data_w(uint16_t data)
 					channel, midi_note_name(pn.midi_note), pn.midi_note,
 					pn.velocity, m_voices[channel].frequency, m_active_count);
 			}
+			else if (m_voices[channel].pitch != 0)
+			{
+				// No keybed note — derive pitch from the pitch register.
+				// Heuristic: upper byte of pitch reg + 24 ≈ MIDI note number.
+				// Based on observed: MIDI 60 (C4) → pitch reg 0x244E (upper byte 0x24=36, 36+24=60).
+				uint8_t estimated_note = ((m_voices[channel].pitch >> 8) & 0xff) + 24;
+				if (estimated_note > 127) estimated_note = 127;
+
+				m_voices[channel].midi_note = estimated_note;
+				m_voices[channel].velocity = 200;  // default velocity for programmatic notes
+				m_voices[channel].frequency = midi_note_to_freq(estimated_note);
+				m_voices[channel].env_level = 1.0;
+				m_voices[channel].phase = 0.0;
+				m_voices[channel].releasing = false;
+
+				LOGMASKED(LOG_VOICE, "voice %d: key-on (from pitch reg 0x%04X) note=%s (MIDI %d) freq=%.1f Hz (active: %d/64)\n",
+					channel, m_voices[channel].pitch, midi_note_name(estimated_note),
+					estimated_note, m_voices[channel].frequency, m_active_count);
+			}
 			else
 			{
-				// No pending note — init sequence or programmatic key-on, no audio
-				LOGMASKED(LOG_VOICE, "voice %d: key-on (no pending note, silent) vol=0x%04X (active: %d/64)\n",
+				// No pending note and no pitch register — truly silent
+				LOGMASKED(LOG_VOICE, "voice %d: key-on (no note source, silent) vol=0x%04X (active: %d/64)\n",
 					channel, m_voices[channel].volume, m_active_count);
 			}
 			break;
@@ -298,6 +319,11 @@ void tc183c230002_device::config_data_w(uint16_t data)
 			break;
 		}
 	}
+
+	// Track pitch for group 0x01, bank 0 only (main pitch value).
+	// Used as fallback for frequency when no keybed note is pending (e.g. feature demo, MIDI).
+	if (group == 0x01 && bank == 0 && channel < 64)
+		m_voices[channel].pitch = data;
 
 	// Track volume for group 0x08, bank 0 only (main voice volume).
 	// Banks 1-3 are sub-parameters (e.g. FX send levels) — not used for audio gain.
