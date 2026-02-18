@@ -421,8 +421,24 @@ void kn5000_cpanel_device::process_command()
 	// segment 3 scan mode).  The HLE extracts the segment via param & 0x0F.
 	// Param 0x00 (no flag, segment 0) is a sync/ping — everything else with
 	// a valid segment (0-11) returns button data.
-	case 0x20:  // Query left panel
-	case 0x25:  // Query left panel (variant used in CPanel_ReadAllButtons)
+	// Steady-state polls (0x20, 0xE0): firmware sends these every cycle
+	// to clock response data.  The response can't be delivered inline
+	// because TX is suppressed during phantom bytes, and any data left
+	// in the TX pipeline would be misdelivered via INTA as an unsolicited
+	// button change notification.  The real panel MCU can respond inline
+	// because it drives SCLK directly; the HLE can't, so we silently
+	// ignore these.  Button state is delivered via scan-detected INTA
+	// notifications instead.
+	case 0x20:  // Steady-state poll left panel — no response
+	case 0xe0:  // Steady-state poll right panel — no response
+		LOGMASKED(LOG_COMMANDS, "Steady-state poll %02X %02X — no response (INTA handles changes)\n",
+			cmd, param);
+		break;
+
+	// Boot-only query variants: these are used during CPanel_ReadAllButtons
+	// and CPanel_InitButtonState, which run during boot when no phantom
+	// byte suppression occurs.  They respond normally.
+	case 0x25:  // Query left panel (CPanel_ReadAllButtons)
 	{
 		int segment = param & 0x0f;
 		if (param == 0x00)
@@ -431,8 +447,6 @@ void kn5000_cpanel_device::process_command()
 		}
 		else if (segment <= 0x0b)
 		{
-			// Segment 0x0B is a hardware status register — return
-			// WITHOUT panel flag so firmware stores at offset 11.
 			send_button_packet(segment, (segment <= 0x0a));
 		}
 		else
@@ -442,9 +456,8 @@ void kn5000_cpanel_device::process_command()
 		break;
 	}
 
-	case 0xe0:  // Query right panel
-	case 0xe2:  // Query right panel (variant used in CPanel_ReadAllButtons)
-	case 0xe3:  // Query right panel (variant used in CPanel_InitButtonState)
+	case 0xe2:  // Query right panel (CPanel_ReadAllButtons)
+	case 0xe3:  // Query right panel (CPanel_InitButtonState)
 	{
 		int segment = param & 0x0f;
 		if (param == 0x00)
@@ -512,8 +525,10 @@ void kn5000_cpanel_device::process_command()
 void kn5000_cpanel_device::send_sync_packet()
 {
 	// Type 3 sync packet: bits 5-3 = 011 = 0x18
-	send_byte(0x18);
-	send_byte(0x00);
+	// Route through INTA queue so it's delivered via self-clocking,
+	// not left in the TX pipeline where phantom bytes would suppress it.
+	m_inta_queue.push(0x18);
+	m_inta_queue.push(0x00);
 }
 
 uint8_t kn5000_cpanel_device::read_button_segment(int segment, bool is_left_panel)
@@ -556,10 +571,26 @@ void kn5000_cpanel_device::send_button_packet(int segment, bool is_left_panel)
 
 void kn5000_cpanel_device::send_all_button_states(bool is_left_panel)
 {
-	// Send all 11 segments for the requested panel
+	// Send all 11 segments for the requested panel.
+	// Route through INTA queue for safe delivery via self-clocking.
 	for (int seg = 0; seg <= 10; seg++)
 	{
-		send_button_packet(seg, is_left_panel);
+		uint8_t state = read_button_segment(seg, is_left_panel);
+
+		uint8_t header = (seg & 0x0f);
+		if (is_left_panel)
+			header |= 0xC0;
+
+		m_inta_queue.push(header);
+		m_inta_queue.push(state);
+
+		// Track state for change detection
+		int state_idx = is_left_panel ? (seg + 11) : seg;
+		m_last_button_state[state_idx] = state;
+		m_pending_button_state[state_idx] = state;
+
+		LOGMASKED(LOG_BUTTONS, "Button packet: seg=%d left=%d state=%02X\n",
+			seg, is_left_panel, state);
 	}
 }
 
@@ -782,6 +813,9 @@ TIMER_CALLBACK_MEMBER(kn5000_cpanel_device::self_clock_callback)
 				m_self_clock_bytes_sent);
 			m_self_clocking = false;
 			m_self_clock_timer->reset(attotime::never);
+
+			// Return TXD to idle high so stale data bits don't linger
+			m_txd_cb(1);
 
 			if (m_inta_asserted)
 			{
