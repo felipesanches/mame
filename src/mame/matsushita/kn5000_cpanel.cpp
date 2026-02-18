@@ -429,10 +429,23 @@ void kn5000_cpanel_device::process_command()
 	// because it drives SCLK directly; the HLE can't, so we silently
 	// ignore these.  Button state is delivered via scan-detected INTA
 	// notifications instead.
-	case 0x20:  // Steady-state poll left panel — no response
-	case 0xe0:  // Steady-state poll right panel — no response
-		LOGMASKED(LOG_COMMANDS, "Steady-state poll %02X %02X — no response (INTA handles changes)\n",
-			cmd, param);
+	case 0x20:  // Poll left panel
+	case 0xe0:  // Poll right panel
+		if (param == 0x00)
+		{
+			// Sync/ping — respond for panel detection during boot
+			send_sync_packet();
+		}
+		else
+		{
+			// Steady-state segment query (e.g. E0 13) — no response.
+			// TX is suppressed during phantom bytes so the response can't
+			// be delivered inline; any data left in the pipeline would be
+			// misdelivered via INTA as an unsolicited button notification.
+			// Button state is delivered via scan-detected INTA instead.
+			LOGMASKED(LOG_COMMANDS, "Steady-state poll %02X %02X — no response (INTA handles changes)\n",
+				cmd, param);
+		}
 		break;
 
 	// Boot-only query variants: these are used during CPanel_ReadAllButtons
