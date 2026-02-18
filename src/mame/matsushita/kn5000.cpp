@@ -148,6 +148,8 @@ public:
 		, m_comif_bit_count(0)
 		, m_comif_receiving(false)
 		, m_audiomix_addr(0)
+		, m_seq_event_loop_hits(0)
+		, m_putc_mrx_bf_hits(0)
 	{ }
 
 	void kn5000(machine_config &config);
@@ -212,6 +214,10 @@ private:
 	// Diagnostic heartbeat for hang detection
 	emu_timer *m_heartbeat_timer;
 	TIMER_CALLBACK_MEMBER(heartbeat);
+
+	// Sequencer execution detection counters (reset each heartbeat)
+	uint32_t m_seq_event_loop_hits;   // Hits at Seq_ProcessEventLoop (0xEF14CA)
+	uint32_t m_putc_mrx_bf_hits;      // Hits at putc_mrx_bf_X (0xF1EDD4)
 
 	// Audio mixer/attenuator at 0x150000 (register-indirect interface)
 	void audiomix_addr_w(uint8_t data);
@@ -346,9 +352,11 @@ TIMER_CALLBACK_MEMBER(kn5000_state::heartbeat)
 	auto &space = m_maincpu->space(AS_PROGRAM);
 	uint16_t seq_wr_ptr = space.read_word(0x01f377);  // Ring buffer write pointer
 	uint16_t seq_rd_ptr = space.read_word(0x01f373);  // Ring buffer read pointer
-	uint8_t seq_flag = space.read_byte(0x000474);      // Sequencer enable flag (0x55 = paused)
-	TLOGMASKED(LOG_HEARTBEAT, "HEARTBEAT: MainCPU PC=%06X  SubCPU PC=%06X  SeqBuf wr=%04X rd=%04X  flag@474=%02X\n",
-		m_maincpu->pc(), m_subcpu->pc(), seq_wr_ptr, seq_rd_ptr, seq_flag);
+	TLOGMASKED(LOG_HEARTBEAT, "HEARTBEAT: MainCPU PC=%06X  SubCPU PC=%06X  SeqBuf wr=%04X rd=%04X  evtloop=%u putc_mrx=%u\n",
+		m_maincpu->pc(), m_subcpu->pc(), seq_wr_ptr, seq_rd_ptr,
+		m_seq_event_loop_hits, m_putc_mrx_bf_hits);
+	m_seq_event_loop_hits = 0;
+	m_putc_mrx_bf_hits = 0;
 }
 
 // Audio mixer/attenuator — register-indirect device at 0x150000/0x150002
@@ -799,6 +807,8 @@ void kn5000_state::machine_start()
 	save_item(NAME(m_comif_receiving));
 	save_item(NAME(m_audiomix_addr));
 	save_item(NAME(m_audiomix_regs));
+	save_item(NAME(m_seq_event_loop_hits));
+	save_item(NAME(m_putc_mrx_bf_hits));
 
 	m_extension->program_map(m_maincpu->space(AS_PROGRAM));
 
@@ -838,6 +848,25 @@ void kn5000_state::machine_start()
 		{
 			TLOGMASKED(LOG_SEQBUF, "SeqBuf write @%06X = %04X (mask=%04X) PC=%06X\n",
 				offset, data, mem_mask, m_maincpu->pc());
+		});
+
+	// Execution detection: tap opcode fetches at key sequencer code addresses
+	// Seq_ProcessEventLoop at 0xEF14CA — if hit, the event loop is running
+	m_maincpu->space(AS_PROGRAM).install_read_tap(
+		0xef14ca, 0xef14cb,
+		"seq_event_loop_detect",
+		[this](offs_t offset, u16 &data, u16 mem_mask)
+		{
+			m_seq_event_loop_hits++;
+		});
+
+	// putc_mrx_bf_X at 0xF1EDD4 — if hit, something is writing to the ring buffer
+	m_maincpu->space(AS_PROGRAM).install_read_tap(
+		0xf1edd4, 0xf1edd5,
+		"putc_mrx_bf_detect",
+		[this](offs_t offset, u16 &data, u16 mem_mask)
+		{
+			m_putc_mrx_bf_hits++;
 		});
 }
 
