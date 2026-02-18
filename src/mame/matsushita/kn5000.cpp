@@ -19,6 +19,7 @@
 #include "sound/tc183c230002.h"
 #include "video/pc_vga.h"
 #include "screen.h"
+#include "speaker.h"
 #include "kn5000.lh"
 #include "kn5000_cpanel.h"
 
@@ -281,6 +282,7 @@ void kn5000_state::maincpu_latch_w(uint8_t data)
 	else
 		TLOGMASKED(LOG_LATCH_DATA, "SubCPU -> MainCPU latch: 0x%02X (write #%u)\n",
 			data, m_maincpu_latch_write_count);
+
 
 	// Force tight CPU interleaving so maincpu DMAR can read each byte
 	// before the next one is written. Without this, subcpu HDMA ch2 can
@@ -1353,10 +1355,16 @@ void kn5000_state::kn5000(machine_config &config)
 	GENERIC_LATCH_8(config, m_subcpu_latch); //  @ IC22
 	m_subcpu_latch->data_pending_callback().set_inputline(m_subcpu, TLCS900_INT0);
 
-	/* Audio chips (HLE stubs with protocol logging) */
+	/* Audio chips */
 	TC183C230002(config, m_tonegen, 0);  // IC303 — tone generator, memory-mapped at 0x100000/0x110000
 	DS3613GF3BA(config, m_dsp1, 0);      // IC311 — effect DSP, memory-mapped at 0x130000
 	MN19413(config, m_dsp2, 0);          // IC310 — effect DSP, serial via SubCPU port 0
+
+	// Audio output — tone generator produces stereo sine waves (placeholder, wavetable ROM undumped)
+	SPEAKER(config, "lspeaker").front_left();
+	SPEAKER(config, "rspeaker").front_right();
+	m_tonegen->add_route(0, "lspeaker", 1.0);
+	m_tonegen->add_route(1, "rspeaker", 1.0);
 
 	UPD72067(config, m_fdc, 32'000'000); // actual controller is UPD72068GF-3B9 at IC208
 	m_fdc->intrq_wr_callback().set_inputline(m_maincpu, TLCS900_INT4);
@@ -1461,4 +1469,4 @@ ROM_END
 } // anonymous namespace
 
 //   YEAR  NAME   PARENT  COMPAT  MACHINE INPUT   STATE         INIT        COMPANY      FULLNAME             FLAGS
-CONS(1998, kn5000,    0,       0, kn5000, kn5000, kn5000_state, empty_init, "Technics", "SX-KN5000", MACHINE_NOT_WORKING|MACHINE_NO_SOUND)
+CONS(1998, kn5000,    0,       0, kn5000, kn5000, kn5000_state, empty_init, "Technics", "SX-KN5000", MACHINE_NOT_WORKING|MACHINE_IMPERFECT_SOUND)

@@ -5,10 +5,13 @@
     Technics TC183C230002 Tone Generator (IC303)
 
     64-voice wavetable synthesizer used in the Technics SX-KN5000.
-    This is an HLE stub that logs all register accesses for protocol
-    reverse engineering. No audio output is generated yet.
 
     See header for register layout documentation.
+
+    Audio output: since the internal wavetable ROM is undumped, we generate
+    sine waves at the correct MIDI pitch as a functional placeholder.
+    Only voices triggered by actual keybed events produce sound — the
+    firmware's init sequence (which key-ons all 64 voices) is silent.
 
     Register groups (from config address bits 11:8):
       0x00 — Voice control (bank 0: gate, bank 1: enable, bank 2: sustain, bank 3: FX routing)
@@ -34,6 +37,8 @@
 
 #include "emu.h"
 #include "tc183c230002.h"
+
+#include <cmath>
 
 #define LOG_REG    (1U << 1)   // Register read/write
 #define LOG_KEYBED (1U << 2)   // Keybed data/status reads
@@ -69,23 +74,87 @@ static const char *ctrl_bank0_desc(uint16_t data)
 	}
 }
 
+//--------------------------------------------------------------------------
+//  MIDI note to frequency conversion
+//--------------------------------------------------------------------------
+
+double tc183c230002_device::midi_note_to_freq(uint8_t note)
+{
+	// A4 (MIDI 69) = 440 Hz, equal temperament
+	return 440.0 * pow(2.0, (note - 69.0) / 12.0);
+}
+
+//--------------------------------------------------------------------------
+//  Pending note queue (circular buffer)
+//--------------------------------------------------------------------------
+
+void tc183c230002_device::push_pending_note(uint8_t midi_note, uint8_t velocity)
+{
+	if (m_pending_count >= MAX_PENDING_NOTES)
+	{
+		// Drop oldest entry
+		m_pending_tail = (m_pending_tail + 1) % MAX_PENDING_NOTES;
+		m_pending_count--;
+	}
+	m_pending_notes[m_pending_head].midi_note = midi_note;
+	m_pending_notes[m_pending_head].velocity = velocity;
+	m_pending_head = (m_pending_head + 1) % MAX_PENDING_NOTES;
+	m_pending_count++;
+}
+
+bool tc183c230002_device::pop_pending_note(pending_note &out)
+{
+	if (m_pending_count <= 0)
+		return false;
+	out = m_pending_notes[m_pending_tail];
+	m_pending_tail = (m_pending_tail + 1) % MAX_PENDING_NOTES;
+	m_pending_count--;
+	return true;
+}
+
+//--------------------------------------------------------------------------
+//  Construction / lifecycle
+//--------------------------------------------------------------------------
+
 tc183c230002_device::tc183c230002_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: device_t(mconfig, TC183C230002, tag, owner, clock)
+	, device_sound_interface(mconfig, *this)
 	, m_config_addr(0)
+	, m_pending_head(0)
+	, m_pending_tail(0)
+	, m_pending_count(0)
+	, m_stream(nullptr)
 {
 }
 
 void tc183c230002_device::device_start()
 {
+	m_stream = stream_alloc(0, 2, 48000);  // stereo, 48 kHz
+
 	save_item(NAME(m_config_addr));
 	save_item(NAME(m_regs));
 	save_item(NAME(m_active_count));
 	save_item(NAME(m_keybed_poll_count));
+	save_item(NAME(m_pending_head));
+	save_item(NAME(m_pending_tail));
+	save_item(NAME(m_pending_count));
+	for (int i = 0; i < MAX_PENDING_NOTES; i++)
+	{
+		save_item(NAME(m_pending_notes[i].midi_note), i);
+		save_item(NAME(m_pending_notes[i].velocity), i);
+	}
 	for (int i = 0; i < 64; i++)
 	{
 		save_item(NAME(m_voices[i].control), i);
 		save_item(NAME(m_voices[i].volume), i);
+		save_item(NAME(m_voices[i].pan), i);
 		save_item(NAME(m_voices[i].active), i);
+		save_item(NAME(m_voices[i].midi_note), i);
+		save_item(NAME(m_voices[i].velocity), i);
+		save_item(NAME(m_voices[i].phase), i);
+		save_item(NAME(m_voices[i].frequency), i);
+		save_item(NAME(m_voices[i].env_level), i);
+		save_item(NAME(m_voices[i].releasing), i);
 	}
 }
 
@@ -95,11 +164,21 @@ void tc183c230002_device::device_reset()
 	std::fill(std::begin(m_regs), std::end(m_regs), 0);
 	m_active_count = 0;
 	m_keybed_poll_count = 0;
+	m_pending_head = 0;
+	m_pending_tail = 0;
+	m_pending_count = 0;
 	for (auto &v : m_voices)
 	{
 		v.control = 0;
 		v.volume = 0;
+		v.pan = 0;
 		v.active = false;
+		v.midi_note = 0;
+		v.velocity = 0;
+		v.phase = 0.0;
+		v.frequency = 0.0;
+		v.env_level = 0.0;
+		v.releasing = false;
 	}
 	while (!m_keybed_queue.empty())
 		m_keybed_queue.pop();
@@ -146,20 +225,55 @@ void tc183c230002_device::config_data_w(uint16_t data)
 	// Track voice state for group 0x00, bank 0 (control) writes only
 	if (group == 0x00 && bank == 0 && channel < 64)
 	{
+		m_stream->update();
+
 		bool was_active = m_voices[channel].active;
 		m_voices[channel].control = data;
 		m_voices[channel].active = (data == 0x8100);
 
 		if (!was_active && m_voices[channel].active)
 		{
+			// Key-on: try to associate with a pending keybed note
+			pending_note pn;
+			if (pop_pending_note(pn))
+			{
+				m_voices[channel].midi_note = pn.midi_note;
+				m_voices[channel].velocity = pn.velocity;
+				m_voices[channel].frequency = midi_note_to_freq(pn.midi_note);
+				m_voices[channel].env_level = 1.0;
+				m_voices[channel].phase = 0.0;
+				m_voices[channel].releasing = false;
+
+				LOGMASKED(LOG_VOICE, "voice %d: key-on note=%s (MIDI %d) vel=%d freq=%.1f Hz (active: %d/64)\n",
+					channel, midi_note_name(pn.midi_note), pn.midi_note,
+					pn.velocity, m_voices[channel].frequency, m_active_count + 1);
+			}
+			else
+			{
+				// No pending note — init sequence or programmatic key-on, no audio
+				LOGMASKED(LOG_VOICE, "voice %d: key-on (no pending note, silent) vol=0x%04X (active: %d/64)\n",
+					channel, m_voices[channel].volume, m_active_count + 1);
+			}
+
 			m_active_count++;
-			LOGMASKED(LOG_VOICE, "voice %d: key-on vol=0x%04X (active: %d/64)\n",
-				channel, m_voices[channel].volume, m_active_count);
 		}
 		else if (was_active && !m_voices[channel].active)
 		{
 			if (m_active_count > 0)
 				m_active_count--;
+
+			// Start release phase for audible voices
+			if (data == 0x7e00 || data == 0x1200)
+			{
+				m_voices[channel].releasing = true;
+			}
+			else
+			{
+				// Immediate off
+				m_voices[channel].env_level = 0.0;
+				m_voices[channel].releasing = false;
+			}
+
 			LOGMASKED(LOG_VOICE, "voice %d: %s (active: %d/64)\n", channel,
 				(data == 0x7e00) ? "key-off" : (data == 0x1200) ? "release" : "off",
 				m_active_count);
@@ -168,7 +282,17 @@ void tc183c230002_device::config_data_w(uint16_t data)
 
 	// Track volume for group 0x08
 	if (group == 0x08 && channel < 64)
+	{
+		m_stream->update();
 		m_voices[channel].volume = data;
+	}
+
+	// Track pan for group 0x09
+	if (group == 0x09 && channel < 64)
+	{
+		m_stream->update();
+		m_voices[channel].pan = data;
+	}
 
 	// Log register writes with semantic descriptions
 	if (group == 0x02 || group == 0x0c || group == 0x0e)
@@ -248,12 +372,20 @@ uint16_t tc183c230002_device::keyboard_data_r()
 	uint8_t velocity = (data >> 8) & 0xff;
 
 	uint8_t midi_note = raw_note + 0x24;
+
 	if (note_on)
+	{
 		LOGMASKED(LOG_KEYBED, "keybed read: note-on %s (MIDI %d) vel=%d\n",
 			midi_note_name(midi_note), midi_note, velocity);
+
+		// Queue this note for association with the next voice key-on
+		push_pending_note(midi_note, velocity);
+	}
 	else
+	{
 		LOGMASKED(LOG_KEYBED, "keybed read: note-off %s (MIDI %d)\n",
 			midi_note_name(midi_note), midi_note);
+	}
 
 	return data;
 }
@@ -261,4 +393,69 @@ uint16_t tc183c230002_device::keyboard_data_r()
 void tc183c230002_device::inject_key_event(uint16_t data)
 {
 	m_keybed_queue.push(data);
+}
+
+//--------------------------------------------------------------------------
+//  Audio stream generation
+//--------------------------------------------------------------------------
+
+void tc183c230002_device::sound_stream_update(sound_stream &stream)
+{
+	constexpr double MASTER_GAIN = 0.05;            // prevent clipping with many voices
+	constexpr double RELEASE_RATE = 1.0 / (48000.0 * 0.125); // ~125ms release time at 48kHz
+
+	int const num_samples = stream.samples();
+	double const sample_rate = double(stream.sample_rate());
+	double const phase_inc_scale = 2.0 * M_PI / sample_rate;
+
+	for (int s = 0; s < num_samples; s++)
+	{
+		double mix_l = 0.0;
+		double mix_r = 0.0;
+
+		for (int v = 0; v < 64; v++)
+		{
+			voice_state &voice = m_voices[v];
+
+			if (voice.env_level < 0.001)
+				continue;
+
+			// Generate sine wave
+			double sample = sin(voice.phase);
+
+			// Advance phase
+			voice.phase += voice.frequency * phase_inc_scale;
+			if (voice.phase >= 2.0 * M_PI)
+				voice.phase -= 2.0 * M_PI;
+
+			// Apply release envelope
+			if (voice.releasing)
+			{
+				voice.env_level -= RELEASE_RATE;
+				if (voice.env_level < 0.0)
+					voice.env_level = 0.0;
+			}
+
+			// Apply velocity (0-255 normalized to 0.0-1.0)
+			double vel_gain = voice.velocity / 255.0;
+
+			// Apply volume register (high byte is level 0-255)
+			double vol_gain = ((voice.volume >> 8) & 0xff) / 255.0;
+
+			// Combine gains
+			double gain = sample * voice.env_level * vel_gain * vol_gain * MASTER_GAIN;
+
+			// Apply pan (register value: 0=hard left, 0x8000=center, 0xFFFF=hard right)
+			// Use equal-power panning
+			double pan_pos = voice.pan / 65535.0;  // 0.0 = left, 1.0 = right
+			double pan_l = cos(pan_pos * M_PI * 0.5);
+			double pan_r = sin(pan_pos * M_PI * 0.5);
+
+			mix_l += gain * pan_l;
+			mix_r += gain * pan_r;
+		}
+
+		stream.put_clamp(0, s, mix_l);
+		stream.put_clamp(1, s, mix_r);
+	}
 }
