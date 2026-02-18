@@ -906,6 +906,16 @@ void kn5000_state::machine_start()
 		{
 			TLOGMASKED(LOG_SEQBUF, "*** Seq_StartMainControlAlt entered! PC=%06X\n", m_maincpu->pc());
 		});
+
+	// Event queue monitoring: write pointer at 0x02F83A, count at 0x02F842
+	m_maincpu->space(AS_PROGRAM).install_write_tap(
+		0x02f838, 0x02f843,
+		"evtqueue_ptr_w",
+		[this](offs_t offset, u16 &data, u16 mem_mask)
+		{
+			TLOGMASKED(LOG_SEQBUF, "EvtQueue write @%06X = %04X (mask=%04X) PC=%06X\n",
+				offset, data, mem_mask, m_maincpu->pc());
+		});
 }
 
 void kn5000_state::machine_reset()
