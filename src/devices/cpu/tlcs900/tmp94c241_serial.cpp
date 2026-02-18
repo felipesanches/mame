@@ -10,6 +10,10 @@
 #include "tmp94c241.h"
 #include "tmp94c241_serial.h"
 
+#define LOG_MODE    (1U << 1)
+#define LOG_BAUD    (1U << 2)
+
+#define VERBOSE 0
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(TMP94C241_SERIAL, tmp94c241_serial_device, "tmp94c241_serial", "TMP94C241 Serial Channel")
@@ -290,17 +294,17 @@ void tmp94c241_serial_device::scNmod_w(uint8_t data)
 {
 	switch((data >> 2) & 3)
 	{
-		case 0: logerror("@%10.6f I/O interface mode\n", machine().time().as_double()); break;
-		case 1: logerror("@%10.6f 7-bit uart mode (Not implemented yet)\n", machine().time().as_double()); break;
-		case 2: logerror("@%10.6f 8-bit uart mode (Not implemented yet)\n", machine().time().as_double()); break;
-		case 3: logerror("@%10.6f 9-bit uart mode (Not implemented yet)\n", machine().time().as_double()); break;
+		case 0: LOGMASKED(LOG_MODE, "@%10.6f I/O interface mode\n", machine().time().as_double()); break;
+		case 1: LOGMASKED(LOG_MODE, "@%10.6f 7-bit uart mode (Not implemented yet)\n", machine().time().as_double()); break;
+		case 2: LOGMASKED(LOG_MODE, "@%10.6f 8-bit uart mode (Not implemented yet)\n", machine().time().as_double()); break;
+		case 3: LOGMASKED(LOG_MODE, "@%10.6f 9-bit uart mode (Not implemented yet)\n", machine().time().as_double()); break;
 	}
 	switch(data & 3)
 	{
-		case 0: logerror("@%10.6f clk source: TO2 trigger\n", machine().time().as_double()); break;
-		case 1: logerror("@%10.6f clk source: Baud rate generator (Not implemented yet)\n", machine().time().as_double()); break;
-		case 2: logerror("@%10.6f clk source: Internal clock at ϕ1 (Not implemented yet)\n", machine().time().as_double()); break;
-		case 3: logerror("@%10.6f clk source: external clock (SCLK%d) (Not implemented yet)\n", machine().time().as_double(), m_channel); break;
+		case 0: LOGMASKED(LOG_MODE, "@%10.6f clk source: TO2 trigger\n", machine().time().as_double()); break;
+		case 1: LOGMASKED(LOG_MODE, "@%10.6f clk source: Baud rate generator (Not implemented yet)\n", machine().time().as_double()); break;
+		case 2: LOGMASKED(LOG_MODE, "@%10.6f clk source: Internal clock at ϕ1 (Not implemented yet)\n", machine().time().as_double()); break;
+		case 3: LOGMASKED(LOG_MODE, "@%10.6f clk source: external clock (SCLK%d) (Not implemented yet)\n", machine().time().as_double(), m_channel); break;
 	}
 	m_serial_mode = data;
 
@@ -324,17 +328,17 @@ void tmp94c241_serial_device::brNcr_w(uint8_t data)
 	uint8_t divisor = data & 0x0f;
 	uint8_t input_clocks[] = {0, 2, 8, 32};
 	uint8_t shift_amount = (((data >> 4) & 3) + 1) * 2;
-	logerror("@%10.6f baud rate: Divisor=%d  Internal Clock T%d\n", machine().time().as_double(), divisor, input_clocks[(data >> 4) & 3]);
+	LOGMASKED(LOG_BAUD, "@%10.6f baud rate: Divisor=%d  Internal Clock T%d\n", machine().time().as_double(), divisor, input_clocks[(data >> 4) & 3]);
 	if (divisor)
 	{
 		long int fc = 16'000'000; // TODO: set this from the cpu.
 		m_hz = (fc >> shift_amount) / divisor;
 		m_timer->adjust(attotime::from_hz(m_hz), 0, attotime::from_hz(m_hz));
-		logerror("@%10.6f timer set to %d Hz.\n", machine().time().as_double(), m_hz);
+		LOGMASKED(LOG_BAUD, "@%10.6f timer set to %d Hz.\n", machine().time().as_double(), m_hz);
 	} else {
 		m_timer->reset(attotime::never);
 		m_hz = 0;
-		logerror("@%10.6f timer disabled.\n", machine().time().as_double());
+		LOGMASKED(LOG_BAUD, "@%10.6f timer disabled.\n", machine().time().as_double());
 	}
 	//if (m_channel == 1) machine().debug_break();
 }
