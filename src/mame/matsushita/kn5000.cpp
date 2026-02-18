@@ -354,15 +354,21 @@ TIMER_CALLBACK_MEMBER(kn5000_state::heartbeat)
 	auto &space = m_maincpu->space(AS_PROGRAM);
 	uint16_t seq_wr_ptr = space.read_word(0x01f377);  // Ring buffer write pointer
 	uint16_t seq_rd_ptr = space.read_word(0x01f373);  // Ring buffer read pointer
-	// Read ModeProc handler table at 0x027EDC (in DRAM, populated at runtime)
-	// Entry 0 is used for demo song dispatch (mode ID 0x000 from XWA=0x01410000)
-	uint32_t handler_tbl_0 = space.read_dword(0x027edc);  // Handler function pointer at index 0
-	uint32_t handler_tbl_1 = space.read_dword(0x027eea);  // Handler function pointer at index 1 (offset +14)
+	// Sequencer state machine variable - controls what sequencer dispatcher does
+	// Values 0x10-0x16 cause sequencer dispatcher (F53318) to skip ALL processing
+	// Playback states are typically 0x6C-0x7A, 0x85-0x98, etc.
+	uint8_t seq_state = space.read_byte(0x8d36);
+	// Rhythm ROM offset - set by header validation at LABEL_F54651
+	// 0xFFFFFFFF means validation failed (rhythm ROM not usable)
+	uint32_t rhythm_offset = space.read_dword(0x3277);
+	// Sequencer startup flag - must be non-zero for Seq_StartMainControlAlt
+	// to call F42EA4 (audio hardware configuration)
+	uint16_t seq_start_flag = space.read_word(0x0251d8);
 
-	TLOGMASKED(LOG_HEARTBEAT, "HEARTBEAT: MainCPU PC=%06X  SubCPU PC=%06X  SeqBuf wr=%04X rd=%04X  evtloop=%u putc_mrx=%u rhythm_rom=%u  htbl[0]=%08X htbl[1]=%08X\n",
+	TLOGMASKED(LOG_HEARTBEAT, "HEARTBEAT: MainCPU PC=%06X  SubCPU PC=%06X  SeqBuf wr=%04X rd=%04X  evtloop=%u putc_mrx=%u rhythm_rom=%u  state=%02X rhy_ofs=%08X startflag=%04X\n",
 		m_maincpu->pc(), m_subcpu->pc(), seq_wr_ptr, seq_rd_ptr,
 		m_seq_event_loop_hits, m_putc_mrx_bf_hits, m_rhythm_rom_hits,
-		handler_tbl_0, handler_tbl_1);
+		seq_state, rhythm_offset, seq_start_flag);
 	m_seq_event_loop_hits = 0;
 	m_putc_mrx_bf_hits = 0;
 	m_rhythm_rom_hits = 0;
@@ -937,6 +943,19 @@ void kn5000_state::machine_start()
 				TLOGMASKED(LOG_SEQBUF, "*** First rhythm ROM read @%06X = %04X PC=%06X\n",
 					offset, data, m_maincpu->pc());
 			m_rhythm_rom_hits++;
+		});
+
+	// Sequencer state change detector - watches writes to (8D36h)
+	// This is the master state machine variable for the sequencer.
+	// Values 0x10-0x16 cause the sequencer dispatcher to skip ALL processing.
+	m_maincpu->space(AS_PROGRAM).install_write_tap(
+		0x8d36, 0x8d37,
+		"seq_state_change",
+		[this](offs_t offset, u16 &data, u16 mem_mask)
+		{
+			uint8_t new_state = data & 0xff;
+			TLOGMASKED(LOG_SEQBUF, "*** Sequencer state change: (8D36h) = 0x%02X  PC=%06X\n",
+				new_state, m_maincpu->pc());
 		});
 }
 
