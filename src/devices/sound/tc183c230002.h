@@ -97,6 +97,10 @@ private:
 	int m_pending_tail;
 	int m_pending_count;
 
+	// Init sequence tracking: first 64 pitch-fallback key-ons are the init
+	// sequence (voices 0-63 cycled through), suppress audio for those.
+	int m_init_keyon_count;
+
 	// Audio stream
 	sound_stream *m_stream;
 
