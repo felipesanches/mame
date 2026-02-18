@@ -151,6 +151,8 @@ public:
 		, m_seq_event_loop_hits(0)
 		, m_putc_mrx_bf_hits(0)
 		, m_rhythm_rom_hits(0)
+		, m_rhythm_buf_writes(0)
+		, m_rhythm_buf_reads(0)
 	{ }
 
 	void kn5000(machine_config &config);
@@ -220,6 +222,8 @@ private:
 	uint32_t m_seq_event_loop_hits;   // Hits at Seq_ProcessEventLoop (0xEF14CA)
 	uint32_t m_putc_mrx_bf_hits;      // Hits at putc_mrx_bf_X (0xF1EDD4)
 	uint32_t m_rhythm_rom_hits;       // Reads from rhythm_data ROM (0x400000-0x7FFFFF)
+	uint32_t m_rhythm_buf_writes;     // Bytes written to rhythm ring buffer (0x01EF5D)
+	uint32_t m_rhythm_buf_reads;      // Events read from rhythm ring buffer (LABEL_EF1525)
 
 	// Audio mixer/attenuator at 0x150000 (register-indirect interface)
 	void audiomix_addr_w(uint8_t data);
@@ -364,14 +368,21 @@ TIMER_CALLBACK_MEMBER(kn5000_state::heartbeat)
 	// Sequencer startup flag - must be non-zero for Seq_StartMainControlAlt
 	// to call F42EA4 (audio hardware configuration)
 	uint16_t seq_start_flag = space.read_word(0x0251d8);
+	// Rhythm ring buffer pointers (512-byte buffer at 0x01EF5D)
+	uint16_t rhy_wr_ptr = space.read_word(0x01ef59);  // Write pointer
+	uint16_t rhy_rd_ptr = space.read_word(0x01ef55);  // Read pointer
 
-	TLOGMASKED(LOG_HEARTBEAT, "HEARTBEAT: MainCPU PC=%06X  SubCPU PC=%06X  SeqBuf wr=%04X rd=%04X  evtloop=%u putc_mrx=%u rhythm_rom=%u  state=%02X rhy_ofs=%08X startflag=%04X\n",
+	TLOGMASKED(LOG_HEARTBEAT, "HEARTBEAT: MainCPU PC=%06X  SubCPU PC=%06X  SeqBuf wr=%04X rd=%04X  RhyBuf wr=%04X rd=%04X  evtloop=%u putc_mrx=%u rhythm_rom=%u rhy_bufwr=%u rhy_bufrd=%u  state=%02X rhy_ofs=%08X startflag=%04X\n",
 		m_maincpu->pc(), m_subcpu->pc(), seq_wr_ptr, seq_rd_ptr,
+		rhy_wr_ptr, rhy_rd_ptr,
 		m_seq_event_loop_hits, m_putc_mrx_bf_hits, m_rhythm_rom_hits,
+		m_rhythm_buf_writes, m_rhythm_buf_reads,
 		seq_state, rhythm_offset, seq_start_flag);
 	m_seq_event_loop_hits = 0;
 	m_putc_mrx_bf_hits = 0;
 	m_rhythm_rom_hits = 0;
+	m_rhythm_buf_writes = 0;
+	m_rhythm_buf_reads = 0;
 }
 
 // Audio mixer/attenuator — register-indirect device at 0x150000/0x150002
@@ -824,6 +835,8 @@ void kn5000_state::machine_start()
 	save_item(NAME(m_audiomix_regs));
 	save_item(NAME(m_seq_event_loop_hits));
 	save_item(NAME(m_putc_mrx_bf_hits));
+	save_item(NAME(m_rhythm_buf_writes));
+	save_item(NAME(m_rhythm_buf_reads));
 
 	m_extension->program_map(m_maincpu->space(AS_PROGRAM));
 
@@ -956,6 +969,28 @@ void kn5000_state::machine_start()
 			uint8_t new_state = data & 0xff;
 			TLOGMASKED(LOG_SEQBUF, "*** Sequencer state change: (8D36h) = 0x%02X  PC=%06X\n",
 				new_state, m_maincpu->pc());
+		});
+
+	// Rhythm ring buffer write detection — RhythmBuf_WriteByte at 0xEF2563
+	// This is the entry point called by Rhythm_SendByte (0xF5549B) to push
+	// bytes into the 512-byte rhythm ring buffer at 0x01EF5D.
+	m_maincpu->space(AS_PROGRAM).install_read_tap(
+		0xef2562, 0xef2563,
+		"rhythm_buf_write_detect",
+		[this](offs_t offset, u16 &data, u16 mem_mask)
+		{
+			m_rhythm_buf_writes++;
+		});
+
+	// Rhythm ring buffer read/dispatch detection — RhythmBuf_DispatchEvent at 0xEF1525
+	// This reads events from the rhythm buffer and dispatches them to the
+	// MIDI handler (RhythmMidi_Dispatcher at 0xFE0B06) for Note On, CC, etc.
+	m_maincpu->space(AS_PROGRAM).install_read_tap(
+		0xef1524, 0xef1525,
+		"rhythm_buf_read_detect",
+		[this](offs_t offset, u16 &data, u16 mem_mask)
+		{
+			m_rhythm_buf_reads++;
 		});
 }
 
