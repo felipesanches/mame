@@ -124,9 +124,11 @@ void kn5000_cpanel_device::device_reset()
 	m_rx_waiting_for_start = true;
 	m_self_clock_bytes_sent = 0;
 
-	// Clear TX queue
+	// Clear TX queue and INTA queue
 	while (!m_tx_queue.empty())
 		m_tx_queue.pop();
+	while (!m_inta_queue.empty())
+		m_inta_queue.pop();
 
 	m_idle_detect_timer->reset(attotime::never);
 	m_self_clock_timer->reset(attotime::never);
@@ -208,7 +210,7 @@ void kn5000_cpanel_device::sioclk(int state)
 	// data is pending.  Fires 50µs after the last external clock edge,
 	// which is after the firmware's phantom bytes complete but before
 	// its WaitTXReady delay (~375µs) checks the INTA line.
-	if (!m_self_clocking && (m_tx_clock_count > 0 || !m_tx_queue.empty()))
+	if (!m_self_clocking && (m_tx_clock_count > 0 || !m_tx_queue.empty() || !m_inta_queue.empty()))
 	{
 		m_idle_detect_timer->adjust(attotime::from_usec(50));
 	}
@@ -501,7 +503,7 @@ void kn5000_cpanel_device::process_command()
 	// Arm idle detection for INTA-based response delivery.  The sliding
 	// window in sioclk() retriggers on every edge and fires 50µs after
 	// the last edge, handling both firmware phantom bytes and polled modes.
-	if (!m_self_clocking && (m_tx_clock_count > 0 || !m_tx_queue.empty()))
+	if (!m_self_clocking && (m_tx_clock_count > 0 || !m_tx_queue.empty() || !m_inta_queue.empty()))
 	{
 		m_idle_detect_timer->adjust(attotime::from_usec(50));
 	}
@@ -726,6 +728,15 @@ TIMER_CALLBACK_MEMBER(kn5000_cpanel_device::idle_detect_callback)
 	// External SCLK has been idle — assert INTA and self-clock the response.
 	// On real hardware, the panel MCU drives SCLK after detecting idle.
 
+	// Drain scan-detected button changes into the TX queue.  These were
+	// buffered separately to prevent firmware SCLK (during polling) from
+	// consuming them — they must only be delivered via INTA self-clocking.
+	while (!m_inta_queue.empty())
+	{
+		send_byte(m_inta_queue.front());
+		m_inta_queue.pop();
+	}
+
 	if (m_tx_clock_count > 0 || !m_tx_queue.empty())
 	{
 		// Enable TX output — response data was frozen during phantom bytes
@@ -807,10 +818,8 @@ TIMER_CALLBACK_MEMBER(kn5000_cpanel_device::button_scan_callback)
 	if (!m_initialized)
 		return;
 
-	// Don't queue changes while a serial transaction is in progress
+	// Don't queue changes while INTA delivery is in progress
 	if (m_self_clocking || m_inta_asserted)
-		return;
-	if (!m_rx_waiting_for_start)
 		return;
 
 	bool changed = false;
@@ -829,7 +838,13 @@ TIMER_CALLBACK_MEMBER(kn5000_cpanel_device::button_scan_callback)
 				// Stable for 2 scans: confirmed change
 				LOGMASKED(LOG_BUTTONS, "confirmed right seg %d change (%02X->%02X)\n",
 					seg, m_last_button_state[seg], state);
-				send_button_packet(seg, false);
+
+				// Build header: bits 7:6 = 00 (right panel), bits 3:0 = segment
+				uint8_t header = (seg & 0x0f);
+				m_inta_queue.push(header);
+				m_inta_queue.push(state);
+				m_last_button_state[seg] = state;
+				m_pending_button_state[seg] = state;
 				changed = true;
 			}
 			else
@@ -860,7 +875,13 @@ TIMER_CALLBACK_MEMBER(kn5000_cpanel_device::button_scan_callback)
 			{
 				LOGMASKED(LOG_BUTTONS, "confirmed left seg %d change (%02X->%02X)\n",
 					seg, m_last_button_state[idx], state);
-				send_button_packet(seg, true);
+
+				// Build header: bits 7:6 = 11 (left panel), bits 3:0 = segment
+				uint8_t header = (seg & 0x0f) | 0xC0;
+				m_inta_queue.push(header);
+				m_inta_queue.push(state);
+				m_last_button_state[idx] = state;
+				m_pending_button_state[idx] = state;
 				changed = true;
 			}
 			else
