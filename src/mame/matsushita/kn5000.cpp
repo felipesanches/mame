@@ -373,13 +373,19 @@ TIMER_CALLBACK_MEMBER(kn5000_state::heartbeat)
 	// Rhythm ring buffer pointers (512-byte buffer at 0x01EF5D)
 	uint16_t rhy_wr_ptr = space.read_word(0x01ef59);  // Write pointer
 	uint16_t rhy_rd_ptr = space.read_word(0x01ef55);  // Read pointer
+	// Event queue diagnostics (DispatchEvent stores last dispatched event here)
+	uint32_t evt_last_id = space.read_dword(0x02bc24);    // Last dispatched event ID
+	uint32_t evt_last_bc = space.read_dword(0x02bc28);    // Last dispatched event param1 (XBC)
+	uint8_t evt_q_wr = space.read_byte(0x02f83a);         // Event queue write index
+	uint8_t evt_q_rd = space.read_byte(0x02f838);         // Event queue read index
 
-	TLOGMASKED(LOG_HEARTBEAT, "HEARTBEAT: MainCPU PC=%06X  SubCPU PC=%06X  SeqBuf wr=%04X rd=%04X  RhyBuf wr=%04X rd=%04X  evtloop=%u putc_mrx=%u rhythm_rom=%u rhy_bufwr=%u rhy_bufrd=%u  state=%02X rhy_ofs=%08X startflag=%04X\n",
+	TLOGMASKED(LOG_HEARTBEAT, "HEARTBEAT: MainCPU PC=%06X  SubCPU PC=%06X  SeqBuf wr=%04X rd=%04X  RhyBuf wr=%04X rd=%04X  evtloop=%u putc_mrx=%u rhythm_rom=%u rhy_bufwr=%u rhy_bufrd=%u  state=%02X rhy_ofs=%08X startflag=%04X  evtQ wr=%02X rd=%02X last=%08X/%08X\n",
 		m_maincpu->pc(), m_subcpu->pc(), seq_wr_ptr, seq_rd_ptr,
 		rhy_wr_ptr, rhy_rd_ptr,
 		m_seq_event_loop_hits, m_putc_mrx_bf_hits, m_rhythm_rom_hits,
 		m_rhythm_buf_writes, m_rhythm_buf_reads,
-		seq_state, rhythm_offset, seq_start_flag);
+		seq_state, rhythm_offset, seq_start_flag,
+		evt_q_wr, evt_q_rd, evt_last_id, evt_last_bc);
 	m_seq_event_loop_hits = 0;
 	m_putc_mrx_bf_hits = 0;
 	m_rhythm_rom_hits = 0;
