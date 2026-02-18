@@ -525,10 +525,12 @@ void kn5000_cpanel_device::process_command()
 void kn5000_cpanel_device::send_sync_packet()
 {
 	// Type 3 sync packet: bits 5-3 = 011 = 0x18
-	// Route through INTA queue so it's delivered via self-clocking,
-	// not left in the TX pipeline where phantom bytes would suppress it.
-	m_inta_queue.push(0x18);
-	m_inta_queue.push(0x00);
+	// Uses send_byte() — only called from boot-time commands (init,
+	// boot queries) where the firmware waits for each response before
+	// continuing.  No contamination risk since steady-state polls
+	// (0x20, 0xE0) are now suppressed.
+	send_byte(0x18);
+	send_byte(0x00);
 }
 
 uint8_t kn5000_cpanel_device::read_button_segment(int segment, bool is_left_panel)
@@ -572,25 +574,11 @@ void kn5000_cpanel_device::send_button_packet(int segment, bool is_left_panel)
 void kn5000_cpanel_device::send_all_button_states(bool is_left_panel)
 {
 	// Send all 11 segments for the requested panel.
-	// Route through INTA queue for safe delivery via self-clocking.
+	// Uses send_button_packet() — only called from boot-time commands
+	// (0x2b, 0xeb) where the firmware waits for each response.
 	for (int seg = 0; seg <= 10; seg++)
 	{
-		uint8_t state = read_button_segment(seg, is_left_panel);
-
-		uint8_t header = (seg & 0x0f);
-		if (is_left_panel)
-			header |= 0xC0;
-
-		m_inta_queue.push(header);
-		m_inta_queue.push(state);
-
-		// Track state for change detection
-		int state_idx = is_left_panel ? (seg + 11) : seg;
-		m_last_button_state[state_idx] = state;
-		m_pending_button_state[state_idx] = state;
-
-		LOGMASKED(LOG_BUTTONS, "Button packet: seg=%d left=%d state=%02X\n",
-			seg, is_left_panel, state);
+		send_button_packet(seg, is_left_panel);
 	}
 }
 
