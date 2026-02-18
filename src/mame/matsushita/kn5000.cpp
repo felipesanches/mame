@@ -99,9 +99,10 @@ namespace {
 #define LOG_RESET    (1U << 4)  // Sub CPU reset control
 #define LOG_KEYBED   (1U << 5)  // Keybed scan events (driver-side)
 #define LOG_HEARTBEAT (1U << 6) // Periodic CPU PC snapshot (1 second interval)
+#define LOG_COMIF    (1U << 7)  // Computer interface (SubCPU SC1 serial port)
 #define LOG_ALL_LATCH (LOG_LATCH | LOG_LATCH_DATA)
 
-#define VERBOSE (LOG_LATCH | LOG_RESET | LOG_HANDSHAKE | LOG_KEYBED | LOG_HEARTBEAT)
+#define VERBOSE (LOG_LATCH | LOG_RESET | LOG_HANDSHAKE | LOG_KEYBED | LOG_HEARTBEAT | LOG_COMIF)
 #include "logmacro.h"
 
 // Timestamped logging: prepend emulated time in seconds to each message
@@ -139,6 +140,11 @@ public:
 		, m_subcpu_pf(0)
 		, m_dsp2_shift(0)
 		, m_dsp2_bit_count(0)
+		, m_comif_txd_state(1)
+		, m_comif_sclk_state(0)
+		, m_comif_shift(0)
+		, m_comif_bit_count(0)
+		, m_comif_receiving(false)
 	{ }
 
 	void kn5000(machine_config &config);
@@ -174,6 +180,13 @@ private:
 	uint8_t m_subcpu_pf;     // Port F: bit0=SDA, bit2=SCLK (DSP2 serial)
 	uint16_t m_dsp2_shift;   // DSP2 serial shift register
 	uint8_t m_dsp2_bit_count; // DSP2 serial bit counter
+
+	// Computer Interface (SubCPU SC1) — UART byte decoder
+	uint8_t m_comif_txd_state;    // Current TXD level
+	uint8_t m_comif_sclk_state;   // Current SCLK level
+	uint8_t m_comif_shift;        // Shift register for received bits
+	uint8_t m_comif_bit_count;    // Bits accumulated in current byte
+	bool m_comif_receiving;       // True after tx_start, until byte complete
 	virtual void machine_start() override ATTR_COLD;
 	virtual void machine_reset() override ATTR_COLD;
 
@@ -733,6 +746,11 @@ void kn5000_state::machine_start()
 	save_item(NAME(m_subcpu_pf));
 	save_item(NAME(m_dsp2_shift));
 	save_item(NAME(m_dsp2_bit_count));
+	save_item(NAME(m_comif_txd_state));
+	save_item(NAME(m_comif_sclk_state));
+	save_item(NAME(m_comif_shift));
+	save_item(NAME(m_comif_bit_count));
+	save_item(NAME(m_comif_receiving));
 
 	m_extension->program_map(m_maincpu->space(AS_PROGRAM));
 
@@ -771,6 +789,11 @@ void kn5000_state::machine_reset()
 	m_subcpu_pf = 0x00;
 	m_dsp2_shift = 0;
 	m_dsp2_bit_count = 0;
+	m_comif_txd_state = 1;  // Idle high
+	m_comif_sclk_state = 0;
+	m_comif_shift = 0;
+	m_comif_bit_count = 0;
+	m_comif_receiving = false;
 }
 
 void kn5000_state::nvram2_init(nvram_device &device, void *data, size_t size)
@@ -1071,6 +1094,35 @@ void kn5000_state::kn5000(machine_config &config)
 	// SubCPU serial port 0: DSP2 (IC310, MN19413)
 	m_subcpu->m_serial[0].lookup()->txd().set(m_dsp2, FUNC(mn19413_device::rxd));
 	m_subcpu->m_serial[0].lookup()->sclk_out().set(m_dsp2, FUNC(mn19413_device::sclk));
+
+	// SubCPU serial port 1: Computer Interface (TO HOST connector)
+	// Selected via COM_SELECT DIP switch (MIDI/PC1/PC2/Mac on main CPU Port Z)
+	m_subcpu->m_serial[1].lookup()->tx_start().set([this](int state) {
+		m_comif_receiving = true;
+		m_comif_bit_count = 0;
+		m_comif_shift = 0;
+		TLOGMASKED(LOG_COMIF, "ComIF TX start (state=%d)\n", state);
+	});
+	m_subcpu->m_serial[1].lookup()->txd().set([this](int state) {
+		m_comif_txd_state = state;
+	});
+	m_subcpu->m_serial[1].lookup()->sclk_out().set([this](int state) {
+		// Rising edge while receiving: sample TXD bit (LSB first, UART convention)
+		if (state && !m_comif_sclk_state && m_comif_receiving)
+		{
+			m_comif_shift >>= 1;
+			m_comif_shift |= (m_comif_txd_state << 7);
+			m_comif_bit_count++;
+			if (m_comif_bit_count >= 8)
+			{
+				TLOGMASKED(LOG_COMIF, "ComIF TX: 0x%02X '%c'\n",
+					m_comif_shift,
+					(m_comif_shift >= 0x20 && m_comif_shift < 0x7f) ? (char)m_comif_shift : '.');
+				m_comif_receiving = false;
+			}
+		}
+		m_comif_sclk_state = state;
+	});
 
 
 	GENERIC_LATCH_8(config, m_maincpu_latch); // @ IC23
