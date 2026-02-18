@@ -342,8 +342,13 @@ TIMER_CALLBACK_MEMBER(kn5000_state::keybed_scan)
 // Diagnostic: snapshot CPU PCs every second for hang detection
 TIMER_CALLBACK_MEMBER(kn5000_state::heartbeat)
 {
-	TLOGMASKED(LOG_HEARTBEAT, "HEARTBEAT: MainCPU PC=%06X  SubCPU PC=%06X\n",
-		m_maincpu->pc(), m_subcpu->pc());
+	// Read sequencer diagnostic state from maincpu address space
+	auto &space = m_maincpu->space(AS_PROGRAM);
+	uint16_t seq_wr_ptr = space.read_word(0x01f377);  // Ring buffer write pointer
+	uint16_t seq_rd_ptr = space.read_word(0x01f373);  // Ring buffer read pointer
+	uint8_t seq_flag = space.read_byte(0x000474);      // Sequencer enable flag (0x55 = paused)
+	TLOGMASKED(LOG_HEARTBEAT, "HEARTBEAT: MainCPU PC=%06X  SubCPU PC=%06X  SeqBuf wr=%04X rd=%04X  flag@474=%02X\n",
+		m_maincpu->pc(), m_subcpu->pc(), seq_wr_ptr, seq_rd_ptr, seq_flag);
 }
 
 // Audio mixer/attenuator — register-indirect device at 0x150000/0x150002
