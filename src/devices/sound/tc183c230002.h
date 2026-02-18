@@ -17,6 +17,10 @@
     Keybed interface: hardware key scanning of 61-key keyboard.
     Currently HLE'd — inject_key_event() queues note events.
 
+    Audio output: sine wave placeholder (wavetable ROM undumped).
+    MIDI note tracking via keybed events — only voices triggered
+    by actual key presses produce sound (init key-ons are silent).
+
 ***************************************************************************/
 
 #ifndef MAME_SOUND_TC183C230002_H
@@ -26,7 +30,7 @@
 
 #include <queue>
 
-class tc183c230002_device : public device_t
+class tc183c230002_device : public device_t, public device_sound_interface
 {
 public:
 	tc183c230002_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
@@ -49,13 +53,29 @@ public:
 protected:
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
+	virtual void sound_stream_update(sound_stream &stream) override;
 
 private:
 	// Per-voice state tracking (64 voices, 6-bit channel index)
 	struct voice_state {
 		uint16_t control;    // group 0x00 register value (key-on/idle/transition)
 		uint16_t volume;     // group 0x08 register value
+		uint16_t pan;        // group 0x09 register value
 		bool active;         // derived: control == 0x8100
+
+		// Audio generation state
+		uint8_t midi_note;   // MIDI note number (0 = inactive)
+		uint8_t velocity;    // Note velocity (0-255)
+		double phase;        // Oscillator phase accumulator (radians)
+		double frequency;    // Note frequency in Hz
+		double env_level;    // Envelope level (0.0 to 1.0)
+		bool releasing;      // True when in release phase
+	};
+
+	// Pending note from keybed (bridges keybed read to voice key-on)
+	struct pending_note {
+		uint8_t midi_note;
+		uint8_t velocity;
 	};
 
 	// Config register state
@@ -69,8 +89,23 @@ private:
 	// Keybed event queue (HLE)
 	std::queue<uint16_t> m_keybed_queue;
 
+	// Pending notes queue (keybed note-on -> voice key-on bridge)
+	static constexpr int MAX_PENDING_NOTES = 16;
+	pending_note m_pending_notes[MAX_PENDING_NOTES];
+	int m_pending_head;
+	int m_pending_tail;
+	int m_pending_count;
+
+	// Audio stream
+	sound_stream *m_stream;
+
 	// Diagnostic: track keybed poll rate
 	uint32_t m_keybed_poll_count;
+
+	// Helpers
+	void push_pending_note(uint8_t midi_note, uint8_t velocity);
+	bool pop_pending_note(pending_note &out);
+	static double midi_note_to_freq(uint8_t note);
 };
 
 DECLARE_DEVICE_TYPE(TC183C230002, tc183c230002_device)
