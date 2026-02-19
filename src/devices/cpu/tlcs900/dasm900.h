@@ -35,6 +35,11 @@ public:
 	virtual u32 opcode_alignment() const override;
 	virtual offs_t disassemble(std::ostream &stream, offs_t pc, const data_buffer &opcodes, const data_buffer &params) override;
 
+	static tlcs900_disassembler *create_tmp94c241();
+	static tlcs900_disassembler *create_tmp95c061();
+	static tlcs900_disassembler *create_tmp95c063();
+	static tlcs900_disassembler *create_tmp96c141();
+
 private:
 	std::pair<u16, char const *> const *m_symbols;
 	std::size_t m_symbol_count;
