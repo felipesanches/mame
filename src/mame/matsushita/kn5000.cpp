@@ -103,9 +103,10 @@ namespace {
 #define LOG_COMIF    (1U << 7)  // Computer interface (SubCPU SC1 serial port)
 #define LOG_SEQBUF   (1U << 8)  // Sequencer ring buffer pointer changes
 #define LOG_AUDIOMIX (1U << 9)  // Audio mixer/attenuator at 0x150000
+#define LOG_BOOT     (1U << 10) // Boot sequence events (NMI guard, payload verify)
 #define LOG_ALL_LATCH (LOG_LATCH | LOG_LATCH_DATA)
 
-#define VERBOSE (LOG_LATCH | LOG_RESET | LOG_HANDSHAKE | LOG_KEYBED | LOG_HEARTBEAT | LOG_COMIF | LOG_SEQBUF | LOG_AUDIOMIX)
+#define VERBOSE (LOG_LATCH | LOG_RESET | LOG_HANDSHAKE | LOG_KEYBED | LOG_HEARTBEAT | LOG_COMIF | LOG_SEQBUF | LOG_AUDIOMIX | LOG_BOOT)
 #include "logmacro.h"
 
 // Timestamped logging: prepend emulated time in seconds to each message
@@ -218,6 +219,15 @@ private:
 	// Diagnostic heartbeat for hang detection
 	emu_timer *m_heartbeat_timer;
 	TIMER_CALLBACK_MEMBER(heartbeat);
+
+	// ~NMI (SNS) — fired once per boot session after the firmware arms the NMI guard.
+	// On real hardware the SNS signal is asserted by an external source (likely the SubCPU
+	// signalling that it has finished its payload initialisation). The NMI handler
+	// (NMI_HANDLER at EF08A5) checksums the payload-shadow region in DRAM (0xF180..0xF97F)
+	// and stores the result at DRAM[0xFFD4/0xFFD2] so SubCPU_Payload_Verify can compare
+	// against it on the next boot.
+	emu_timer *m_sns_nmi_timer;
+	TIMER_CALLBACK_MEMBER(sns_nmi_fire);
 
 	// Sequencer execution detection counters (reset each heartbeat)
 	uint32_t m_seq_event_loop_hits;   // Hits at Seq_ProcessEventLoop (0xEF14CA)
@@ -391,6 +401,19 @@ TIMER_CALLBACK_MEMBER(kn5000_state::heartbeat)
 	m_rhythm_rom_hits = 0;
 	m_rhythm_buf_writes = 0;
 	m_rhythm_buf_reads = 0;
+}
+
+// SNS NMI — fires once per boot after the firmware arms the NMI guard.
+// The NMI handler (NMI_HANDLER at EF08A5 → LABEL_EF08D4) computes checksums of
+// the payload-shadow region in DRAM (0xF180..0xF97F) and stores the results at
+// DRAM[0xFFD4] and DRAM[0xFFD2].  SubCPU_Payload_Verify (called early in the
+// *next* boot) compares freshly-recomputed checksums against those stored values.
+// Without this NMI the stored checksums remain 0x0000, verification always fails,
+// and the welcome screen shows "ALL INITIAL SETTING!" instead of the KN5000 logo.
+TIMER_CALLBACK_MEMBER(kn5000_state::sns_nmi_fire)
+{
+	LOGMASKED(LOG_BOOT, "SNS NMI asserted (payload checksum storage)\n");
+	m_maincpu->set_input_line(INPUT_LINE_NMI, PULSE_LINE);
 }
 
 // Audio mixer/attenuator — register-indirect device at 0x150000/0x150002
@@ -999,6 +1022,29 @@ void kn5000_state::machine_start()
 		[this](offs_t offset, u16 &data, u16 mem_mask)
 		{
 			m_rhythm_buf_reads++;
+		});
+
+	// SNS NMI timer — deferred one-shot, armed by the NMI guard write-tap below.
+	m_sns_nmi_timer = timer_alloc(FUNC(kn5000_state::sns_nmi_fire), this);
+
+	// NMI guard write-tap: monitor writes to DRAM[0x400] (NMI_BOOT_STATE).
+	// Boot_DisplayScreen writes 0x80 (NMI guard) here after the boot screens are set
+	// up and DRAM[0xFFD4] is cleared to 0.  On real hardware the ~NMI (SNS) signal
+	// fires shortly afterwards; here we schedule it 200 ms later so Boot_DisplayScreen
+	// has time to complete the jp EF1245 jump before the handler runs.
+	m_maincpu->space(AS_PROGRAM).install_write_tap(
+		0x0400, 0x0401,
+		"nmi_guard_w",
+		[this](offs_t offset, u16 &data, u16 mem_mask)
+		{
+			// Byte at 0x0400 is the low byte of the 16-bit word at address 0x0400.
+			// stdi8 writes a byte with mem_mask = 0x00ff.
+			if ((mem_mask & 0x00ff) && (data & 0xff) == 0x80)
+			{
+				LOGMASKED(LOG_BOOT, "NMI guard set (DRAM[0x400]=0x80 at PC=%06X) — scheduling SNS NMI in 200ms\n",
+					m_maincpu->pc());
+				m_sns_nmi_timer->adjust(attotime::from_msec(200));
+			}
 		});
 }
 
