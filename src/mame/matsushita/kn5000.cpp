@@ -220,14 +220,14 @@ private:
 	emu_timer *m_heartbeat_timer;
 	TIMER_CALLBACK_MEMBER(heartbeat);
 
-	// ~NMI (SNS) — fired once per boot session after the firmware arms the NMI guard.
-	// On real hardware the SNS signal is asserted by an external source (likely the SubCPU
-	// signalling that it has finished its payload initialisation). The NMI handler
-	// (NMI_HANDLER at EF08A5) checksums the payload-shadow region in DRAM (0xF180..0xF97F)
-	// and stores the result at DRAM[0xFFD4/0xFFD2] so SubCPU_Payload_Verify can compare
-	// against it on the next boot.
-	emu_timer *m_sns_nmi_timer;
-	TIMER_CALLBACK_MEMBER(sns_nmi_fire);
+	// ~NMI (SNS) — on real hardware this fires at power-off.  The NMI handler
+	// (NMI_HANDLER at EF08A5 → LABEL_EF08D4) checksums the payload-shadow region
+	// in DRAM (0xF180..0xFE7F) and stores the results at DRAM[0xFFD4/0xFFD2] so
+	// SubCPU_Payload_Verify can compare against them on the next boot, then executes
+	// a halt instruction (the machine is expected to power off immediately after).
+	// We emulate the observable effect by intercepting Boot_DisplayScreen's clearing
+	// of DRAM[0xFFD4] = 0 and writing the correct checksums there instead, which
+	// avoids the display-breaking halt that the real NMI handler executes.
 
 	// Sequencer execution detection counters (reset each heartbeat)
 	uint32_t m_seq_event_loop_hits;   // Hits at Seq_ProcessEventLoop (0xEF14CA)
@@ -403,18 +403,6 @@ TIMER_CALLBACK_MEMBER(kn5000_state::heartbeat)
 	m_rhythm_buf_reads = 0;
 }
 
-// SNS NMI — fires once per boot after the firmware arms the NMI guard.
-// The NMI handler (NMI_HANDLER at EF08A5 → LABEL_EF08D4) computes checksums of
-// the payload-shadow region in DRAM (0xF180..0xF97F) and stores the results at
-// DRAM[0xFFD4] and DRAM[0xFFD2].  SubCPU_Payload_Verify (called early in the
-// *next* boot) compares freshly-recomputed checksums against those stored values.
-// Without this NMI the stored checksums remain 0x0000, verification always fails,
-// and the welcome screen shows "ALL INITIAL SETTING!" instead of the KN5000 logo.
-TIMER_CALLBACK_MEMBER(kn5000_state::sns_nmi_fire)
-{
-	LOGMASKED(LOG_BOOT, "SNS NMI asserted (payload checksum storage)\n");
-	m_maincpu->pulse_input_line(INPUT_LINE_NMI, attotime::zero);
-}
 
 // Audio mixer/attenuator — register-indirect device at 0x150000/0x150002
 // Firmware writes address to 0x150000, then data to 0x150002.
@@ -1024,26 +1012,38 @@ void kn5000_state::machine_start()
 			m_rhythm_buf_reads++;
 		});
 
-	// SNS NMI timer — deferred one-shot, armed by the NMI guard write-tap below.
-	m_sns_nmi_timer = timer_alloc(FUNC(kn5000_state::sns_nmi_fire), this);
-
-	// NMI guard write-tap: monitor writes to DRAM[0x400] (NMI_BOOT_STATE).
-	// Boot_DisplayScreen writes 0x80 (NMI guard) here after the boot screens are set
-	// up and DRAM[0xFFD4] is cleared to 0.  On real hardware the ~NMI (SNS) signal
-	// fires shortly afterwards; here we schedule it 200 ms later so Boot_DisplayScreen
-	// has time to complete the jp EF1245 jump before the handler runs.
+	// SNS (power-off NMI) emulation: intercept Boot_DisplayScreen's clearing of
+	// DRAM[0xFFD4] = 0 (sti16_24 0x00ffd4, 0x0000) and write the correct payload
+	// checksums there instead.  On real hardware the ~NMI fires at power-off and
+	// the NMI handler (EF08A5 → LABEL_EF08D4) computes these checksums and then
+	// executes halt (machine powers off).  Firing the real NMI during emulation
+	// would halt the CPU mid-session and kill the display, so we emulate the
+	// observable effect directly: DRAM[0xFFD4/0xFFD2] always hold the checksum of
+	// the current payload-shadow region, so SubCPU_Payload_Verify passes on the
+	// next boot and the KN5000 logo animation is shown instead of "ALL INITIAL SETTING!".
 	m_maincpu->space(AS_PROGRAM).install_write_tap(
-		0x0400, 0x0401,
-		"nmi_guard_w",
+		0xFFD4, 0xFFD5,
+		"sns_nmi_checksum_w",
 		[this](offs_t offset, u16 &data, u16 mem_mask)
 		{
-			// Byte at 0x0400 is the low byte of the 16-bit word at address 0x0400.
-			// stdi8 writes a byte with mem_mask = 0x00ff.
-			if ((mem_mask & 0x00ff) && (data & 0xff) == 0x80)
+			// Only intercept the 16-bit zero-write from Boot_DisplayScreen.
+			if ((mem_mask & 0xFFFF) == 0xFFFF && data == 0x0000)
 			{
-				LOGMASKED(LOG_BOOT, "NMI guard set (DRAM[0x400]=0x80 at PC=%06X) — scheduling SNS NMI in 200ms\n",
-					m_maincpu->pc());
-				m_sns_nmi_timer->adjust(attotime::from_msec(200));
+				address_space &space = m_maincpu->space(AS_PROGRAM);
+				// Region 1: 0xF180, 0x800 words — one's complement of sum
+				uint32_t sum = 0;
+				for (int i = 0; i < 0x800; i++)
+					sum = (sum + space.read_word(0xF180 + i * 2)) & 0xFFFF;
+				const uint16_t cksum1 = ~sum & 0xFFFF;
+				// Region 2: 0xF980, 0x280 words
+				sum = 0;
+				for (int i = 0; i < 0x280; i++)
+					sum = (sum + space.read_word(0xF980 + i * 2)) & 0xFFFF;
+				const uint16_t cksum2 = ~sum & 0xFFFF;
+				data = cksum1;                  // override what Boot_DisplayScreen writes
+				space.write_word(0xFFD2, cksum2);
+				LOGMASKED(LOG_BOOT, "SNS NMI (payload checksum): cksum1=0x%04X cksum2=0x%04X at PC=%06X\n",
+					cksum1, cksum2, m_maincpu->pc());
 			}
 		});
 }
