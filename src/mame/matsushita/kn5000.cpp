@@ -413,7 +413,7 @@ TIMER_CALLBACK_MEMBER(kn5000_state::heartbeat)
 TIMER_CALLBACK_MEMBER(kn5000_state::sns_nmi_fire)
 {
 	LOGMASKED(LOG_BOOT, "SNS NMI asserted (payload checksum storage)\n");
-	m_maincpu->set_input_line(INPUT_LINE_NMI, PULSE_LINE);
+	m_maincpu->pulse_input_line(INPUT_LINE_NMI, attotime::zero);
 }
 
 // Audio mixer/attenuator — register-indirect device at 0x150000/0x150002
