@@ -500,7 +500,11 @@ void kn5000_state::subcpu_mem(address_map &map)
 
 static void kn5000_floppies(device_slot_interface &device)
 {
-	device.option_add("35dd", FLOPPY_35_DD);
+	// KN5000 uses 3.5" HD (1.44 MB) floppy drives — confirmed by:
+	// - FDC format configuration supporting 1440K (18 sectors/track, 80 tracks)
+	// - Firmware update disc images: FAT12, OEM-ID "Technics", 2880 sectors, 18 s/t
+	device.option_add("35hd", FLOPPY_35_HD);
+	device.option_add("35dd", FLOPPY_35_DD);  // Keep DD as fallback option
 }
 
 static INPUT_PORTS_START(kn5000)
@@ -1471,7 +1475,7 @@ void kn5000_state::kn5000(machine_config &config)
 	// Multi-sector FDC transfers may not terminate correctly without TC.
 
 
-	FLOPPY_CONNECTOR(config, "fdc:0", kn5000_floppies, "35dd", floppy_image_device::default_mfm_floppy_formats).enable_sound(true);
+	FLOPPY_CONNECTOR(config, "fdc:0", kn5000_floppies, "35hd", floppy_image_device::default_mfm_floppy_formats).enable_sound(true);
 
 	/* Extension port */
 	KN5000_EXTENSION(config, m_extension, kn5000_extension_intf, nullptr);
