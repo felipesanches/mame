@@ -221,13 +221,37 @@ private:
 	TIMER_CALLBACK_MEMBER(heartbeat);
 
 	// ~NMI (SNS) — on real hardware this fires at power-off.  The NMI handler
-	// (NMI_HANDLER at EF08A5 → LABEL_EF08D4) checksums the payload-shadow region
-	// in DRAM (0xF180..0xFE7F) and stores the results at DRAM[0xFFD4/0xFFD2] so
-	// SubCPU_Payload_Verify can compare against them on the next boot, then executes
-	// a halt instruction (the machine is expected to power off immediately after).
-	// We emulate the observable effect by intercepting Boot_DisplayScreen's clearing
-	// of DRAM[0xFFD4] = 0 and writing the correct checksums there instead, which
-	// avoids the display-breaking halt that the real NMI handler executes.
+	// (NMI_HANDLER at EF08A5) calls NMI_StorePayloadChecksums (EF08D4), which:
+	//   1. Checks the NMI guard flag (DRAM[0x400] == 0x80)
+	//   2. Saves voice presets and flush data
+	//   3. Checksums the payload-shadow region in DRAM (0xF180..0xFE7F) and
+	//      stores the results at DRAM[0xFFD4/0xFFD2] so SubCPU_Payload_Verify
+	//      can compare against them on the next boot
+	//   4. Copies DRAM[0xF980..] to backup SRAM at 0x1E8000
+	//   5. Returns to NMI_HANDLER, which then executes halt (machine powers off)
+	//
+	// Two emulation mechanisms ensure the correct checksums are always in DRAM:
+	//
+	// (A) Boot-time write tap on DRAM[0xFFD4] (primary, always active):
+	//     Boot_DisplayScreen clears DRAM[0xFFD4] = 0 on every boot.  Our tap
+	//     intercepts that write and replaces it with the correct checksum, so
+	//     SubCPU_Payload_Verify always passes on the same boot.  This is an HLE
+	//     of the observable effect rather than the mechanism.
+	//
+	// (B) Exit-time SNS NMI (secondary, fires the real ROM handler):
+	//     A 60 Hz periodic timer detects machine().exit_pending() and fires the
+	//     real NMI.  NMI_StorePayloadChecksums at EF08D4 checks the NMI guard
+	//     (internal CPU RAM at 0x0400 == 0x80) itself; if the guard is not set
+	//     it returns immediately without halting, so it is safe to fire the NMI
+	//     at any time.  When the guard IS set the handler computes checksums,
+	//     stores them, and halts.  nvram_save() then captures the ROM-computed
+	//     values.  This fires at most one frame before MAME closes.
+	//     Due to MAME's exit-scheduler ordering (eat_all_cycles() is called
+	//     before the timer can fire), this path is best-effort: it succeeds when
+	//     the exit is triggered from the UI thread between timeslices, but may
+	//     not execute the ROM handler when triggered by -seconds_to_run (where
+	//     eat_all_cycles() pre-empts CPU execution).  Mechanism (A) is the
+	//     reliable fallback in all cases.
 
 	// Sequencer execution detection counters (reset each heartbeat)
 	uint32_t m_seq_event_loop_hits;   // Hits at Seq_ProcessEventLoop (0xEF14CA)
@@ -235,6 +259,9 @@ private:
 	uint32_t m_rhythm_rom_hits;       // Reads from rhythm_data ROM (0x400000-0x7FFFFF)
 	uint32_t m_rhythm_buf_writes;     // Bytes written to rhythm ring buffer (0x01EF5D)
 	uint32_t m_rhythm_buf_reads;      // Events read from rhythm ring buffer (LABEL_EF1525)
+
+	emu_timer *m_sns_exit_check_timer;
+	TIMER_CALLBACK_MEMBER(sns_exit_check);
 
 	// Audio mixer/attenuator at 0x150000 (register-indirect interface)
 	void audiomix_addr_w(uint8_t data);
@@ -878,6 +905,11 @@ void kn5000_state::machine_start()
 	m_heartbeat_timer = timer_alloc(FUNC(kn5000_state::heartbeat), this);
 	m_heartbeat_timer->adjust(attotime::from_seconds(1), 0, attotime::from_seconds(1));
 
+	// SNS exit-check timer: fires at 60 Hz and triggers the real NMI handler
+	// when the machine is about to exit (see class comment for details).
+	m_sns_exit_check_timer = timer_alloc(FUNC(kn5000_state::sns_exit_check), this);
+	m_sns_exit_check_timer->adjust(attotime::from_hz(60), 0, attotime::from_hz(60));
+
 	// Sequencer ring buffer write tap: monitor pointer changes at 0x01F370-0x01F37A
 	// Ring buffer header layout (base=0x01F37B, little-endian 16-bit words):
 	//   0x01F371 (base-10): saved read pointer
@@ -1012,15 +1044,13 @@ void kn5000_state::machine_start()
 			m_rhythm_buf_reads++;
 		});
 
-	// SNS (power-off NMI) emulation: intercept Boot_DisplayScreen's clearing of
-	// DRAM[0xFFD4] = 0 (sti16_24 0x00ffd4, 0x0000) and write the correct payload
-	// checksums there instead.  On real hardware the ~NMI fires at power-off and
-	// the NMI handler (EF08A5 → LABEL_EF08D4) computes these checksums and then
-	// executes halt (machine powers off).  Firing the real NMI during emulation
-	// would halt the CPU mid-session and kill the display, so we emulate the
-	// observable effect directly: DRAM[0xFFD4/0xFFD2] always hold the checksum of
-	// the current payload-shadow region, so SubCPU_Payload_Verify passes on the
-	// next boot and the KN5000 logo animation is shown instead of "ALL INITIAL SETTING!".
+	// SNS NMI emulation — mechanism (A): boot-time checksum write tap.
+	// Boot_DisplayScreen clears DRAM[0xFFD4] = 0 on every boot (to invalidate
+	// the stored checksum so the next power cycle without a clean NMI is detected).
+	// We intercept that write and substitute the correct one's-complement checksum
+	// of the current payload-shadow region, so SubCPU_Payload_Verify passes on
+	// the same boot and shows the KN5000 logo animation instead of
+	// "ALL INITIAL SETTING!".  See class comment for the full design rationale.
 	m_maincpu->space(AS_PROGRAM).install_write_tap(
 		0xFFD4, 0xFFD5,
 		"sns_nmi_checksum_w",
@@ -1070,6 +1100,21 @@ void kn5000_state::machine_reset()
 	m_comif_receiving = false;
 	m_audiomix_addr = 0;
 	memset(m_audiomix_regs, 0, sizeof(m_audiomix_regs));
+}
+
+// SNS NMI exit-check timer — mechanism (B): fire the real ROM handler at exit.
+// Polls machine().exit_pending() at 60 Hz.  NMI_StorePayloadChecksums (EF08D4)
+// checks the NMI guard in its own internal CPU RAM — if the guard is not 0x80
+// (e.g. machine exits before Boot_DisplayScreen has run) it returns harmlessly.
+// When the guard IS set the handler computes checksums, stores them in
+// DRAM[0xFFD4/0xFFD2], and halts.  See class comment for timing caveats.
+TIMER_CALLBACK_MEMBER(kn5000_state::sns_exit_check)
+{
+	if (!machine().exit_pending())
+		return;
+
+	m_maincpu->pulse_input_line(INPUT_LINE_NMI, attotime::from_usec(1));
+	LOGMASKED(LOG_BOOT, "SNS NMI fired at exit (PC=%06X)\n", m_maincpu->pc());
 }
 
 void kn5000_state::nvram2_init(nvram_device &device, void *data, size_t size)
