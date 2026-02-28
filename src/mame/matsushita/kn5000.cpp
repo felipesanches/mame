@@ -504,7 +504,6 @@ static void kn5000_floppies(device_slot_interface &device)
 	// - FDC format configuration supporting 1440K (18 sectors/track, 80 tracks)
 	// - Firmware update disc images: FAT12, OEM-ID "Technics", 2880 sectors, 18 s/t
 	device.option_add("35hd", FLOPPY_35_HD);
-	device.option_add("35dd", FLOPPY_35_DD);  // Keep DD as fallback option
 }
 
 static INPUT_PORTS_START(kn5000)
