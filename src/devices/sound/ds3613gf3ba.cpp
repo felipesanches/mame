@@ -14,7 +14,11 @@
     These are used for semantic logging of effect configuration.
 
     Parallel port command protocol (from SubCPU firmware analysis):
-      0x01 — Voice/parameter bulk write (variable length)
+      0x01 — Effect configuration (variable length):
+             [0x01, ch_base, 0x08, sub, algo_id] — algorithm selection
+             [0x01, ch_base, offset, ...] — coefficient writes with 0x0A markers
+             Coefficient sub-packet: [..., addr_hi, addr_lo, 0x00, 0x0A, c0-c3]
+             DSP address = ((addr_hi & 0x0F) << 4) | (addr_lo >> 4)
       0x02 — Coefficient/table upload (variable length)
       0x03 — End parameter block (latch pending writes)
       0x04 — DSP init/config (5 data bytes)
@@ -181,71 +185,73 @@ void ds3613gf3ba_device::process_command()
 		break;
 
 	case 0x01: // Voice/parameter bulk write
-		if (m_par_data.size() >= 2)
+		if (m_par_data.size() >= 3 && m_par_data[0] == 0x01)
 		{
-			uint8_t mode = m_par_data[0];
-			uint8_t param = m_par_data[1];
-			if (mode == 0x01 && m_par_data.size() >= 7)
+			// Effect parameter block: [0x01, channel_base, offset, ...]
+			// channel_base: 0x40=ch0, 0x60=ch1, 0x80=ch2, 0xA0=ch3 (stride 0x20)
+			uint8_t ch_base = m_par_data[1];
+			int channel = (ch_base >= 0x40) ? ((ch_base - 0x40) >> 5) : -1;
+			uint8_t offset = m_par_data[2];
+
+			if (offset == 0x08 && m_par_data.size() >= 5 && channel >= 0 && channel < 4)
 			{
-				// Effect parameter block: [0x01, channel_base, offset, sub, p1, p2, p3]
-				// channel_base: 0x40=ch0, 0x60=ch1, etc. (stride 0x20)
-				int channel = (param >= 0x40) ? ((param - 0x40) >> 5) : -1;
-				uint8_t offset = m_par_data[2];
-
-				// Check for algorithm selection (offset 0x08 = algo config area)
-				if (offset == 0x08 && m_par_data.size() >= 5 && channel >= 0 && channel < 4)
-				{
-					uint8_t algo_id = m_par_data[4];
-					m_channel_algo[channel] = algo_id;
-					char const *name = get_channel_effect_name(channel);
-					LOGMASKED(LOG_PARALLEL, "ALGO SELECT ch%d = %d (%s)\n",
-						channel, algo_id, name ? name : "unknown");
-				}
-				else if (offset == 0x00 && m_par_data.size() >= 6 && channel >= 0 && channel < 4)
-				{
-					// Register write within channel: [0x01, ch_base, 0x00, 0x00, reg, value, 0x00]
-					uint8_t reg = m_par_data[4];
-					uint8_t value = m_par_data[5];
-
-					if (reg >= 0x10 && reg <= 0x17)
-					{
-						int slot = reg - 0x10;
-						char const *pname = get_param_name(channel, slot);
-						char const *ename = get_channel_effect_name(channel);
-						if (pname)
-							LOGMASKED(LOG_PARALLEL, "EFFECT PARAM ch%d [%s] %s = %d (0x%02X)\n",
-								channel, ename ? ename : "?", pname, value, value);
-						else
-							LOGMASKED(LOG_PARALLEL, "EFFECT PARAM ch%d [%s] param[%d] = %d (0x%02X)\n",
-								channel, ename ? ename : "?", slot, value, value);
-					}
-					else
-					{
-						LOGMASKED(LOG_PARALLEL, "EFFECT PARAM ch%d reg=0x%02X value=0x%02X\n",
-							channel, reg, value);
-					}
-				}
-				else
-				{
-					LOGMASKED(LOG_PARALLEL, "EFFECT PARAM ch%d offset=0x%02X [0x%02X 0x%02X 0x%02X 0x%02X]\n",
-						channel, offset,
-						m_par_data.size() > 3 ? m_par_data[3] : 0,
-						m_par_data.size() > 4 ? m_par_data[4] : 0,
-						m_par_data.size() > 5 ? m_par_data[5] : 0,
-						m_par_data.size() > 6 ? m_par_data[6] : 0);
-				}
+				// Algorithm selection: data[3]=sub, data[4]=algo_id
+				uint8_t algo_id = m_par_data[4];
+				m_channel_algo[channel] = algo_id;
+				char const *name = get_channel_effect_name(channel);
+				LOGMASKED(LOG_PARALLEL, "ALGO SELECT ch%d = %d (%s)\n",
+					channel, algo_id, name ? name : "unknown");
 			}
-			else if (mode == 0x00)
+			else if (channel >= 0 && channel < 4)
 			{
-				// Voice/tone config data
-				LOGMASKED(LOG_PARALLEL, "VOICE DATA index=0x%02X (%zu bytes)\n",
-					param, m_par_data.size());
+				// Coefficient write stream — scan for 0x0A data format markers.
+				// Sub-packet layout: [..., addr_hi, addr_lo, pad, 0x0A, c0, c1, c2, c3]
+				// addr_hi = ((voice_reg + param_addr) >> 4) & 0xF + 0x10
+				// addr_lo = ((voice_reg + param_addr) << 4) & 0xF0
+				// DSP address = ((addr_hi & 0x0F) << 4) | (addr_lo >> 4)
+				char const *ename = get_channel_effect_name(channel);
+				size_t coeff_count = 0;
+
+				for (size_t i = 6; i + 4 < m_par_data.size(); i++)
+				{
+					if (m_par_data[i] == 0x0A)
+					{
+						uint8_t addr_hi = m_par_data[i - 3];
+						uint8_t addr_lo = m_par_data[i - 2];
+						uint8_t dsp_addr = ((addr_hi & 0x0f) << 4) | (addr_lo >> 4);
+						uint32_t coeff = (uint32_t(m_par_data[i + 1]) << 24) |
+										(uint32_t(m_par_data[i + 2]) << 16) |
+										(uint32_t(m_par_data[i + 3]) << 8) |
+										m_par_data[i + 4];
+						LOGMASKED(LOG_PARALLEL, "DSP COEFF ch%d [%s] addr=0x%02X coeff=0x%08X\n",
+							channel, ename ? ename : "?", dsp_addr, coeff);
+						coeff_count++;
+						i += 4; // skip past coefficient bytes
+					}
+				}
+
+				if (coeff_count == 0)
+				{
+					LOGMASKED(LOG_PARALLEL, "EFFECT DATA ch%d offset=0x%02X (%zu bytes, no coefficients)\n",
+						channel, offset, m_par_data.size());
+				}
 			}
 			else
 			{
-				LOGMASKED(LOG_PARALLEL, "PARAM WRITE mode=0x%02X param=0x%02X (%zu bytes)\n",
-					mode, param, m_par_data.size());
+				LOGMASKED(LOG_PARALLEL, "EFFECT DATA ch_base=0x%02X offset=0x%02X (%zu bytes)\n",
+					ch_base, offset, m_par_data.size());
 			}
+		}
+		else if (m_par_data.size() >= 2 && m_par_data[0] == 0x00)
+		{
+			// Voice/tone config data
+			LOGMASKED(LOG_PARALLEL, "VOICE DATA index=0x%02X (%zu bytes)\n",
+				m_par_data[1], m_par_data.size());
+		}
+		else if (m_par_data.size() >= 2)
+		{
+			LOGMASKED(LOG_PARALLEL, "PARAM WRITE mode=0x%02X param=0x%02X (%zu bytes)\n",
+				m_par_data[0], m_par_data[1], m_par_data.size());
 		}
 		else
 		{
