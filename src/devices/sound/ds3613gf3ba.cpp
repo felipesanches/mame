@@ -319,9 +319,19 @@ void ds3613gf3ba_device::process_command()
 		}
 		else if (m_par_data.size() >= 2 && m_par_data[0] == 0x00)
 		{
-			// Voice/tone config data
-			LOGMASKED(LOG_PARALLEL, "VOICE DATA index=0x%02X (%zu bytes)\n",
-				m_par_data[1], m_par_data.size());
+			// Voice/tone config data — hex dump first 20 bytes for analysis
+			std::string hex;
+			char hbuf[8];
+			for (size_t i = 0; i < m_par_data.size() && i < 20; i++)
+			{
+				if (i) hex += ' ';
+				snprintf(hbuf, sizeof(hbuf), "%02X", m_par_data[i]);
+				hex += hbuf;
+			}
+			if (m_par_data.size() > 20)
+				hex += " ...";
+			LOGMASKED(LOG_PARALLEL, "VOICE DATA index=0x%02X (%zu bytes): %s\n",
+				m_par_data[1], m_par_data.size(), hex.c_str());
 		}
 		else if (m_par_data.size() >= 2)
 		{
@@ -334,8 +344,18 @@ void ds3613gf3ba_device::process_command()
 		}
 		break;
 
-	case 0x02: // Coefficient/table upload — scan for 0x0A markers same as cmd 0x01
+	case 0x02: // Coefficient/table upload — hex dump first 20 bytes
 		{
+			std::string hex;
+			char hbuf[8];
+			for (size_t i = 0; i < m_par_data.size() && i < 20; i++)
+			{
+				if (i) hex += ' ';
+				snprintf(hbuf, sizeof(hbuf), "%02X", m_par_data[i]);
+				hex += hbuf;
+			}
+			if (m_par_data.size() > 20)
+				hex += " ...";
 			size_t coeff_count = 0;
 			for (size_t i = 1; i + 4 < m_par_data.size(); i++)
 			{
@@ -345,8 +365,8 @@ void ds3613gf3ba_device::process_command()
 					i += 4;
 				}
 			}
-			LOGMASKED(LOG_PARALLEL, "COEFF UPLOAD (%zu bytes, %zu coefficients)\n",
-				m_par_data.size(), coeff_count);
+			LOGMASKED(LOG_PARALLEL, "COEFF UPLOAD (%zu bytes, %zu coefficients): %s\n",
+				m_par_data.size(), coeff_count, hex.c_str());
 		}
 		break;
 
