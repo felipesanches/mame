@@ -201,13 +201,38 @@ void ds3613gf3ba_device::process_command()
 					LOGMASKED(LOG_PARALLEL, "ALGO SELECT ch%d = %d (%s)\n",
 						channel, algo_id, name ? name : "unknown");
 				}
+				else if (offset == 0x00 && m_par_data.size() >= 6 && channel >= 0 && channel < 4)
+				{
+					// Register write within channel: [0x01, ch_base, 0x00, 0x00, reg, value, 0x00]
+					uint8_t reg = m_par_data[4];
+					uint8_t value = m_par_data[5];
+
+					if (reg >= 0x10 && reg <= 0x17)
+					{
+						int slot = reg - 0x10;
+						char const *pname = get_param_name(channel, slot);
+						char const *ename = get_channel_effect_name(channel);
+						if (pname)
+							LOGMASKED(LOG_PARALLEL, "EFFECT PARAM ch%d [%s] %s = %d (0x%02X)\n",
+								channel, ename ? ename : "?", pname, value, value);
+						else
+							LOGMASKED(LOG_PARALLEL, "EFFECT PARAM ch%d [%s] param[%d] = %d (0x%02X)\n",
+								channel, ename ? ename : "?", slot, value, value);
+					}
+					else
+					{
+						LOGMASKED(LOG_PARALLEL, "EFFECT PARAM ch%d reg=0x%02X value=0x%02X\n",
+							channel, reg, value);
+					}
+				}
 				else
 				{
-					LOGMASKED(LOG_PARALLEL, "EFFECT PARAM ch%d offset=0x%02X",
-						channel, offset);
-					for (size_t i = 3; i < m_par_data.size() && i < 7; i++)
-						LOGMASKED(LOG_PARALLEL, " 0x%02X", m_par_data[i]);
-					LOGMASKED(LOG_PARALLEL, "\n");
+					LOGMASKED(LOG_PARALLEL, "EFFECT PARAM ch%d offset=0x%02X [0x%02X 0x%02X 0x%02X 0x%02X]\n",
+						channel, offset,
+						m_par_data.size() > 3 ? m_par_data[3] : 0,
+						m_par_data.size() > 4 ? m_par_data[4] : 0,
+						m_par_data.size() > 5 ? m_par_data[5] : 0,
+						m_par_data.size() > 6 ? m_par_data[6] : 0);
 				}
 			}
 			else if (mode == 0x00)
@@ -241,10 +266,17 @@ void ds3613gf3ba_device::process_command()
 		break;
 
 	case 0x04: // Init/config (5 bytes)
-		LOGMASKED(LOG_PARALLEL, "INIT CONFIG [");
-		for (size_t i = 0; i < m_par_data.size(); i++)
-			LOGMASKED(LOG_PARALLEL, "%s0x%02X", i ? " " : "", m_par_data[i]);
-		LOGMASKED(LOG_PARALLEL, "]\n");
+		{
+			std::string cfg_str;
+			for (size_t i = 0; i < m_par_data.size(); i++)
+			{
+				if (i) cfg_str += ' ';
+				char buf[8];
+				snprintf(buf, sizeof(buf), "0x%02X", m_par_data[i]);
+				cfg_str += buf;
+			}
+			LOGMASKED(LOG_PARALLEL, "INIT CONFIG [%s]\n", cfg_str.c_str());
+		}
 		break;
 
 	case 0x09: // Status/mode (2 bytes)
@@ -260,21 +292,29 @@ void ds3613gf3ba_device::process_command()
 		break;
 
 	case 0x0c: // Control (3 bytes)
-		LOGMASKED(LOG_PARALLEL, "CONTROL [");
-		for (size_t i = 0; i < m_par_data.size(); i++)
-			LOGMASKED(LOG_PARALLEL, "%s0x%02X", i ? " " : "", m_par_data[i]);
-		LOGMASKED(LOG_PARALLEL, "]\n");
+		if (m_par_data.size() >= 3)
+			LOGMASKED(LOG_PARALLEL, "CONTROL [0x%02X 0x%02X 0x%02X]\n",
+				m_par_data[0], m_par_data[1], m_par_data[2]);
+		else
+			LOGMASKED(LOG_PARALLEL, "CONTROL (%zu bytes)\n", m_par_data.size());
 		break;
 
 	default:
-		// Unknown command - hex dump
-		LOGMASKED(LOG_PARALLEL, "CMD 0x%02X (%zu bytes) [",
-			m_par_cmd, m_par_data.size());
-		for (size_t i = 0; i < m_par_data.size() && i < 16; i++)
-			LOGMASKED(LOG_PARALLEL, "%s0x%02X", i ? " " : "", m_par_data[i]);
-		if (m_par_data.size() > 16)
-			LOGMASKED(LOG_PARALLEL, " ...");
-		LOGMASKED(LOG_PARALLEL, "]\n");
+		{
+			// Unknown command - hex dump
+			std::string hex_str;
+			for (size_t i = 0; i < m_par_data.size() && i < 16; i++)
+			{
+				if (i) hex_str += ' ';
+				char buf[8];
+				snprintf(buf, sizeof(buf), "0x%02X", m_par_data[i]);
+				hex_str += buf;
+			}
+			if (m_par_data.size() > 16)
+				hex_str += " ...";
+			LOGMASKED(LOG_PARALLEL, "CMD 0x%02X (%zu bytes) [%s]\n",
+				m_par_cmd, m_par_data.size(), hex_str.c_str());
+		}
 		break;
 	}
 }
@@ -477,94 +517,96 @@ char const *const DS3613GF3BA_EFFECT_TYPE_NAMES[] = {
 const int DS3613GF3BA_EFFECT_TYPE_COUNT = std::size(DS3613GF3BA_EFFECT_TYPE_NAMES);
 
 //--------------------------------------------------------------------------
-//  Effect parameter name table (from MainCPU ROM at 0xE324C4, 86 entries)
+//  Effect parameter name table (from MainCPU ROM at 0xE324C4, 85 entries)
+//  Index 0 is a blank spacer in the ROM; indices match ROM addressing directly.
 //--------------------------------------------------------------------------
 
 char const *const DS3613GF3BA_EFFECT_PARAM_NAMES[] = {
-	"VOLUME",             // 0
+	"",                   // 0 (blank spacer — ROM index 0 means "no parameter name")
 	"VOLUME",             // 1
-	"REV SEND",           // 2
-	"DRIVE",              // 3
-	"ADJUST",             // 4
-	"EMPHASIS GAIN",      // 5
-	"DEPTH",              // 6
-	"LFO SPEED",          // 7
-	"SLOW LFO SPEED",     // 8
-	"FAST LFO BALANCE",   // 9
-	"RESONANCE",          // 10
-	"MANUAL",             // 11
-	"SLOW/FAST",          // 12
-	"TREBLE FAST",        // 13
-	"SLOW",               // 14
-	"WIND UP",            // 15
-	"WIND DOWN",          // 16
-	"BASS FAST",          // 17
-	"BASS SLOW",          // 18
-	"VOLUME ADJUST",      // 19
-	"OSC SPEED",          // 20
-	"DELAY L",            // 21
-	"DELAY R",            // 22
-	"FEEDBACK L",         // 23
-	"FEEDBACK R",         // 24
-	"DELAY DRY/WET",      // 25
-	"CHORUS DRY/WET",     // 26
-	"FLANGER DRY/WET",    // 27
-	"PHASER DRY/WET",     // 28
-	"LOW EMPHASIS FC",    // 29
-	"LOW EMPHASIS G",     // 30
-	"HIGH EMPHASIS FC",   // 31
-	"HIGH EMPHASIS G",    // 32
-	"REVERB TIME",        // 33
-	"PRE DELAY",          // 34
-	"HIGH DAMP GAIN",     // 35
-	"ER.LEVEL",           // 36
-	"PITCH L",            // 37
-	"PITCH R",            // 38
-	"THRESHOLD",          // 39
-	"RATIO",              // 40
-	"ATTACK SENS.",       // 41
-	"RELEASE SENS.",      // 42
-	"ATTACK RATE",        // 43
-	"RELEASE RATE",       // 44
-	"GATE TIME",          // 45
-	"MASK TIME",          // 46
-	"HARS TIME",          // 47
-	"LFO WAVEFORM",       // 48
-	"OSC WAVEFORM",       // 49
-	"BAND EMPHASIS FC",   // 50
-	"BAND EMPHASIS Q",    // 51
-	"BAND EMPHASIS G",    // 52
-	"LOW MIX",            // 53
-	"HIGH MIX",           // 54
-	"PHASE",              // 55
-	"FEEDBACK",           // 56
-	"SWEEP RANGE",        // 57
-	"WAH CENTER FC",      // 58
-	"HARS TIME L",        // 59
-	"HARS TIME R",        // 60
-	"BALANCE L",          // 61
-	"BALANCE R",          // 62
-	"FAST LFO SPEED L",   // 63
-	"FAST LFO SPEED R",   // 64
-	"MODULATION DEPTH",   // 65
-	"DELAY1 DRY/WET",     // 66
-	"DELAY2 DRY/WET",     // 67
-	"VIBRATO DRY/WET",    // 68
-	"WAH DRY/WET",        // 69
-	"FAST LFO SPEED",     // 70
-	"TREBLE DEPTH",       // 71
-	"FAST",               // 72
-	"BASS DEPTH",         // 73
-	"DELAY 1",            // 74
-	"DELAY 2",            // 75
-	"DELAY 3",            // 76
-	"DELAY 4",            // 77
-	"PAN 1",              // 78
-	"PAN 2",              // 79
-	"PAN 3",              // 80
-	"PAN 4",              // 81
-	"INTENSITY",          // 82
-	"EXCITE",             // 83
+	"VOLUME",             // 2
+	"REV SEND",           // 3
+	"DRIVE",              // 4
+	"ADJUST",             // 5
+	"EMPHASIS GAIN",      // 6
+	"DEPTH",              // 7
+	"LFO SPEED",          // 8
+	"SLOW LFO SPEED",     // 9
+	"FAST LFO BALANCE",   // 10
+	"RESONANCE",          // 11
+	"MANUAL",             // 12
+	"SLOW/FAST",          // 13
+	"TREBLE FAST",        // 14
+	"SLOW",               // 15
+	"WIND UP",            // 16
+	"WIND DOWN",          // 17
+	"BASS FAST",          // 18
+	"BASS SLOW",          // 19
+	"VOLUME ADJUST",      // 20
+	"OSC SPEED",          // 21
+	"DELAY L",            // 22
+	"DELAY R",            // 23
+	"FEEDBACK L",         // 24
+	"FEEDBACK R",         // 25
+	"DELAY DRY/WET",      // 26
+	"CHORUS DRY/WET",     // 27
+	"FLANGER DRY/WET",    // 28
+	"PHASER DRY/WET",     // 29
+	"LOW EMPHASIS FC",    // 30
+	"LOW EMPHASIS G",     // 31
+	"HIGH EMPHASIS FC",   // 32
+	"HIGH EMPHASIS G",    // 33
+	"REVERB TIME",        // 34 (0x22)
+	"PRE DELAY",          // 35 (0x23)
+	"HIGH DAMP GAIN",     // 36 (0x24)
+	"ER.LEVEL",           // 37 (0x25)
+	"PITCH L",            // 38
+	"PITCH R",            // 39
+	"THRESHOLD",          // 40
+	"RATIO",              // 41
+	"ATTACK SENS.",       // 42
+	"RELEASE SENS.",      // 43
+	"ATTACK RATE",        // 44
+	"RELEASE RATE",       // 45
+	"GATE TIME",          // 46
+	"MASK TIME",          // 47
+	"HARS TIME",          // 48
+	"LFO WAVEFORM",       // 49
+	"OSC WAVEFORM",       // 50
+	"BAND EMPHASIS FC",   // 51
+	"BAND EMPHASIS Q",    // 52
+	"BAND EMPHASIS G",    // 53
+	"LOW MIX",            // 54
+	"HIGH MIX",           // 55
+	"PHASE",              // 56
+	"FEEDBACK",           // 57
+	"SWEEP RANGE",        // 58
+	"WAH CENTER FC",      // 59
+	"HARS TIME L",        // 60
+	"HARS TIME R",        // 61
+	"BALANCE L",          // 62
+	"BALANCE R",          // 63
+	"FAST LFO SPEED L",   // 64
+	"FAST LFO SPEED R",   // 65
+	"MODULATION DEPTH",   // 66
+	"DELAY1 DRY/WET",     // 67
+	"DELAY2 DRY/WET",     // 68
+	"VIBRATO DRY/WET",    // 69
+	"WAH DRY/WET",        // 70
+	"FAST LFO SPEED",     // 71
+	"TREBLE DEPTH",       // 72
+	"FAST",               // 73
+	"BASS DEPTH",         // 74
+	"DELAY 1",            // 75
+	"DELAY 2",            // 76
+	"DELAY 3",            // 77
+	"DELAY 4",            // 78
+	"PAN 1",              // 79
+	"PAN 2",              // 80
+	"PAN 3",              // 81
+	"PAN 4",              // 82
+	"INTENSITY",          // 83
+	"EXCITE",             // 84
 };
 
 const int DS3613GF3BA_EFFECT_PARAM_COUNT = std::size(DS3613GF3BA_EFFECT_PARAM_NAMES);

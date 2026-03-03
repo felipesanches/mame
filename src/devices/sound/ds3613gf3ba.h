@@ -91,7 +91,7 @@ private:
 extern char const *const DS3613GF3BA_EFFECT_TYPE_NAMES[];
 extern const int DS3613GF3BA_EFFECT_TYPE_COUNT;
 
-// Effect parameter name table (from MainCPU ROM at 0xE324C4, 86 entries)
+// Effect parameter name table (from MainCPU ROM at 0xE324C4, 85 entries; index 0 = spacer)
 extern char const *const DS3613GF3BA_EFFECT_PARAM_NAMES[];
 extern const int DS3613GF3BA_EFFECT_PARAM_COUNT;
 
