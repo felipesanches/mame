@@ -491,7 +491,7 @@ void kn5000_state::subcpu_mem(address_map &map)
 	map(0x120000, 0x12ffff).r(FUNC(kn5000_state::subcpu_latch_r)); // @ IC22 (logged wrapper)
 	map(0x120000, 0x12ffff).w(FUNC(kn5000_state::maincpu_latch_w)); // @ IC23 (logged wrapper)
 	map(0x130000, 0x130001).w(m_dsp1, FUNC(ds3613gf3ba_device::addr_w));  // DSP1 (IC311) address register
-	map(0x130002, 0x130003).w(m_dsp1, FUNC(ds3613gf3ba_device::data_w));  // DSP1 (IC311) data register
+	map(0x130002, 0x130003).rw(m_dsp1, FUNC(ds3613gf3ba_device::data_r), FUNC(ds3613gf3ba_device::data_w));  // DSP1 (IC311) data register
 	map(0x1e0000, 0x1effff).noprw(); // Waveform/sample RAM (stub - not yet emulated)
 	map(0xfe0000, 0xffffff).rom().region("subcpu", 0); // 1Mbit MASK ROM @ IC30
 

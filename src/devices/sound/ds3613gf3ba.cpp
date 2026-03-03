@@ -48,6 +48,7 @@ void ds3613gf3ba_device::device_start()
 {
 	save_item(NAME(m_addr));
 	save_item(NAME(m_regs));
+	save_item(NAME(m_channel_algo));
 	save_item(NAME(m_par_cmd));
 }
 
@@ -55,6 +56,7 @@ void ds3613gf3ba_device::device_reset()
 {
 	m_addr = 0;
 	std::fill(std::begin(m_regs), std::end(m_regs), 0);
+	std::fill(std::begin(m_channel_algo), std::end(m_channel_algo), 0);
 	m_par_cmd = 0;
 	m_par_data.clear();
 }
@@ -72,16 +74,34 @@ void ds3613gf3ba_device::data_w(uint16_t data)
 	int channel = (m_addr >> 5) & 3;
 	int reg = m_addr & 0x1f;
 
-	char const *desc;
 	if (reg >= 0x10 && reg <= 0x17)
-		desc = "voice";
+	{
+		// Parameter register write — resolve to named parameter
+		int slot = reg - 0x10;
+		char const *param_name = get_param_name(channel, slot);
+		char const *effect_name = get_channel_effect_name(channel);
+		if (param_name)
+			LOGMASKED(LOG_DSP, "ch%d [%s] %s = %d (0x%02X)\n",
+				channel, effect_name ? effect_name : "?", param_name, val, val);
+		else
+			LOGMASKED(LOG_DSP, "ch%d [%s] param[%d] = %d (0x%02X)\n",
+				channel, effect_name ? effect_name : "?", slot, val, val);
+	}
 	else if (reg == 0x1f)
-		desc = "config";
+	{
+		LOGMASKED(LOG_DSP, "ch%d config = 0x%02X\n", channel, val);
+	}
 	else
-		desc = "unk";
+	{
+		LOGMASKED(LOG_DSP, "ch%d reg[0x%02X] = 0x%02X\n", channel, reg, val);
+	}
+}
 
-	LOGMASKED(LOG_DSP, "ch%d %s[0x%02X] = 0x%02X (addr=0x%02X)\n",
-		channel, desc, reg, val, m_addr);
+uint16_t ds3613gf3ba_device::data_r()
+{
+	uint8_t val = m_regs[m_addr];
+	LOGMASKED(LOG_DSP, "read reg[0x%02X] = 0x%02X\n", m_addr, val);
+	return val;
 }
 
 //--------------------------------------------------------------------------
@@ -132,7 +152,27 @@ void ds3613gf3ba_device::process_command()
 		{
 			uint8_t addr = m_par_data[1];
 			uint16_t value = (uint16_t(m_par_data[2]) << 8) | m_par_data[3];
-			LOGMASKED(LOG_PARALLEL, "REG WRITE addr=0x%02X value=0x%04X\n", addr, value);
+			int channel = (addr >> 5) & 3;
+			int reg = addr & 0x1f;
+
+			// Decode parameter name for registers 0x10-0x17
+			if (reg >= 0x10 && reg <= 0x17)
+			{
+				int slot = reg - 0x10;
+				char const *pname = get_param_name(channel, slot);
+				char const *ename = get_channel_effect_name(channel);
+				if (pname)
+					LOGMASKED(LOG_PARALLEL, "REG WRITE ch%d [%s] %s = 0x%04X (%d)\n",
+						channel, ename ? ename : "?", pname, value, value);
+				else
+					LOGMASKED(LOG_PARALLEL, "REG WRITE ch%d param[%d] = 0x%04X\n",
+						channel, slot, value);
+			}
+			else
+			{
+				LOGMASKED(LOG_PARALLEL, "REG WRITE addr=0x%02X value=0x%04X (ch%d reg=0x%02X)\n",
+					addr, value, channel, reg);
+			}
 		}
 		else
 		{
@@ -147,12 +187,28 @@ void ds3613gf3ba_device::process_command()
 			uint8_t param = m_par_data[1];
 			if (mode == 0x01 && m_par_data.size() >= 7)
 			{
-				// Effect parameter: [0x01, 0x60, offset, sub, p1, p2, p3]
-				LOGMASKED(LOG_PARALLEL, "EFFECT PARAM mode=0x%02X base=0x%02X",
-					mode, param);
-				for (size_t i = 2; i < m_par_data.size() && i < 7; i++)
-					LOGMASKED(LOG_PARALLEL, " 0x%02X", m_par_data[i]);
-				LOGMASKED(LOG_PARALLEL, "\n");
+				// Effect parameter block: [0x01, channel_base, offset, sub, p1, p2, p3]
+				// channel_base: 0x40=ch0, 0x60=ch1, etc. (stride 0x20)
+				int channel = (param >= 0x40) ? ((param - 0x40) >> 5) : -1;
+				uint8_t offset = m_par_data[2];
+
+				// Check for algorithm selection (offset 0x08 = algo config area)
+				if (offset == 0x08 && m_par_data.size() >= 5 && channel >= 0 && channel < 4)
+				{
+					uint8_t algo_id = m_par_data[4];
+					m_channel_algo[channel] = algo_id;
+					char const *name = get_channel_effect_name(channel);
+					LOGMASKED(LOG_PARALLEL, "ALGO SELECT ch%d = %d (%s)\n",
+						channel, algo_id, name ? name : "unknown");
+				}
+				else
+				{
+					LOGMASKED(LOG_PARALLEL, "EFFECT PARAM ch%d offset=0x%02X",
+						channel, offset);
+					for (size_t i = 3; i < m_par_data.size() && i < 7; i++)
+						LOGMASKED(LOG_PARALLEL, " 0x%02X", m_par_data[i]);
+					LOGMASKED(LOG_PARALLEL, "\n");
+				}
 			}
 			else if (mode == 0x00)
 			{
@@ -221,6 +277,94 @@ void ds3613gf3ba_device::process_command()
 		LOGMASKED(LOG_PARALLEL, "]\n");
 		break;
 	}
+}
+
+//--------------------------------------------------------------------------
+//  Algorithm-to-category mapping and parameter name resolution
+//--------------------------------------------------------------------------
+
+// Per-category parameter name indices (from MainCPU ROM 0xE446DC, 8 rows x 8 slots)
+// Index 0xFF means the parameter slot is unused for this category.
+// Other values index into DS3613GF3BA_EFFECT_PARAM_NAMES[].
+static const uint8_t s_category_param_indices[8][8] = {
+	// Row 0: Distortion/Dynamics (algo IDs 32-39)
+	{ 0xff, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x00 },
+	// Row 1: (unused)
+	{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff },
+	// Row 2: Rotary speaker treble (algo ID 53)
+	{ 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0xff, 0x0f },
+	// Row 3: Rotary speaker bass (algo ID 53, continued)
+	{ 0x10, 0xff, 0x11, 0xff, 0x12, 0x13, 0x15, 0xff },
+	// Row 4: Delay/Chorus/Flanger/Phaser (algo IDs 1-6, 9-11)
+	{ 0x17, 0x18, 0x19, 0x1a, 0x1b, 0xff, 0x1c, 0x1d },
+	// Row 5: (unused)
+	{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff },
+	// Row 6: Reverb (algo IDs 8, 16-27)
+	{ 0x22, 0x23, 0x24, 0x25, 0xff, 0xff, 0xff, 0xff },
+	// Row 7: (unused)
+	{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff },
+};
+
+dsp_category ds3613gf3ba_device::algo_to_category(uint8_t algo_id) const
+{
+	switch (algo_id)
+	{
+	// Reverb algorithms (IDs 8, 16-27)
+	case  8: // GATED REVERB
+	case 16: case 17: case 18: case 19: // ROOM/PLATE
+	case 20: case 21: case 22: case 23: // CONCERT/DARK
+	case 24: case 25: case 26: case 27: // BRIGHT/WAVE
+		return DSP_CAT_REVERB;
+
+	// Modulation/delay (IDs 1-6, 9-11, 15)
+	case  1: case  2: case  3: case  4: case  5: case  6: // Chorus/Enhancer/Flanger/Phaser/Ensemble
+	case  9: case 10: case 11: // Single/MultiTap/Modulation Delay
+	case 15: // ROCK ROTARY (uses delay/mod category)
+		return DSP_CAT_MODDELAY;
+
+	// Distortion/Dynamics (IDs 32-39)
+	case 32: case 33: case 34: case 35: // Distortion/Overdrive/Fuzz/Exciter
+	case 36: case 37: case 38: case 39: // Compressor/SlowAttacker/NoiseFlanger/PEQ
+		return DSP_CAT_DISTDYN;
+
+	// Rotary speaker (ID 53)
+	case 53:
+		return DSP_CAT_ROTARY_T;
+
+	default:
+		return DSP_CAT_NONE;
+	}
+}
+
+char const *ds3613gf3ba_device::get_channel_effect_name(int ch) const
+{
+	if (ch < 0 || ch >= 4)
+		return nullptr;
+
+	uint8_t algo = m_channel_algo[ch];
+	if (algo < DS3613GF3BA_EFFECT_TYPE_COUNT && DS3613GF3BA_EFFECT_TYPE_NAMES[algo])
+		return DS3613GF3BA_EFFECT_TYPE_NAMES[algo];
+
+	return nullptr;
+}
+
+char const *ds3613gf3ba_device::get_param_name(int ch, int slot) const
+{
+	if (ch < 0 || ch >= 4 || slot < 0 || slot >= 8)
+		return nullptr;
+
+	dsp_category cat = algo_to_category(m_channel_algo[ch]);
+	if (cat == DSP_CAT_NONE || cat >= 8)
+		return nullptr;
+
+	uint8_t name_idx = s_category_param_indices[cat][slot];
+	if (name_idx == 0xff)
+		return nullptr;
+
+	if (name_idx < DS3613GF3BA_EFFECT_PARAM_COUNT)
+		return DS3613GF3BA_EFFECT_PARAM_NAMES[name_idx];
+
+	return nullptr;
 }
 
 //--------------------------------------------------------------------------
@@ -333,7 +477,7 @@ char const *const DS3613GF3BA_EFFECT_TYPE_NAMES[] = {
 const int DS3613GF3BA_EFFECT_TYPE_COUNT = std::size(DS3613GF3BA_EFFECT_TYPE_NAMES);
 
 //--------------------------------------------------------------------------
-//  Effect parameter name table (from MainCPU ROM at 0xE324D0, 84 entries)
+//  Effect parameter name table (from MainCPU ROM at 0xE324C4, 86 entries)
 //--------------------------------------------------------------------------
 
 char const *const DS3613GF3BA_EFFECT_PARAM_NAMES[] = {

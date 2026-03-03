@@ -13,8 +13,20 @@
       Channel 2: 0x40-0x5F   Channel 3: 0x60-0x7F
 
     Known per-channel registers (from SubCPU firmware DSP_Write_Channel):
-      0x10-0x17: Voice parameters (8 bytes)
+      0x10-0x17: Voice/effect parameters (8 slots)
       0x1F:      Channel config (written as 0x01 during init)
+
+    Parameter naming: The firmware uses a category-based system where
+    algorithm IDs map to categories, and each category defines which
+    parameter name corresponds to each of the 8 register slots.
+    The mapping table is at MainCPU ROM 0xE446DC (8 rows x 16 bytes).
+
+    Categories:
+      Row 0 (0x00): Distortion/Dynamics effects
+      Row 2 (0x20): Rotary speaker (treble section)
+      Row 3 (0x30): Rotary speaker (bass section)
+      Row 4 (0x40): Delay/Chorus/Flanger/Phaser effects
+      Row 6 (0x60): Reverb effects (REVERB TIME, PRE DELAY, HI DAMP, ER.LEVEL)
 
 ***************************************************************************/
 
@@ -25,6 +37,18 @@
 
 #include <vector>
 
+// Per-algorithm category assignment (algo ID -> category row index)
+// Used to look up which parameter names apply to registers 0x10-0x17
+enum dsp_category : uint8_t
+{
+	DSP_CAT_NONE     = 0xff,  // No category (unused/reserved algo IDs)
+	DSP_CAT_DISTDYN  = 0,     // Distortion, Overdrive, Fuzz, Compressor, etc.
+	DSP_CAT_ROTARY_T = 2,     // Rotary speaker (treble controls)
+	DSP_CAT_ROTARY_B = 3,     // Rotary speaker (bass controls)
+	DSP_CAT_MODDELAY = 4,     // Delay, Chorus, Flanger, Phaser, Ensemble
+	DSP_CAT_REVERB   = 6,     // All reverb algorithms (Room/Plate/Concert/Dark/Bright/Wave)
+};
+
 class ds3613gf3ba_device : public device_t
 {
 public:
@@ -33,10 +57,16 @@ public:
 	// Memory-mapped register interface (SubCPU 0x130000/0x130002)
 	void addr_w(uint16_t data);
 	void data_w(uint16_t data);
+	uint16_t data_r();
 
 	// Parallel port interface (P7/PZ protocol from SubCPU)
 	void parallel_command_w(uint8_t data);
 	void parallel_data_w(uint8_t data);
+
+	// Query current effect state (for debug/UI)
+	uint8_t get_channel_algo(int ch) const { return (ch >= 0 && ch < 4) ? m_channel_algo[ch] : 0; }
+	char const *get_channel_effect_name(int ch) const;
+	char const *get_param_name(int ch, int slot) const;
 
 protected:
 	virtual void device_start() override ATTR_COLD;
@@ -44,20 +74,24 @@ protected:
 
 private:
 	void process_command();
+	dsp_category algo_to_category(uint8_t algo_id) const;
 
 	uint8_t m_addr;        // Current register address (0x00-0x7F)
 	uint8_t m_regs[128];   // 4 channels x 32 registers
+
+	// Per-channel effect tracking
+	uint8_t m_channel_algo[4];    // Current algorithm ID per channel (0-99)
 
 	// Parallel port protocol state
 	uint8_t m_par_cmd;                  // Current command byte
 	std::vector<uint8_t> m_par_data;    // Data bytes for current command
 };
 
-// Effect type name table (from MainCPU ROM at 0xE32A7A, 128 entries)
+// Effect type name table (from MainCPU ROM at 0xE32A7A, 100 entries)
 extern char const *const DS3613GF3BA_EFFECT_TYPE_NAMES[];
 extern const int DS3613GF3BA_EFFECT_TYPE_COUNT;
 
-// Effect parameter name table (from MainCPU ROM at 0xE324D0, 84 entries)
+// Effect parameter name table (from MainCPU ROM at 0xE324C4, 86 entries)
 extern char const *const DS3613GF3BA_EFFECT_PARAM_NAMES[];
 extern const int DS3613GF3BA_EFFECT_PARAM_COUNT;
 
