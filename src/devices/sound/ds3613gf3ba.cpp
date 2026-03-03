@@ -16,9 +16,12 @@
     Parallel port command protocol (from SubCPU firmware analysis):
       0x01 — Effect configuration (variable length):
              [0x01, ch_base, 0x08, sub, algo_id] — algorithm selection
-             [0x01, ch_base, offset, ...] — coefficient writes with 0x0A markers
-             Coefficient sub-packet: [..., addr_hi, addr_lo, 0x00, 0x0A, c0-c3]
+             [0x01, ch_base, 0x00, ...] — coefficient writes with 0x0A markers:
+               Full param write (10 bytes): [0,0,addr_hi,addr_lo,0,0x0A,B1-B4]
+               Standalone coeff (5 bytes):  [0x0A,B1-B4]
              DSP address = ((addr_hi & 0x0F) << 4) | (addr_lo >> 4)
+             Coeff decode: value = ((B4>>7)&1) | (B3<<1) | (B2<<9)  [17-bit]
+             B4 always ends with constant 0x15 (B4 = (bit0<<7) + 0x15)
       0x02 — Coefficient/table upload (variable length)
       0x03 — End parameter block (latch pending writes)
       0x04 — DSP init/config (5 data bytes)
@@ -205,29 +208,67 @@ void ds3613gf3ba_device::process_command()
 			else if (channel >= 0 && channel < 4)
 			{
 				// Coefficient write stream — scan for 0x0A data format markers.
-				// Sub-packet layout: [..., addr_hi, addr_lo, pad, 0x0A, c0, c1, c2, c3]
-				// addr_hi = ((voice_reg + param_addr) >> 4) & 0xF + 0x10
-				// addr_lo = ((voice_reg + param_addr) << 4) & 0xF0
-				// DSP address = ((addr_hi & 0x0F) << 4) | (addr_lo >> 4)
+				// Two sub-packet types exist within the stream:
+				//
+				// Full param write (10 bytes, from SubCPU LABEL_038539):
+				//   [0x00, 0x00, addr_hi, addr_lo, 0x00, 0x0A, B1, B2, B3, B4]
+				//   DSP address = ((addr_hi & 0x0F) << 4) | (addr_lo >> 4)
+				//
+				// Standalone coefficient (5 bytes, from SubCPU LABEL_038606):
+				//   [0x0A, B1, B2, B3, B4]
+				//   No address — continuation write to the same DSP register block
+				//
+				// Discriminator: byte before 0x0A is 0x00 for full writes (pad byte),
+				// but 0x15 or 0x95 for standalone (last coeff byte of previous sub-packet).
+				//
+				// Coefficient encoding (17-bit value in 4 bytes):
+				//   B1 = (value >> 1) & 0x7F
+				//   B2 = (value >> 9) & 0xFF
+				//   B3 = (value >> 1) & 0xFF
+				//   B4 = ((value << 7) & 0x80) + 0x15
+				//   Decode: value = ((B4 >> 7) & 1) | (B3 << 1) | (B2 << 9)
 				char const *ename = get_channel_effect_name(channel);
 				size_t coeff_count = 0;
+				uint8_t last_dsp_addr = 0;
+				bool have_addr = false;
 
-				for (size_t i = 6; i + 4 < m_par_data.size(); i++)
+				for (size_t i = 3; i + 4 < m_par_data.size(); i++)
 				{
-					if (m_par_data[i] == 0x0A)
+					if (m_par_data[i] != 0x0A)
+						continue;
+
+					// Decode coefficient value from 4 bytes after marker
+					// B1 = (val>>1)&0x7F (redundant with B3&0x7F), B2 = (val>>9)&0xFF,
+					// B3 = (val>>1)&0xFF, B4 = ((val<<7)&0x80)+0x15
+					uint8_t b2 = m_par_data[i + 2];
+					uint8_t b3 = m_par_data[i + 3];
+					uint8_t b4 = m_par_data[i + 4];
+					uint32_t value = ((b4 >> 7) & 1) | (uint32_t(b3) << 1) | (uint32_t(b2) << 9);
+
+					// Check if this is a full param write (pad byte 0x00 before 0x0A)
+					// or a standalone coefficient (previous coeff's B4 before 0x0A)
+					if (i >= 5 && m_par_data[i - 1] == 0x00)
 					{
+						// Full param write — extract DSP address
 						uint8_t addr_hi = m_par_data[i - 3];
 						uint8_t addr_lo = m_par_data[i - 2];
-						uint8_t dsp_addr = ((addr_hi & 0x0f) << 4) | (addr_lo >> 4);
-						uint32_t coeff = (uint32_t(m_par_data[i + 1]) << 24) |
-										(uint32_t(m_par_data[i + 2]) << 16) |
-										(uint32_t(m_par_data[i + 3]) << 8) |
-										m_par_data[i + 4];
-						LOGMASKED(LOG_PARALLEL, "DSP COEFF ch%d [%s] addr=0x%02X coeff=0x%08X\n",
-							channel, ename ? ename : "?", dsp_addr, coeff);
-						coeff_count++;
-						i += 4; // skip past coefficient bytes
+						last_dsp_addr = ((addr_hi & 0x0f) << 4) | (addr_lo >> 4);
+						have_addr = true;
+						LOGMASKED(LOG_PARALLEL, "DSP COEFF ch%d [%s] @0x%02X = %d (0x%05X)\n",
+							channel, ename ? ename : "?", last_dsp_addr, value, value);
 					}
+					else
+					{
+						// Standalone coefficient — no address prefix
+						if (have_addr)
+							LOGMASKED(LOG_PARALLEL, "DSP COEFF ch%d [%s] @0x%02X+ = %d (0x%05X)\n",
+								channel, ename ? ename : "?", last_dsp_addr, value, value);
+						else
+							LOGMASKED(LOG_PARALLEL, "DSP COEFF ch%d [%s] = %d (0x%05X)\n",
+								channel, ename ? ename : "?", value, value);
+					}
+					coeff_count++;
+					i += 4; // skip past coefficient bytes
 				}
 
 				if (coeff_count == 0)
@@ -259,15 +300,19 @@ void ds3613gf3ba_device::process_command()
 		}
 		break;
 
-	case 0x02: // Coefficient/table upload
-		if (m_par_data.size() >= 2)
+	case 0x02: // Coefficient/table upload — scan for 0x0A markers same as cmd 0x01
 		{
-			LOGMASKED(LOG_PARALLEL, "COEFF UPLOAD header=[0x%02X 0x%02X] (%zu bytes)\n",
-				m_par_data[0], m_par_data[1], m_par_data.size());
-		}
-		else
-		{
-			LOGMASKED(LOG_PARALLEL, "COEFF UPLOAD (%zu bytes)\n", m_par_data.size());
+			size_t coeff_count = 0;
+			for (size_t i = 1; i + 4 < m_par_data.size(); i++)
+			{
+				if (m_par_data[i] == 0x0A)
+				{
+					coeff_count++;
+					i += 4;
+				}
+			}
+			LOGMASKED(LOG_PARALLEL, "COEFF UPLOAD (%zu bytes, %zu coefficients)\n",
+				m_par_data.size(), coeff_count);
 		}
 		break;
 
