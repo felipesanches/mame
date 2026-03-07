@@ -81,6 +81,8 @@ private:
 
 	// Per-channel effect tracking
 	uint8_t m_channel_algo[4];    // Current DSP algorithm type per channel (2-11)
+	uint8_t m_channel_program[4]; // Last DSP program module per channel (0xC8=reverb, 0x54=chorus)
+	uint8_t m_pending_program;    // Most recently loaded program module (assigned to next channel)
 
 	// Parallel port protocol state
 	uint8_t m_par_cmd;                  // Current command byte

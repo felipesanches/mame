@@ -63,6 +63,8 @@ void ds3613gf3ba_device::device_start()
 	save_item(NAME(m_addr));
 	save_item(NAME(m_regs));
 	save_item(NAME(m_channel_algo));
+	save_item(NAME(m_channel_program));
+	save_item(NAME(m_pending_program));
 	save_item(NAME(m_par_cmd));
 }
 
@@ -71,6 +73,8 @@ void ds3613gf3ba_device::device_reset()
 	m_addr = 0;
 	std::fill(std::begin(m_regs), std::end(m_regs), 0);
 	std::fill(std::begin(m_channel_algo), std::end(m_channel_algo), 0);
+	std::fill(std::begin(m_channel_program), std::end(m_channel_program), 0);
+	m_pending_program = 0;
 	m_par_cmd = 0;
 	m_par_data.clear();
 }
@@ -246,6 +250,14 @@ void ds3613gf3ba_device::process_command()
 
 			if (channel >= 0 && channel < 4)
 			{
+				// Assign pending program module to this channel
+				if (m_pending_program != 0)
+				{
+					m_channel_program[channel] = m_pending_program;
+					LOGMASKED(LOG_PARALLEL, "ch%d assigned program module 0x%02X\n",
+						channel, m_pending_program);
+				}
+
 				char const *ename = get_channel_effect_name(channel);
 				size_t coeff_count = 0;
 				uint8_t last_dsp_addr = 0;
@@ -342,6 +354,9 @@ void ds3613gf3ba_device::process_command()
 				hex += " ...";
 			LOGMASKED(LOG_PARALLEL, "DSP PROGRAM module=0x%02X (%zu bytes): %s\n",
 				m_par_data[1], m_par_data.size(), hex.c_str());
+
+			// Track the most recently loaded program module for channel assignment
+			m_pending_program = m_par_data[1];
 		}
 		else if (m_par_data.size() >= 2)
 		{
@@ -496,11 +511,20 @@ char const *ds3613gf3ba_device::get_channel_effect_name(int ch) const
 	if (ch < 0 || ch >= 4)
 		return nullptr;
 
+	// First try the explicit algo index (set externally or via CMD 0x30)
+	// Index 0 is "NO OPERATION" which is the default/reset value, so skip it
 	uint8_t algo = m_channel_algo[ch];
-	if (algo < DS3613GF3BA_EFFECT_TYPE_COUNT && DS3613GF3BA_EFFECT_TYPE_NAMES[algo])
+	if (algo > 0 && algo < DS3613GF3BA_EFFECT_TYPE_COUNT && DS3613GF3BA_EFFECT_TYPE_NAMES[algo])
 		return DS3613GF3BA_EFFECT_TYPE_NAMES[algo];
 
-	return nullptr;
+	// Fall back to program module type for category identification
+	switch (m_channel_program[ch])
+	{
+	case 0xC8: return "REVERB";
+	case 0x54: return "CHORUS/MOD";
+	case 0x3C: return "INIT";
+	default:   return nullptr;
+	}
 }
 
 char const *ds3613gf3ba_device::get_param_name(int ch, int slot) const
