@@ -319,18 +319,25 @@ void ds3613gf3ba_device::process_command()
 		}
 		else if (m_par_data.size() >= 2 && m_par_data[0] == 0x00)
 		{
-			// Voice/tone config data — hex dump first 20 bytes for analysis
+			// Voice/tone config data (DSP microcode/program modules)
+			// Index field identifies the program module:
+			//   0x00 = main DSP program (302 bytes)
+			//   0x3C = init program (117 bytes)
+			//   0x40, 0x47 = short config patches (7 bytes)
+			//   0x54 = effect algorithm program B (352 bytes)
+			//   0xC8 = effect algorithm program A (667 bytes)
 			std::string hex;
 			char hbuf[8];
-			for (size_t i = 0; i < m_par_data.size() && i < 20; i++)
+			size_t dump_len = std::min(m_par_data.size(), size_t(32));
+			for (size_t i = 0; i < dump_len; i++)
 			{
 				if (i) hex += ' ';
 				snprintf(hbuf, sizeof(hbuf), "%02X", m_par_data[i]);
 				hex += hbuf;
 			}
-			if (m_par_data.size() > 20)
+			if (m_par_data.size() > dump_len)
 				hex += " ...";
-			LOGMASKED(LOG_PARALLEL, "VOICE DATA index=0x%02X (%zu bytes): %s\n",
+			LOGMASKED(LOG_PARALLEL, "DSP PROGRAM module=0x%02X (%zu bytes): %s\n",
 				m_par_data[1], m_par_data.size(), hex.c_str());
 		}
 		else if (m_par_data.size() >= 2)
