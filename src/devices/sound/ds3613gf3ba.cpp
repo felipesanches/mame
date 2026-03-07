@@ -33,7 +33,10 @@
       0x0F — Sync/timing marker (no data)
       0x10 — Reset (no data)
       0x30 — Register write (4 data bytes: 0, addr, value_hi, value_lo)
-             NOTE: Never observed for DSP1; algo select mechanism unknown
+             Not used for DSP1 algo selection (DSP2 only: addr 0xD0,0xD3,0xF6,0x3C)
+    Algorithm selection: SubCPU maps effect index (0-39) to algo type (2-11) via
+    ROM table at 0x01F596, then uploads the corresponding DSP PROGRAM modules
+    (0xC8=reverb, 0x54=chorus/mod) and coefficient sets via CMD 0x01
 
 ***************************************************************************/
 
@@ -459,29 +462,29 @@ static const uint8_t s_category_param_indices[8][8] = {
 
 dsp_category ds3613gf3ba_device::algo_to_category(uint8_t algo_id) const
 {
+	// algo_id is the DSP algorithm type (2-11), NOT the effect index (0-39).
+	// SubCPU maps effect indices to algo types via ROM table at 0x01F596:
+	//   Algo 2: Modulation (NO OPERATION, CHORUS, MOD CHORUS, ENHANCER, FLANGER, PHASER, ENSEMBLE)
+	//   Algo 3: Delay/Gate (GATED REVERB, SINGLE DELAY, MULTI TAP DELAY)
+	//   Algo 4: Mod Delay (MODULATION DELAY)
+	//   Algo 5: Reverb A (ROCK ROTARY, ROOM REVERB 1/2, PLATE REVERB 1)
+	//   Algo 6: Reverb B (PLATE REVERB 2, CONCERT REVERB 1/2)
+	//   Algo 7: Reverb C (DARK REVERB 1/2, BRIGHT REVERB 1/2)
+	//   Algo 8: Reverb D (WAVE REVERB 1/2)
+	//   Algo 9: Distortion A (DISTORTION)
+	//   Algo 10: Distortion B (OVERDRIVE, FUZZ, EXCITER, COMPRESSOR)
+	//   Algo 11: Dynamics (SLOW ATTACKER, NOISE FLANGER, PARAMETRIC EQ)
 	switch (algo_id)
 	{
-	// Reverb algorithms (IDs 8, 16-27)
-	case  8: // GATED REVERB
-	case 16: case 17: case 18: case 19: // ROOM/PLATE
-	case 20: case 21: case 22: case 23: // CONCERT/DARK
-	case 24: case 25: case 26: case 27: // BRIGHT/WAVE
-		return DSP_CAT_REVERB;
-
-	// Modulation/delay (IDs 1-6, 9-11, 15)
-	case  1: case  2: case  3: case  4: case  5: case  6: // Chorus/Enhancer/Flanger/Phaser/Ensemble
-	case  9: case 10: case 11: // Single/MultiTap/Modulation Delay
-	case 15: // ROCK ROTARY (uses delay/mod category)
+	case 2:                         // Modulation effects
+	case 3: case 4:                 // Delay/gate effects
 		return DSP_CAT_MODDELAY;
 
-	// Distortion/Dynamics (IDs 32-39)
-	case 32: case 33: case 34: case 35: // Distortion/Overdrive/Fuzz/Exciter
-	case 36: case 37: case 38: case 39: // Compressor/SlowAttacker/NoiseFlanger/PEQ
-		return DSP_CAT_DISTDYN;
+	case 5: case 6: case 7: case 8: // All reverb variants
+		return DSP_CAT_REVERB;
 
-	// Rotary speaker (ID 53)
-	case 53:
-		return DSP_CAT_ROTARY_T;
+	case 9: case 10: case 11:       // Distortion/dynamics
+		return DSP_CAT_DISTDYN;
 
 	default:
 		return DSP_CAT_NONE;

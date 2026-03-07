@@ -80,7 +80,7 @@ private:
 	uint8_t m_regs[128];   // 4 channels x 32 registers
 
 	// Per-channel effect tracking
-	uint8_t m_channel_algo[4];    // Current algorithm ID per channel (0-99)
+	uint8_t m_channel_algo[4];    // Current DSP algorithm type per channel (2-11)
 
 	// Parallel port protocol state
 	uint8_t m_par_cmd;                  // Current command byte
