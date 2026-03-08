@@ -105,9 +105,10 @@ namespace {
 #define LOG_AUDIOMIX (1U << 9)  // Audio mixer/attenuator at 0x150000
 #define LOG_BOOT     (1U << 10) // Boot sequence events (NMI guard, payload verify)
 #define LOG_SOUND    (1U << 11) // Sound/DSP control signals (mute, DSP status)
+#define LOG_DSP2     (1U << 12) // DSP2 (MN19413) GPIO serial framing
 #define LOG_ALL_LATCH (LOG_LATCH | LOG_LATCH_DATA)
 
-#define VERBOSE (LOG_LATCH | LOG_RESET | LOG_HANDSHAKE | LOG_KEYBED | LOG_HEARTBEAT | LOG_COMIF | LOG_SEQBUF | LOG_AUDIOMIX | LOG_BOOT)
+#define VERBOSE (LOG_LATCH | LOG_RESET | LOG_HANDSHAKE | LOG_KEYBED | LOG_HEARTBEAT | LOG_COMIF | LOG_SEQBUF | LOG_AUDIOMIX | LOG_BOOT | LOG_SOUND)
 #include "logmacro.h"
 
 // Timestamped logging: prepend emulated time in seconds to each message
@@ -1367,21 +1368,23 @@ void kn5000_state::kn5000(machine_config &config)
 		if (BIT(old_pe, 0) != BIT(data, 0))
 			LOGMASKED(LOG_SOUND, "Audio mute: %s\n", BIT(data, 0) ? "OFF (unmuted)" : "ON (muted)");
 
-		// CS2 deassert (rising edge of PE.6) — end of DSP2 serial transaction
+		// CS2 deassert (rising edge of PE.6) — end of DSP2 serial byte
 		if (!BIT(old_pe, 6) && BIT(data, 6))
 		{
-			// Both routines have a trailing SCLK pulse after the data loop,
-			// so actual counts are: command=10 (1 framing + 8 data + 1 trailing),
-			// data=9 (8 data + 1 trailing). Shift right by 1 to discard trailing bit.
-			if (m_dsp2_bit_count == 10)
-			{
-				uint8_t byte = (m_dsp2_shift >> 1) & 0xff;
-				m_dsp2->parallel_command_w(byte);
-			}
-			else if (m_dsp2_bit_count == 9)
+			// Both DSP2_Send_Command and DSP2_Send_Data produce 9 SCLK rising edges:
+			//   Command: 1 (ClockPulseHigh) + 7 (bit loop, 1st absorbed) + 1 (trailing) = 9
+			//   Data:    8 (bit loop) + 1 (trailing) = 9
+			// Shift right by 1 to discard the trailing bit, leaving 8 data bits.
+			// The MN19413 device auto-detects command vs data by transaction state.
+			if (m_dsp2_bit_count == 9)
 			{
 				uint8_t byte = (m_dsp2_shift >> 1) & 0xff;
 				m_dsp2->parallel_data_w(byte);
+			}
+			else if (m_dsp2_bit_count > 0)
+			{
+				LOGMASKED(LOG_DSP2, "DSP2 frame: %d bits, shift=0x%04X\n",
+					m_dsp2_bit_count, m_dsp2_shift);
 			}
 			m_dsp2_bit_count = 0;
 			m_dsp2_shift = 0;
