@@ -71,6 +71,7 @@ private:
 		double frequency;    // Note frequency in Hz
 		double env_level;    // Envelope level (0.0 to 1.0)
 		bool releasing;      // True when in release phase
+		uint32_t hold_samples_remaining; // Minimum time to report voice as active after key-off
 	};
 
 	// Pending note from keybed (bridges keybed read to voice key-on)

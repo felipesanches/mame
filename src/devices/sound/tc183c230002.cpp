@@ -157,6 +157,7 @@ void tc183c230002_device::device_start()
 		save_item(NAME(m_voices[i].frequency), i);
 		save_item(NAME(m_voices[i].env_level), i);
 		save_item(NAME(m_voices[i].releasing), i);
+		save_item(NAME(m_voices[i].hold_samples_remaining), i);
 	}
 }
 
@@ -183,6 +184,7 @@ void tc183c230002_device::device_reset()
 		v.frequency = 0.0;
 		v.env_level = 0.0;
 		v.releasing = false;
+		v.hold_samples_remaining = 0;
 	}
 	while (!m_keybed_queue.empty())
 		m_keybed_queue.pop();
@@ -254,6 +256,7 @@ void tc183c230002_device::config_data_w(uint16_t data)
 				m_voices[channel].env_level = 1.0;
 				m_voices[channel].phase = 0.0;
 				m_voices[channel].releasing = false;
+				m_voices[channel].hold_samples_remaining = 48000 * 2;  // 2 seconds at 48kHz
 
 				LOGMASKED(LOG_VOICE, "voice %d: key-on note=%s (MIDI %d) vel=%d freq=%.1f Hz (active: %d/64)\n",
 					channel, midi_note_name(pn.midi_note), pn.midi_note,
@@ -276,6 +279,7 @@ void tc183c230002_device::config_data_w(uint16_t data)
 				m_voices[channel].env_level = 1.0;
 				m_voices[channel].phase = 0.0;
 				m_voices[channel].releasing = false;
+				m_voices[channel].hold_samples_remaining = 48000 * 2;  // 2 seconds at 48kHz
 
 				LOGMASKED(LOG_VOICE, "voice %d: key-on (from pitch reg 0x%04X) note=%s (MIDI %d) freq=%.1f Hz (active: %d/64)\n",
 					channel, m_voices[channel].pitch, midi_note_name(estimated_note),
@@ -295,15 +299,18 @@ void tc183c230002_device::config_data_w(uint16_t data)
 		case 0x7e00: // KEY OFF — release envelope
 		case 0x1200: // RELEASE
 			m_stream->update();
-			if (m_voices[channel].active)
+			// Keep voice "active" while hold timer is running so firmware
+			// status queries (Seq_IsMelodyActive) still see it as playing.
+			if (m_voices[channel].active && m_voices[channel].hold_samples_remaining == 0)
 			{
 				m_voices[channel].active = false;
 				if (m_active_count > 0)
 					m_active_count--;
 			}
 			m_voices[channel].releasing = true;
-			LOGMASKED(LOG_VOICE, "voice %d: %s (active: %d/64)\n", channel,
-				(data == 0x7e00) ? "key-off" : "release", m_active_count);
+			LOGMASKED(LOG_VOICE, "voice %d: %s hold=%u (active: %d/64)\n", channel,
+				(data == 0x7e00) ? "key-off" : "release",
+				m_voices[channel].hold_samples_remaining, m_active_count);
 			break;
 
 		case 0x0000: // OFF — immediate silence
@@ -316,6 +323,7 @@ void tc183c230002_device::config_data_w(uint16_t data)
 			}
 			m_voices[channel].env_level = 0.0;
 			m_voices[channel].releasing = false;
+			m_voices[channel].hold_samples_remaining = 0;
 			LOGMASKED(LOG_VOICE, "voice %d: off (active: %d/64)\n", channel, m_active_count);
 			break;
 
@@ -392,6 +400,20 @@ void tc183c230002_device::config_data_w(uint16_t data)
 uint16_t tc183c230002_device::config_data_r()
 {
 	uint16_t data = m_regs[m_config_addr];
+
+	// For voice control register reads (group 0x00, bank 0), report voice as
+	// still active (KEY ON) while the hold timer is running.  This prevents
+	// the firmware's Seq_IsMelodyActive from seeing the voice as idle before
+	// the real hardware's envelope would have finished.
+	uint8_t group   = (m_config_addr >> 8) & 0x0f;
+	uint8_t bank    = (m_config_addr >> 6) & 0x03;
+	uint8_t channel = m_config_addr & 0x3f;
+	if (group == 0x00 && bank == 0 && channel < 64)
+	{
+		if (m_voices[channel].hold_samples_remaining > 0 || m_voices[channel].env_level > 0.001)
+			data = 0x8100;  // report KEY ON
+	}
+
 	LOGMASKED(LOG_REG, "reg read[0x%04X] = 0x%04X\n", m_config_addr, data);
 	return data;
 }
@@ -470,6 +492,19 @@ void tc183c230002_device::sound_stream_update(sound_stream &stream)
 		{
 			voice_state &voice = m_voices[v];
 
+			// Decrement hold timer for voices in release or finished
+			if (voice.hold_samples_remaining > 0 && (voice.releasing || voice.env_level < 0.001))
+			{
+				voice.hold_samples_remaining--;
+				// When hold timer expires, mark voice inactive if envelope is also done
+				if (voice.hold_samples_remaining == 0 && voice.active && voice.env_level < 0.001)
+				{
+					voice.active = false;
+					if (m_active_count > 0)
+						m_active_count--;
+				}
+			}
+
 			if (voice.env_level < 0.001)
 				continue;
 
@@ -487,6 +522,15 @@ void tc183c230002_device::sound_stream_update(sound_stream &stream)
 				voice.env_level -= RELEASE_RATE;
 				if (voice.env_level < 0.0)
 					voice.env_level = 0.0;
+
+				// When envelope finishes but hold timer still active, voice stays "active"
+				// for firmware status queries. When hold timer also expires, deactivate.
+				if (voice.env_level < 0.001 && voice.hold_samples_remaining == 0 && voice.active)
+				{
+					voice.active = false;
+					if (m_active_count > 0)
+						m_active_count--;
+				}
 			}
 
 			// Apply velocity (0-255 normalized to 0.0-1.0)
