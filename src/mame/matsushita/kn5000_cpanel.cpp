@@ -55,6 +55,7 @@ kn5000_cpanel_device::kn5000_cpanel_device(const machine_config &mconfig, const 
 	m_next_accept(false),
 	m_next_tx_output_enabled(true),
 	m_rx_waiting_for_start(true),
+	m_steady_state(false),
 	m_self_clock_bytes_sent(0),
 	m_txd_cb(*this),
 	m_sclk_out_cb(*this),
@@ -99,6 +100,7 @@ void kn5000_cpanel_device::device_start()
 	save_item(NAME(m_next_accept));
 	save_item(NAME(m_next_tx_output_enabled));
 	save_item(NAME(m_rx_waiting_for_start));
+	save_item(NAME(m_steady_state));
 	save_item(NAME(m_self_clock_bytes_sent));
 	save_item(NAME(m_last_button_state));
 	save_item(NAME(m_pending_button_state));
@@ -122,6 +124,7 @@ void kn5000_cpanel_device::device_reset()
 	m_next_accept = false;
 	m_next_tx_output_enabled = true;
 	m_rx_waiting_for_start = true;
+	m_steady_state = false;
 	m_self_clock_bytes_sent = 0;
 
 	// Clear TX queue and INTA queue
@@ -179,6 +182,16 @@ void kn5000_cpanel_device::tx_start(int state)
 	// for the byte currently being received.
 	m_next_accept = (state != 0);
 	m_next_tx_output_enabled = (state != 0);
+
+	// First phantom byte (tx_start(0)) marks transition from boot to
+	// steady-state.  During boot, the firmware doesn't use PFFC, so all
+	// tx_start calls have state=1.  Once phantom bytes begin, query
+	// responses can no longer be delivered inline and must be suppressed.
+	if (state == 0 && !m_steady_state)
+	{
+		m_steady_state = true;
+		LOGMASKED(LOG_SERIAL, "entering steady-state mode (first phantom byte)\n");
+	}
 
 	// Allow RX counting to begin.  Between bytes, the baud rate timer may
 	// drive extra edges for internal RX completion; m_rx_waiting_for_start
@@ -421,20 +434,37 @@ void kn5000_cpanel_device::process_command()
 	// segment 3 scan mode).  The HLE extracts the segment via param & 0x0F.
 	// Param 0x00 (no flag, segment 0) is a sync/ping — everything else with
 	// a valid segment (0-11) returns button data.
-	// Steady-state polls (0x20, 0xE0): firmware sends these every cycle
-	// to clock response data.  The response can't be delivered inline
-	// because TX is suppressed during phantom bytes, and any data left
-	// in the TX pipeline would be misdelivered via INTA as an unsolicited
-	// button change notification.  The real panel MCU can respond inline
-	// because it drives SCLK directly; the HLE can't, so we silently
-	// ignore these.  Button state is delivered via scan-detected INTA
-	// notifications instead.
+	//
+	// Boot vs steady-state:
+	//   During boot (before first phantom byte), the firmware uses 0x20
+	//   as a normal query in CPanel_ReadAllButtons and CPanel_InitButtonState.
+	//   Responses are delivered via INTA self-clock and read by CPanel_RX_Process.
+	//   During steady-state (after phantom bytes begin), responses can't be
+	//   delivered inline and any INTA-delivered data would be misinterpreted
+	//   as unsolicited button change notifications.
 	case 0x20:  // Poll left panel
 	case 0xe0:  // Poll right panel
 		if (param == 0x00)
 		{
 			// Sync/ping — respond for panel detection during boot
 			send_sync_packet();
+		}
+		else if (!m_steady_state)
+		{
+			// Boot-time query — respond with button data.  The firmware
+			// uses 0x20/0xE0 in CPanel_ReadAllButtons (param 0x10) and
+			// CPanel_InitButtonState (param 0x10).  Response is delivered
+			// via INTA self-clock, same as 0x25/0xE2/0xE3 boot queries.
+			int segment = param & 0x0f;
+			bool is_left = (cmd == 0x20);
+			if (segment <= 0x0a)
+			{
+				send_button_packet(segment, is_left);
+			}
+			else
+			{
+				send_sync_packet();
+			}
 		}
 		else
 		{

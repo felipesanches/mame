@@ -102,6 +102,7 @@ private:
 	bool m_next_accept;        // Deferred accept_next_byte (applied at next byte boundary)
 	bool m_next_tx_output_enabled;  // Deferred tx_output_enabled (applied at next byte boundary)
 	bool m_rx_waiting_for_start;    // Ignore RX edges until next tx_start
+	bool m_steady_state;            // True after first phantom byte (tx_start(0)) — boot is over
 	uint8_t m_self_clock_bytes_sent;  // Bytes sent in current INTA cycle
 	uint8_t m_last_button_state[22];  // 11 segments * 2 panels (confirmed)
 	uint8_t m_pending_button_state[22];  // Per-segment confirmation buffer
