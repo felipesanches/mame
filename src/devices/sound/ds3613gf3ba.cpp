@@ -513,6 +513,19 @@ dsp_category ds3613gf3ba_device::algo_to_category(uint8_t algo_id) const
 	}
 }
 
+dsp_category ds3613gf3ba_device::program_to_category(uint8_t program) const
+{
+	// Fallback category resolution from program module type.
+	// DSP1 never receives CMD 0x30 (algo select), so m_channel_algo
+	// is always 0.  Use the loaded program module to infer category.
+	switch (program)
+	{
+	case 0xC8: return DSP_CAT_REVERB;    // Reverb program (algo types 5-8)
+	case 0x54: return DSP_CAT_MODDELAY;  // Chorus/modulation program (algo types 2-4)
+	default:   return DSP_CAT_NONE;
+	}
+}
+
 char const *ds3613gf3ba_device::get_channel_effect_name(int ch) const
 {
 	if (ch < 0 || ch >= 4)
@@ -540,6 +553,8 @@ char const *ds3613gf3ba_device::get_param_name(int ch, int slot) const
 		return nullptr;
 
 	dsp_category cat = algo_to_category(m_channel_algo[ch]);
+	if (cat == DSP_CAT_NONE)
+		cat = program_to_category(m_channel_program[ch]);
 	if (cat == DSP_CAT_NONE || cat >= 8)
 		return nullptr;
 

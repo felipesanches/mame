@@ -98,6 +98,7 @@ protected:
 private:
 	void process_command();
 	dsp_category algo_to_category(uint8_t algo_id) const;
+	dsp_category program_to_category(uint8_t program) const;
 
 	uint8_t m_addr;        // Current register address (0x00-0x7F)
 	uint8_t m_regs[128];   // 4 channels x 32 registers
