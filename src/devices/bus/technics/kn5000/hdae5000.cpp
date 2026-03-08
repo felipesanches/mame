@@ -6,19 +6,36 @@
 // The HD-AE5000 was an extension board for the Technics KN5000 musical keyboard.
 // It provided a hard-disk, additional audio outputs and a serial port to interface
 // with a computer to transfer files to/from the hard-drive.
+//
+// ATA register mapping (from ROM disassembly):
+//   0x130010  Data (16-bit)          CS0 register 0
+//   0x130012  Error / Features       CS0 register 1
+//   0x130014  Sector Count           CS0 register 2
+//   0x130016  Sector Number          CS0 register 3
+//   0x130018  Cylinder Low           CS0 register 4
+//   0x13001A  Cylinder High          CS0 register 5
+//   0x13001C  Device / Head          CS0 register 6
+//   0x13001E  Status / Command       CS0 register 7
+//   0x130020  Alt Status / Dev Ctrl  CS1 register 6
 
 #include "emu.h"
 #include "hdae5000.h"
 
+#include "bus/ata/ataintf.h"
 #include "bus/ata/hdd.h"
 #include "machine/i8255.h"
+
+#define LOG_ATA  (1U << 1)
+
+#define VERBOSE (LOG_ATA)
+#include "logmacro.h"
 
 namespace {
 
 class hdae5000_device : public device_t, public device_kn5000_extension_interface
 {
 public:
-	static constexpr feature_type unemulated_features() { return feature::DISK | feature::SOUND; }
+	static constexpr feature_type unemulated_features() { return feature::SOUND; }
 
 	hdae5000_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 
@@ -32,21 +49,25 @@ protected:
 	virtual const tiny_rom_entry *device_rom_region() const override ATTR_COLD;
 
 private:
-	required_device<ide_hdd_device> m_hdd;
+	required_device<ata_interface_device> m_ata;
 	required_device<i8255_device> m_ppi;
 	required_memory_region m_rom;
 	memory_share_creator<uint16_t> m_ram;
 
 	void card_map(address_map &map) ATTR_COLD;
 
-	uint8_t ata_r(offs_t offset);
-	void ata_w(offs_t offset, uint8_t data);
+	uint16_t ata_cs0_r(offs_t offset, uint16_t mem_mask = 0xffff);
+	void ata_cs0_w(offs_t offset, uint16_t data, uint16_t mem_mask = 0xffff);
+	uint16_t ata_cs1_r(offs_t offset, uint16_t mem_mask = 0xffff);
+	void ata_cs1_w(offs_t offset, uint16_t data, uint16_t mem_mask = 0xffff);
+
+	void ata_irq_w(int state);
 };
 
 hdae5000_device::hdae5000_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock) :
 	device_t(mconfig, HDAE5000, tag, owner, clock),
 	device_kn5000_extension_interface(mconfig, *this),
-	m_hdd(*this, "hdd"),
+	m_ata(*this, "ata"),
 	m_ppi(*this, "ppi"),
 	m_rom(*this, "rom"),
 	m_ram(*this, "ram", 0x80000, ENDIANNESS_LITTLE)
@@ -60,7 +81,10 @@ void hdae5000_device::program_map(address_space_installer &space)
 
 void hdae5000_device::card_map(address_map &map)
 {
-	map(0x130000, 0x13001f).rw(FUNC(hdae5000_device::ata_r), FUNC(hdae5000_device::ata_w)); // ATA IDE at CN2
+	// ATA CS0 registers at 0x130010-0x13001F (data through status/command)
+	map(0x130010, 0x13001f).rw(FUNC(hdae5000_device::ata_cs0_r), FUNC(hdae5000_device::ata_cs0_w));
+	// ATA CS1 register at 0x130020-0x130021 (alternate status / device control)
+	map(0x130020, 0x130021).rw(FUNC(hdae5000_device::ata_cs1_r), FUNC(hdae5000_device::ata_cs1_w));
 	map(0x160000, 0x160007).umask16(0x00ff).rw(m_ppi, FUNC(i8255_device::read), FUNC(i8255_device::write)); // parallel port interface (NEC uPD71055) IC9
 	map(0x200000, 0x27ffff).ram().share("ram"); // hsram: 2 * 256k bytes Static RAM @ IC5, IC6 (CS5)
 	map(0x280000, 0x2fffff).rom().region(m_rom, 0);
@@ -71,19 +95,44 @@ PPI pin 2 /CS = CN6 pin 59 PPIFCS
 ATA pin 31 INTRQ = CN6 pin 58 HDINT
 */
 
-uint8_t hdae5000_device::ata_r(offs_t offset)
+uint16_t hdae5000_device::ata_cs0_r(offs_t offset, uint16_t mem_mask)
 {
-	return 0; //TODO: Implement-me!
+	uint16_t data = m_ata->cs0_r(offset, mem_mask);
+	LOGMASKED(LOG_ATA, "ATA CS0 read  reg %u: 0x%04X\n", offset, data);
+	return data;
 }
 
-void hdae5000_device::ata_w(offs_t offset, uint8_t data)
+void hdae5000_device::ata_cs0_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	 //TODO: Implement-me!
+	LOGMASKED(LOG_ATA, "ATA CS0 write reg %u: 0x%04X\n", offset, data);
+	m_ata->cs0_w(offset, data, mem_mask);
+}
+
+uint16_t hdae5000_device::ata_cs1_r(offs_t offset, uint16_t mem_mask)
+{
+	// CS1 register 6 = Alternate Status (offset 0 in our mapping corresponds to CS1 reg 6)
+	uint16_t data = m_ata->cs1_r(6, mem_mask);
+	LOGMASKED(LOG_ATA, "ATA CS1 read  (alt status): 0x%04X\n", data);
+	return data;
+}
+
+void hdae5000_device::ata_cs1_w(offs_t offset, uint16_t data, uint16_t mem_mask)
+{
+	// CS1 register 6 = Device Control
+	LOGMASKED(LOG_ATA, "ATA CS1 write (dev ctrl): 0x%04X\n", data);
+	m_ata->cs1_w(6, data, mem_mask);
+}
+
+void hdae5000_device::ata_irq_w(int state)
+{
+	LOGMASKED(LOG_ATA, "ATA IRQ: %d\n", state);
+	// TODO: route to extension slot IRQ line (HDINT on CN6 pin 58)
 }
 
 void hdae5000_device::device_add_mconfig(machine_config &config)
 {
-	IDE_HARDDISK(config, m_hdd, 0);
+	ATA_INTERFACE(config, m_ata).options(ata_devices, "hdd", nullptr, false);
+	m_ata->irq_handler().set(FUNC(hdae5000_device::ata_irq_w));
 
 	/* Optional Parallel Port */
 	I8255(config, m_ppi); // actual chip is a NEC uPD71055 @ IC9
