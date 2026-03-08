@@ -1478,9 +1478,7 @@ void kn5000_state::kn5000(machine_config &config)
 	UPD72067(config, m_fdc, 32'000'000); // actual controller is UPD72068GF-3B9 at IC208
 	m_fdc->intrq_wr_callback().set_inputline(m_maincpu, TLCS900_INT4);
 	m_fdc->drq_wr_callback().set_inputline(m_maincpu, TLCS900_INT5);
-	// TODO: TC signal — maincpu Timer 0 output (TO0) wired to FDC TC input.
-	// TMP94C241 timer output pin callbacks not yet implemented in MAME.
-	// Multi-sector FDC transfers may not terminate correctly without TC.
+	m_maincpu->to0().set(m_fdc, FUNC(upd765_family_device::tc_line_w));
 
 
 	FLOPPY_CONNECTOR(config, "fdc:0", kn5000_floppies, "35hd", floppy_image_device::default_mfm_floppy_formats).enable_sound(true);
