@@ -75,32 +75,52 @@ void mn19413_device::device_reset()
 //--------------------------------------------------------------------------
 //  Parallel port interface (from driver GPIO bit-bang decoder)
 //
-//  Bytes arrive one at a time. The firmware's bytecode interpreter sends:
-//    Op0E: 1 command + N data bytes (tight sequence, no idle gap)
-//    Op0D: calls DSP2_SPI_BusIdle (creates idle gap = transaction boundary)
+//  Bytes arrive one at a time from the firmware's bytecode interpreter.
+//  The stream is self-framing based on protocol knowledge:
 //
-//  We use a 2ms idle timer to detect transaction boundaries. Within a
-//  transaction, the first byte is the command and subsequent are data.
-//  Register writes (CMD 0x30) are decoded inline as 4-byte groups.
+//  Register writes: 0x30 command + groups of [0x00, addr, val_hi, val_lo]
+//  Algorithm load:  other command bytes + raw data streams
+//
+//  The firmware may idle (Op0D) between the 0x30 command byte and its
+//  data, so we cannot rely on idle gaps for framing. Instead we track
+//  protocol state: when we see 0x30 we enter register-write mode and
+//  accumulate 4-byte groups. A non-0x00 first byte of a group (or an
+//  idle timeout) ends the register write sequence.
+//
+//  For non-0x30 commands, we use an idle timeout to detect the end.
 //--------------------------------------------------------------------------
 
 void mn19413_device::parallel_data_w(uint8_t data)
 {
 	if (m_awaiting_cmd)
 	{
-		// First byte after idle = command
+		// First byte = command
 		m_cmd = data;
 		m_data.clear();
 		m_awaiting_cmd = false;
+		LOGMASKED(LOG_STREAM, "CMD byte: 0x%02X\n", data);
 	}
-	else
+	else if (m_cmd == 0x30)
 	{
+		// Register write mode: accumulate 4-byte groups [0x00, addr, hi, lo]
 		m_data.push_back(data);
 
-		// Decode register write: CMD 0x30, data in groups of 4 bytes
-		// [0x00, addr, val_hi, val_lo]
-		if (m_cmd == 0x30 && (m_data.size() % 4) == 0)
+		size_t pos = m_data.size() % 4;
+		if (pos == 1 && data != 0x00)
 		{
+			// Expected 0x00 at start of group but got something else.
+			// This byte is actually the start of a new command.
+			m_data.pop_back();
+			process_transaction();
+			// Re-enter as new command byte
+			m_cmd = data;
+			m_data.clear();
+			LOGMASKED(LOG_STREAM, "CMD byte: 0x%02X (after reg writes)\n", data);
+			// Don't set m_awaiting_cmd — we already have the command
+		}
+		else if (pos == 0)
+		{
+			// Completed a 4-byte group — decode the register write
 			size_t base = m_data.size() - 4;
 			uint8_t addr = m_data[base + 1];
 			uint16_t value = (uint16_t(m_data[base + 2]) << 8) | m_data[base + 3];
@@ -108,10 +128,14 @@ void mn19413_device::parallel_data_w(uint8_t data)
 			LOGMASKED(LOG_REGWRITE, "REG[0x%02X] = 0x%04X\n", addr, value);
 		}
 	}
+	else
+	{
+		// Non-register-write command: accumulate raw data
+		m_data.push_back(data);
+	}
 
-	// Reset idle timer — firmware inter-byte gap within a transaction is <100us,
-	// while Op0D (yield to scheduler) creates gaps of several ms
-	m_idle_timer->adjust(attotime::from_msec(2));
+	// Reset idle timer as fallback boundary detection
+	m_idle_timer->adjust(attotime::from_msec(50));
 }
 
 void mn19413_device::transaction_end()
@@ -126,6 +150,8 @@ void mn19413_device::transaction_end()
 
 TIMER_CALLBACK_MEMBER(mn19413_device::idle_timeout)
 {
+	LOGMASKED(LOG_STREAM, "Idle timeout: cmd=0x%02X, %zu data bytes\n",
+		m_cmd, m_data.size());
 	transaction_end();
 }
 
@@ -141,9 +167,9 @@ void mn19413_device::process_transaction()
 	{
 		LOGMASKED(LOG_STREAM, "CMD 0x%02X: %zu data bytes [",
 			m_cmd, m_data.size());
-		for (size_t i = 0; i < m_data.size() && i < 16; i++)
+		for (size_t i = 0; i < m_data.size() && i < 64; i++)
 			LOGMASKED(LOG_STREAM, "%s0x%02X", i ? " " : "", m_data[i]);
-		if (m_data.size() > 16)
+		if (m_data.size() > 64)
 			LOGMASKED(LOG_STREAM, " ...");
 		LOGMASKED(LOG_STREAM, "]\n");
 	}
