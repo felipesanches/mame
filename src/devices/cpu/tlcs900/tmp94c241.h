@@ -128,6 +128,13 @@ public:
 	auto portz_read()  { return m_port_read[PORT_Z].bind(); }
 	auto portz_write() { return m_port_write[PORT_Z].bind(); }
 
+	// 8-bit timer output callbacks (active-high, active on timer match)
+	static constexpr uint8_t NUM_8BIT_TIMERS = 4;
+	auto to0() { return m_timer_out_cb[0].bind(); }
+	auto to1() { return m_timer_out_cb[1].bind(); }
+	auto to2() { return m_timer_out_cb[2].bind(); }
+	auto to3() { return m_timer_out_cb[3].bind(); }
+
 	// Synchronously clear INT0 level and interrupt flag.
 	// Called from driver latch-read wrappers to work around
 	// set_input_line's deferred synchronize() mechanism.
@@ -240,6 +247,10 @@ private:
 
 	// analogue inputs, sampled at 10 bits
 	devcb_read16::array<8> m_an_read;
+
+	// 8-bit timer output callbacks and state
+	devcb_write_line::array<NUM_8BIT_TIMERS> m_timer_out_cb;
+	bool m_timer_out_state[NUM_8BIT_TIMERS];
 
 	// I/O Ports
 	devcb_read8::array<NUM_PORTS> m_port_read;

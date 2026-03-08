@@ -13,6 +13,7 @@
 #define LOG_DMA    (1U << 1)
 #define LOG_SERIAL (1U << 2)
 #define LOG_IRQ    (1U << 3)
+#define LOG_TIMER  (1U << 4)
 
 #define VERBOSE (0)
 #include "logmacro.h"
@@ -82,6 +83,7 @@ static constexpr u8 NUM_MASKABLE_IRQS = sizeof(tmp94c241_irq_vector_map) / 4;
 tmp94c241_device::tmp94c241_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock) :
 	tlcs900h_device(mconfig, TMP94C241, tag, owner, clock),
 	m_an_read(*this, 0),
+	m_timer_out_cb(*this),
 	m_port_read(*this, 0),
 	m_port_write(*this),
 	m_port_latch{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
@@ -159,6 +161,7 @@ void tmp94c241_device::device_start()
 	save_item(NAME(m_port_control));
 	save_item(NAME(m_port_function));
 	save_item(NAME(m_timer_flipflops));
+	save_item(NAME(m_timer_out_state));
 	save_item(NAME(m_t8run));
 	save_item(NAME(m_t01mod));
 	save_item(NAME(m_t23mod));
@@ -243,6 +246,7 @@ void tmp94c241_device::device_reset()
 
 	std::fill_n(&m_port_control[0], NUM_PORTS, 0x00);
 	std::fill_n(&m_timer_flipflops[0], 12, 0x00);
+	std::fill_n(&m_timer_out_state[0], NUM_8BIT_TIMERS, false);
 	m_t8run = 0x00;
 	m_trdc = 0x00;
 	m_t01mod = 0x00;
@@ -1571,6 +1575,11 @@ void tmp94c241_device::tlcs900_handle_timers()
 
 						if (invert)
 							change_timer_flipflop(timer_index | 1, FF_INVERT);
+
+						// Toggle the timer output (TOn) and notify via callback
+						m_timer_out_state[timer_index] = !m_timer_out_state[timer_index];
+						LOGMASKED(LOG_TIMER, "TO%d %s\n", timer_index, m_timer_out_state[timer_index] ? "asserted" : "cleared");
+						m_timer_out_cb[timer_index](m_timer_out_state[timer_index] ? 1 : 0);
 					}
 				}
 			};
