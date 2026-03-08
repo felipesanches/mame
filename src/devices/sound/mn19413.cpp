@@ -28,8 +28,9 @@
 #define LOG_REGWRITE (1U << 1)   // Register writes (CMD 0x30)
 #define LOG_STREAM   (1U << 2)   // Non-register-write bytes
 #define LOG_SERIAL   (1U << 3)   // Serial byte reception (unused path)
+#define LOG_ALGO     (1U << 4)   // Algorithm loads (CMD 0x01)
 
-#define VERBOSE (LOG_REGWRITE | LOG_STREAM)
+#define VERBOSE (LOG_REGWRITE | LOG_STREAM | LOG_ALGO)
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(MN19413, mn19413_device, "mn19413", "MN19413 Effect DSP")
@@ -162,6 +163,14 @@ void mn19413_device::process_transaction()
 		size_t reg_writes = m_data.size() / 4;
 		LOGMASKED(LOG_REGWRITE, "CMD 0x30: %zu reg write%s\n",
 			reg_writes, reg_writes != 1 ? "s" : "");
+	}
+	else if (m_cmd == 0x01 && m_data.size() >= 2)
+	{
+		// Algorithm load: data starts with 16-bit DSP address
+		// Generic effects use addr 0x0054, channel 1 reverb/chorus uses 0x00C8
+		uint16_t dsp_addr = (uint16_t(m_data[0]) << 8) | m_data[1];
+		LOGMASKED(LOG_ALGO, "CMD 0x01 ALGO LOAD: DSP addr=0x%04X, %zu data bytes\n",
+			dsp_addr, m_data.size());
 	}
 	else if (!m_data.empty())
 	{
