@@ -104,6 +104,7 @@ namespace {
 #define LOG_SEQBUF   (1U << 8)  // Sequencer ring buffer pointer changes
 #define LOG_AUDIOMIX (1U << 9)  // Audio mixer/attenuator at 0x150000
 #define LOG_BOOT     (1U << 10) // Boot sequence events (NMI guard, payload verify)
+#define LOG_SOUND    (1U << 11) // Sound/DSP control signals (mute, DSP status)
 #define LOG_ALL_LATCH (LOG_LATCH | LOG_LATCH_DATA)
 
 #define VERBOSE (LOG_LATCH | LOG_RESET | LOG_HANDSHAKE | LOG_KEYBED | LOG_HEARTBEAT | LOG_COMIF | LOG_SEQBUF | LOG_AUDIOMIX | LOG_BOOT)
@@ -1357,9 +1358,14 @@ void kn5000_state::kn5000(machine_config &config)
 
 	// SUBCPU PORT E:
 	//   bit 6 = ~CS2 (DSP2 chip select, active low)
+	//   bit 0 = MUTE (audio output mute control)
 	m_subcpu->porte_write().set([this](u8 data) {
 		uint8_t old_pe = m_subcpu_pe;
 		m_subcpu_pe = data;
+
+		// Audio mute control (PE.0) — confirmed by MUTE_AND_HALT routine at 0x9360
+		if (BIT(old_pe, 0) != BIT(data, 0))
+			LOGMASKED(LOG_SOUND, "Audio mute: %s\n", BIT(data, 0) ? "OFF (unmuted)" : "ON (muted)");
 
 		// CS2 deassert (rising edge of PE.6) — end of DSP2 serial transaction
 		if (!BIT(old_pe, 6) && BIT(data, 6))

@@ -28,6 +28,29 @@
       Row 4 (0x40): Delay/Chorus/Flanger/Phaser effects
       Row 6 (0x60): Reverb effects (REVERB TIME, PRE DELAY, HI DAMP, ER.LEVEL)
 
+    Parallel port protocol bytecode handlers (0x03C32E, 1613 bytes):
+      The SubCPU has a bytecode interpreter that reads compact programs
+      from ROM and translates them into DSP command+data write sequences.
+      Bytecodes are 2-byte headers (opcode nibble + 12-bit data count).
+
+      Op0 (570B): Cmd + 2 preamble + groups-of-5 with 3-way branching:
+                  0x00=static 12-bit addr, 0x0A=raw, else=param-modified.
+                  Branch C mixes 32-bit runtime parameter into coefficients.
+      Op1 (249B): Cmd + 2 preamble + groups-of-5 with 12-bit addr (4-bit shift)
+      Op2 (167B): Cmd + 2 preamble + groups-of-3 raw data
+      Op3 (153B): Cmd + 16-bit addr (8-bit shift) + raw tail data
+      Op4 (26B):  Single command byte only
+      Op5 (448B): Like Op0 but 0x08=addr (masked), else=param-modified
+      Op0D:       Yield to scheduler
+      Op0E:       Send command + data bytes directly to hardware
+      Op0F:       End program
+
+    Real-time parameter control:
+      DSP_ParameterWriteEngine re-runs bytecode programs when MIDI
+      parameters change. Op0/Op5 Branch C applies a 32-bit offset to
+      template coefficients, updating multiple DSP registers per change.
+      Translation tables at SubCPU ROM 0x1ED6D/0x1F09C/0x1F22C.
+
 ***************************************************************************/
 
 #ifndef MAME_SOUND_DS3613GF3BA_H

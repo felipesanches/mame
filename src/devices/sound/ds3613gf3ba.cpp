@@ -36,7 +36,14 @@
              Not used for DSP1 algo selection (DSP2 only: addr 0xD0,0xD3,0xF6,0x3C)
     Algorithm selection: SubCPU maps effect index (0-39) to algo type (2-11) via
     ROM table at 0x01F596, then uploads the corresponding DSP PROGRAM modules
-    (0xC8=reverb, 0x54=chorus/mod) and coefficient sets via CMD 0x01
+    (0xC8=reverb, 0x54=chorus/mod) and coefficient sets via CMD 0x01.
+
+    Real-time parameter control: DSP_ParameterWriteEngine re-runs bytecode
+    programs when MIDI parameters change. Bytecode opcode 0/5 handlers mix a
+    32-bit runtime parameter offset into template coefficient data during writes,
+    allowing a single MIDI CC to update multiple DSP registers simultaneously.
+    Translation tables at SubCPU ROM 0x1ED6D (param index), 0x1F09C (register
+    addresses), 0x1F22C (program pointers).
 
 ***************************************************************************/
 
