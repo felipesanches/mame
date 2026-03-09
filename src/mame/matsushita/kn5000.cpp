@@ -1484,11 +1484,10 @@ void kn5000_state::kn5000(machine_config &config)
 	UPD72067(config, m_fdc, 32'000'000); // actual controller is UPD72068GF-3B9 at IC208
 	m_fdc->intrq_wr_callback().set_inputline(m_maincpu, TLCS900_INT4);
 	m_fdc->drq_wr_callback().set_inputline(m_maincpu, TLCS900_INT5);
-	// TODO(kn5000-tgd6): Timer output callbacks fire unconditionally even when
-	// the pin is not configured as timer output.  The firmware uses Timer 0/1 in
-	// cascade mode as a system tick, so TO0 toggles hundreds of times per second.
-	// This sends spurious TC pulses to the FDC.  Proper fix: gate TO0 callback
-	// on port function register (only fire when pin is configured as timer output).
+	// Timer 0 output (TO0) wired to FDC terminal count.  The CPU device now
+	// gates the callback on the port function register, so spurious TC pulses
+	// are suppressed when the pin is configured as GPIO (which is the default
+	// during the cascade-mode system tick).
 	m_maincpu->to0().set(m_fdc, FUNC(upd765_family_device::tc_line_w));
 
 

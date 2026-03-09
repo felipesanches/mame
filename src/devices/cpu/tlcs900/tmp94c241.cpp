@@ -1582,10 +1582,16 @@ void tmp94c241_device::tlcs900_handle_timers()
 						if (invert)
 							change_timer_flipflop(timer_index | 1, FF_INVERT);
 
-						// Toggle the timer output (TOn) and notify via callback
+						// Toggle the timer output (TOn) and notify via callback.
+						// Only fire the callback if the pin is configured as timer output
+						// (port function register bit set).  Timers 0/1 share PORT_C bit 0,
+						// timers 2/3 share PORT_C bit 1.
 						m_timer_out_state[timer_index] = !m_timer_out_state[timer_index];
-						LOGMASKED(LOG_TIMER, "TO%d %s\n", timer_index, m_timer_out_state[timer_index] ? "asserted" : "cleared");
-						m_timer_out_cb[timer_index](m_timer_out_state[timer_index] ? 1 : 0);
+						if (BIT(m_port_function[PORT_C], timer_index >> 1))
+						{
+							LOGMASKED(LOG_TIMER, "TO%d %s\n", timer_index, m_timer_out_state[timer_index] ? "asserted" : "cleared");
+							m_timer_out_cb[timer_index](m_timer_out_state[timer_index] ? 1 : 0);
+						}
 					}
 				}
 			};
