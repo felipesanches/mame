@@ -1453,27 +1453,27 @@ void tmp94c241_device::tlcs900_check_irqs()
 			!(m_iimc & 0x02) &&
 			m_level[TLCS900_INT0] == ASSERT_LINE)
 		{
-			// Check if any DMA channel is configured for INT0's start vector
-			bool hdma_steals_int0 = false;
-			for (int ch = 0; ch < 4; ch++)
-			{
-				if (m_dma_vector[ch] == 0x0a) // INT0 DMA start vector
-				{
-					hdma_steals_int0 = true;
-					break;
-				}
-			}
-			if (!hdma_steals_int0)
-			{
-				m_int_reg[INTE0AD] |= 0x08;
-				m_check_irqs = 1;
-				// Force a scheduler break so other CPUs can update
-				// handshake signals (SSTAT/MSTAT) that the INT0 handler
-				// checks before reading the latch.  Without this, a
-				// tight INT0 re-entry loop can starve the sub CPU,
-				// preventing it from clearing its handshake flags.
-				abort_timeslice();
-			}
+			// Check if any DMA channel is configured for INT0's start vector.
+			// When HDMA is active, the DMA engine handles the latch read and
+			// the interrupt flag lifecycle — do NOT re-assert the flag here.
+			//
+			// When HDMA is NOT configured (main CPU uses software-triggered
+			// DMAR instead), do NOT re-assert either.  The firmware's INT0
+			// handler has three paths:
+			//   1. MSTAT1=0 → triggers DMAR to read latch, returns via RETI
+			//   2. MSTAT1=1, SSTAT0=0 → reads latch directly, returns via RETI
+			//   3. MSTAT1=1, SSTAT0=1 → returns via RETI WITHOUT reading
+			// In paths 1-2, the latch read triggers data_pending_callback which
+			// deasserts INT0 externally.  In path 3, the handler intentionally
+			// skips the read (sub CPU hasn't cleared its handshake yet).
+			// Re-asserting the flag after path 3 causes an infinite INT0 loop
+			// that starves the main loop (INTT3 scheduler at lower priority
+			// never fires), preventing button processing and state transitions.
+			//
+			// On real hardware, the external INT0 pin stays asserted until the
+			// latch is actually read, but the synchronize() timing mismatch in
+			// MAME means we must let the deassert propagate naturally rather
+			// than re-asserting preemptively.
 		}
 
 		// Compute the default priority index from the vector table.
