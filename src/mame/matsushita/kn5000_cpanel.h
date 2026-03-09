@@ -104,12 +104,8 @@ private:
 	bool m_rx_waiting_for_start;    // Ignore RX edges until next tx_start
 	bool m_steady_state;            // True after first phantom byte (tx_start(0)) — boot is over
 	uint8_t m_self_clock_bytes_sent;  // Bytes sent in current INTA cycle
-	bool m_inta_delivery_pending;    // True when draining button data via INTA
 	uint8_t m_last_button_state[22];  // 11 segments * 2 panels (confirmed)
 	uint8_t m_pending_button_state[22];  // Per-segment confirmation buffer
-
-	// Debug file (temporary, for INTA delivery debugging)
-	FILE *m_dbg_file;
 
 	// Callbacks
 	devcb_write_line m_txd_cb;
