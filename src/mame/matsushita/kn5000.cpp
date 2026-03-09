@@ -108,7 +108,7 @@ namespace {
 #define LOG_DSP2     (1U << 12) // DSP2 (MN19413) GPIO serial framing
 #define LOG_ALL_LATCH (LOG_LATCH | LOG_LATCH_DATA)
 
-#define VERBOSE (LOG_LATCH | LOG_RESET | LOG_HANDSHAKE | LOG_KEYBED | LOG_HEARTBEAT | LOG_COMIF | LOG_SEQBUF | LOG_AUDIOMIX | LOG_BOOT | LOG_SOUND)
+#define VERBOSE (0)
 #include "logmacro.h"
 
 // Timestamped logging: prepend emulated time in seconds to each message
@@ -321,7 +321,6 @@ void kn5000_state::maincpu_latch_w(uint8_t data)
 	else
 		TLOGMASKED(LOG_LATCH_DATA, "SubCPU -> MainCPU latch: 0x%02X (write #%u)\n",
 			data, m_maincpu_latch_write_count);
-
 
 	// Force tight CPU interleaving so maincpu DMAR can read each byte
 	// before the next one is written. Without this, subcpu HDMA ch2 can
@@ -1258,13 +1257,19 @@ void kn5000_state::kn5000(machine_config &config)
 	//   bit 6 = (input) COM.MAC
 	//   bit 7 = (input) COM.MIDI
 	m_maincpu->portz_read().set([this] {
-		return m_com_select->read() | (m_sstat << 2);
+		// PORT Z bit layout (main CPU perspective):
+		//   bits 0-1: MSTAT (output - readback of what main CPU wrote)
+		//   bits 2-3: SSTAT (input from sub CPU)
+		//   bits 4-7: COM_SELECT (input - interface selection switches)
+		return m_mstat | m_com_select->read() | (m_sstat << 2);
 	});
 	m_maincpu->portz_write().set([this] (u8 data) {
 		uint8_t new_mstat = data & 3;
 		if (new_mstat != m_mstat)
+		{
 			TLOGMASKED(LOG_HANDSHAKE, "MSTAT: %d -> %d (PZ=0x%02X) PC=%06X\n",
 				m_mstat, new_mstat, data, m_maincpu->pc());
+		}
 		m_mstat = new_mstat;
 	});
 
@@ -1320,9 +1325,10 @@ void kn5000_state::kn5000(machine_config &config)
 	});
 	m_subcpu->portd_write().set([this] (u8 data) {
 		uint8_t new_sstat = data & 3;
-		if (new_sstat != m_sstat)
+		if (new_sstat != m_sstat) {
 			TLOGMASKED(LOG_HANDSHAKE, "SSTAT: %d -> %d (PD=0x%02X) PC=%06X\n",
 				m_sstat, new_sstat, data, m_subcpu->pc());
+		}
 		m_sstat = new_sstat;
 	});
 

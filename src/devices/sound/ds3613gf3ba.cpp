@@ -53,7 +53,7 @@
 #define LOG_DSP      (1U << 1)   // Memory-mapped register writes
 #define LOG_PARALLEL (1U << 2)   // Parallel port command/data
 
-#define VERBOSE (LOG_DSP | LOG_PARALLEL)
+#define VERBOSE (0)
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(DS3613GF3BA, ds3613gf3ba_device, "ds3613gf3ba", "DS3613GF-3BA Effect DSP")

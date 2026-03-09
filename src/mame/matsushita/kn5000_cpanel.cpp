@@ -28,7 +28,7 @@
 #define LOG_BUTTONS  (1U << 3)
 #define LOG_LEDS     (1U << 4)
 
-#define VERBOSE (LOG_BUTTONS | LOG_SERIAL)
+#define VERBOSE (LOG_BUTTONS)
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(KN5000_CPANEL, kn5000_cpanel_device, "kn5000_cpanel", "KN5000 Control Panel HLE")
@@ -57,6 +57,8 @@ kn5000_cpanel_device::kn5000_cpanel_device(const machine_config &mconfig, const 
 	m_rx_waiting_for_start(true),
 	m_steady_state(false),
 	m_self_clock_bytes_sent(0),
+	m_inta_delivery_pending(false),
+	m_dbg_file(nullptr),
 	m_txd_cb(*this),
 	m_sclk_out_cb(*this),
 	m_inta_cb(*this),
@@ -102,11 +104,16 @@ void kn5000_cpanel_device::device_start()
 	save_item(NAME(m_rx_waiting_for_start));
 	save_item(NAME(m_steady_state));
 	save_item(NAME(m_self_clock_bytes_sent));
+	save_item(NAME(m_inta_delivery_pending));
 	save_item(NAME(m_last_button_state));
 	save_item(NAME(m_pending_button_state));
 
 	// Initial state - line idle high
 	m_txd_cb(1);
+
+	// Debug file (temporary)
+	if (!m_dbg_file)
+		m_dbg_file = nullptr; // fopen("/tmp/cpanel_delivery.log", "w");
 }
 
 void kn5000_cpanel_device::device_reset()
@@ -126,6 +133,7 @@ void kn5000_cpanel_device::device_reset()
 	m_rx_waiting_for_start = true;
 	m_steady_state = false;
 	m_self_clock_bytes_sent = 0;
+	m_inta_delivery_pending = false;
 
 	// Clear TX queue and INTA queue
 	while (!m_tx_queue.empty())
@@ -173,6 +181,12 @@ void kn5000_cpanel_device::tx_start(int state)
 	// Called when CPU starts transmitting a new byte.
 	// state=1: real byte (PFFC enabled, SCLK pin driven)
 	// state=0: phantom byte (PFFC disabled, pin high-Z)
+	if (m_dbg_file && (m_self_clocking || m_inta_asserted))
+	{
+		fprintf(m_dbg_file, "tx_start(%d) DURING self_clock=%d inta=%d tx_out_en=%d next_tx_out=%d\n",
+			state, m_self_clocking, m_inta_asserted, m_tx_output_enabled, m_next_tx_output_enabled);
+		fflush(m_dbg_file);
+	}
 	LOGMASKED(LOG_SERIAL, "tx_start: state=%d (%s byte) rx_count=%d\n",
 		state, state ? "real" : "phantom", m_rx_clock_count);
 
@@ -219,11 +233,11 @@ void kn5000_cpanel_device::sioclk(int state)
 
 	m_sioclk_state = state;
 
-	// Sliding idle_detect window: retrigger on every edge while response
-	// data is pending.  Fires 50µs after the last external clock edge,
-	// which is after the firmware's phantom bytes complete but before
-	// its WaitTXReady delay (~375µs) checks the INTA line.
-	if (!m_self_clocking && (m_tx_clock_count > 0 || !m_tx_queue.empty() || !m_inta_queue.empty()))
+	// Sliding idle_detect window: retrigger on every edge while button
+	// notification data is pending.  Only trigger on inta_queue — tx_queue
+	// may contain poll response data that should NOT be delivered via INTA
+	// self-clocking.  Fires 50µs after the last external clock edge.
+	if (!m_self_clocking && !m_inta_queue.empty())
 	{
 		m_idle_detect_timer->adjust(attotime::from_usec(50));
 	}
@@ -270,6 +284,11 @@ void kn5000_cpanel_device::sioclk(int state)
 		if (!m_tx_output_enabled)
 		{
 			// Phantom byte edge — hold response data
+			if (m_self_clocking && m_dbg_file)
+			{
+				fprintf(m_dbg_file, "TX SUPPRESSED during self_clock! tx_out_en=0 tx_clk=%d\n", m_tx_clock_count);
+				fflush(m_dbg_file);
+			}
 		}
 		else if (m_tx_skip_first_falling)
 		{
@@ -305,7 +324,15 @@ void kn5000_cpanel_device::sioclk(int state)
 				// sets it to 8) — self_clock_callback's rising-edge check
 				// would never see 0 for intermediate bytes.
 				if (m_self_clocking)
+				{
 					m_self_clock_bytes_sent++;
+					if (m_dbg_file)
+					{
+						fprintf(m_dbg_file, "self_clock TX byte #%d: %02X (tx_q=%zu)\n",
+							m_self_clock_bytes_sent, m_tx_shift_register, m_tx_queue.size());
+						fflush(m_dbg_file);
+					}
+				}
 
 				// Byte sent, check for more
 				if (!m_tx_queue.empty())
@@ -793,13 +820,28 @@ TIMER_CALLBACK_MEMBER(kn5000_cpanel_device::idle_detect_callback)
 	// Drain scan-detected button changes into the TX queue.  These were
 	// buffered separately to prevent firmware SCLK (during polling) from
 	// consuming them — they must only be delivered via INTA self-clocking.
-	while (!m_inta_queue.empty())
+	if (!m_inta_queue.empty())
 	{
-		send_byte(m_inta_queue.front());
-		m_inta_queue.pop();
+		// New button data available — flush any stale poll response data
+		// that accumulated in tx_queue from firmware-driven polling.
+		while (!m_tx_queue.empty())
+			m_tx_queue.pop();
+		m_tx_clock_count = 0;
+		m_inta_delivery_pending = true;
+
+		if (m_dbg_file)
+			fprintf(m_dbg_file, "idle_detect: drain inta_queue (%zu bytes)\n", m_inta_queue.size());
+		while (!m_inta_queue.empty())
+		{
+			uint8_t b = m_inta_queue.front();
+			if (m_dbg_file) fprintf(m_dbg_file, "  drain %02X\n", b);
+			send_byte(b);
+			m_inta_queue.pop();
+		}
+		if (m_dbg_file) fflush(m_dbg_file);
 	}
 
-	if (m_tx_clock_count > 0 || !m_tx_queue.empty())
+	if (m_inta_delivery_pending && (m_tx_clock_count > 0 || !m_tx_queue.empty()))
 	{
 		// Enable TX output — response data was frozen during phantom bytes
 		m_tx_output_enabled = true;
@@ -821,10 +863,24 @@ TIMER_CALLBACK_MEMBER(kn5000_cpanel_device::idle_detect_callback)
 
 		// Reset byte counter for this INTA cycle
 		m_self_clock_bytes_sent = 0;
+		if (m_dbg_file)
+		{
+			fprintf(m_dbg_file, "idle_detect: starting self_clock, tx_clk=%d tx_q=%zu inta_asserted=%d delivery_pending=%d\n",
+				m_tx_clock_count, m_tx_queue.size(), m_inta_asserted, m_inta_delivery_pending);
+			fflush(m_dbg_file);
+		}
 
 		// Brief delay lets the CPU's INTA ISR enable receive mode
 		m_self_clocking = true;
 		m_self_clock_timer->adjust(attotime::from_usec(20), 0, attotime::from_hz(250000));
+	}
+	else if (m_inta_asserted)
+	{
+		// No more data to send after self-clock pause — deassert INTA
+		// so button_scan_callback resumes scanning for new changes.
+		LOGMASKED(LOG_SERIAL, "idle_detect: no more data, deasserting INTA\n");
+		m_inta_asserted = false;
+		m_inta_cb(0);
 	}
 }
 
@@ -832,6 +888,8 @@ TIMER_CALLBACK_MEMBER(kn5000_cpanel_device::self_clock_callback)
 {
 	// Toggle SCLK to shift out response data
 	int new_state = m_sioclk_state ^ 1;
+	static int sc_toggles = 0;
+	sc_toggles++;
 	m_sclk_out_cb(new_state);
 
 	// Check completion after rising edges (CPU samples last bit)
@@ -839,10 +897,17 @@ TIMER_CALLBACK_MEMBER(kn5000_cpanel_device::self_clock_callback)
 	{
 		if (m_tx_queue.empty() && m_tx_clock_count == 0)
 		{
-			// All response data sent — stop self-clocking and deassert INTA.
+			// All button notification data sent — stop self-clocking.
+			if (m_dbg_file)
+			{
+				fprintf(m_dbg_file, "self_clock TX COMPLETE: %d bytes sent, %d toggles, deasserting INTA\n",
+					m_self_clock_bytes_sent, sc_toggles);
+				fflush(m_dbg_file);
+			}
 			LOGMASKED(LOG_SERIAL, "self-clock TX complete (%d bytes), deasserting INTA\n",
 				m_self_clock_bytes_sent);
 			m_self_clocking = false;
+			m_inta_delivery_pending = false;
 			m_self_clock_timer->reset(attotime::never);
 
 			// Return TXD to idle high so stale data bits don't linger
@@ -862,6 +927,12 @@ TIMER_CALLBACK_MEMBER(kn5000_cpanel_device::self_clock_callback)
 			// Pause after each 2-byte packet — firmware processes one
 			// packet per INTA cycle.  Keep INTA asserted to block
 			// WaitTXReady while more data is queued.
+			if (m_dbg_file)
+			{
+				fprintf(m_dbg_file, "self_clock PAUSE: 2 bytes sent, %zu more queued, re-trigger idle_detect\n",
+					m_tx_queue.size());
+				fflush(m_dbg_file);
+			}
 			LOGMASKED(LOG_SERIAL, "self-clock pausing after 2-byte packet, %zu bytes queued\n",
 				m_tx_queue.size());
 			m_self_clocking = false;
@@ -880,12 +951,37 @@ TIMER_CALLBACK_MEMBER(kn5000_cpanel_device::button_scan_callback)
 	// Per-segment confirmation: changes must be stable for 2 consecutive
 	// scans (14ms) before being reported, filtering transient glitches.
 
+	static int scan_count = 0;
+	static int blocked_count = 0;
+	scan_count++;
+
 	if (!m_initialized)
 		return;
 
 	// Don't queue changes while INTA delivery is in progress
 	if (m_self_clocking || m_inta_asserted)
+	{
+		blocked_count++;
+		if (blocked_count <= 20 || (blocked_count % 500 == 0))
+			if (m_dbg_file) fprintf(m_dbg_file, "scan #%d BLOCKED (self_clock=%d inta=%d) blocked_total=%d\n",
+				scan_count, m_self_clocking, m_inta_asserted, blocked_count);
 		return;
+	}
+
+	// Log all non-zero port states for segments we care about (3, 9, 10)
+	if (scan_count % 500 == 0)
+	{
+		for (int seg : {3, 9, 10})
+		{
+			if (m_cpl_ports[seg])
+			{
+				uint8_t s = m_cpl_ports[seg]->read() & 0xff;
+				if (m_dbg_file) fprintf(m_dbg_file, "scan #%d L_seg%d: read=%02X last=%02X pend=%02X\n",
+					scan_count, seg, s, m_last_button_state[seg+11], m_pending_button_state[seg+11]);
+			}
+		}
+		if (m_dbg_file) fflush(m_dbg_file);
+	}
 
 	bool changed = false;
 
@@ -934,12 +1030,20 @@ TIMER_CALLBACK_MEMBER(kn5000_cpanel_device::button_scan_callback)
 			continue;
 		int idx = seg + 11;
 		uint8_t state = m_cpl_ports[seg]->read() & 0xff;
+		// Debug: log any non-zero reads on segs 3,9,10
+		if (state != 0 && (seg == 3 || seg == 9 || seg == 10))
+		{
+			if (m_dbg_file) fprintf(m_dbg_file, "L_seg%d read=%02X last=%02X pend=%02X scan#%d\n",
+				seg, state, m_last_button_state[idx], m_pending_button_state[idx], scan_count);
+			if (m_dbg_file) fflush(m_dbg_file);
+		}
 		if (state != m_last_button_state[idx])
 		{
 			if (state == m_pending_button_state[idx])
 			{
-				LOGMASKED(LOG_BUTTONS, "confirmed left seg %d change (%02X->%02X)\n",
-					seg, m_last_button_state[idx], state);
+				if (m_dbg_file) fprintf(m_dbg_file, "CONFIRMED left seg %d change (%02X->%02X) scan#%d\n",
+					seg, m_last_button_state[idx], state, scan_count);
+				if (m_dbg_file) fflush(m_dbg_file);
 
 				// Build header: bits 7:6 = 11 (left panel), bits 3:0 = segment
 				uint8_t header = (seg & 0x0f) | 0xC0;
@@ -951,8 +1055,9 @@ TIMER_CALLBACK_MEMBER(kn5000_cpanel_device::button_scan_callback)
 			}
 			else
 			{
-				LOGMASKED(LOG_BUTTONS, "pending left seg %d change (%02X->%02X)\n",
-					seg, m_last_button_state[idx], state);
+				if (m_dbg_file) fprintf(m_dbg_file, "PENDING left seg %d change (%02X->%02X) scan#%d\n",
+					seg, m_last_button_state[idx], state, scan_count);
+				if (m_dbg_file) fflush(m_dbg_file);
 				m_pending_button_state[idx] = state;
 			}
 		}

@@ -1467,6 +1467,12 @@ void tmp94c241_device::tlcs900_check_irqs()
 			{
 				m_int_reg[INTE0AD] |= 0x08;
 				m_check_irqs = 1;
+				// Force a scheduler break so other CPUs can update
+				// handshake signals (SSTAT/MSTAT) that the INT0 handler
+				// checks before reading the latch.  Without this, a
+				// tight INT0 re-entry loop can starve the sub CPU,
+				// preventing it from clearing its handshake flags.
+				abort_timeslice();
 			}
 		}
 
