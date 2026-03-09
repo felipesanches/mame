@@ -1484,7 +1484,15 @@ void kn5000_state::kn5000(machine_config &config)
 	UPD72067(config, m_fdc, 32'000'000); // actual controller is UPD72068GF-3B9 at IC208
 	m_fdc->intrq_wr_callback().set_inputline(m_maincpu, TLCS900_INT4);
 	m_fdc->drq_wr_callback().set_inputline(m_maincpu, TLCS900_INT5);
-	m_maincpu->to0().set(m_fdc, FUNC(upd765_family_device::tc_line_w));
+	// TODO: TC signal — maincpu Timer 0 output (TO0) wired to FDC TC input.
+	// Cannot wire unconditionally because the MAME timer implementation fires
+	// the TO0 callback on every Timer 0 match, even in cascade mode.  The
+	// firmware uses Timer 0/1 in cascade mode as a ~1ms system tick (TREG0=10),
+	// so TO0 toggles hundreds of times per second during normal operation.
+	// These spurious TC pulses confuse the FDC during boot, causing
+	// "ERROR in CPU data transmission".  Proper fix: gate TO0 callback on
+	// port function register (only fire when pin is configured as timer output).
+	// m_maincpu->to0().set(m_fdc, FUNC(upd765_family_device::tc_line_w));
 
 
 	FLOPPY_CONNECTOR(config, "fdc:0", kn5000_floppies, "35hd", floppy_image_device::default_mfm_floppy_formats).enable_sound(true);
