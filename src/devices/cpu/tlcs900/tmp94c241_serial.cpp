@@ -35,6 +35,13 @@ tmp94c241_serial_device::tmp94c241_serial_device(const machine_config &mconfig, 
 	m_tx_needs_trailing_edge(false),
 	m_tx_buffer(0),
 	m_tx_buffer_full(false),
+	m_uart_tx_frame(0),
+	m_uart_tx_bits_left(0),
+	m_uart_tx_prescaler(0),
+	m_uart_rx_state(0),
+	m_uart_rx_prescaler(0),
+	m_uart_rx_bits_left(0),
+	m_uart_rx_shift(0),
 	m_txd_cb(*this),
 	m_sclk_in_cb(*this),
 	m_sclk_out_cb(*this),
@@ -65,6 +72,13 @@ void tmp94c241_serial_device::device_start()
 	save_item(NAME(m_tx_needs_trailing_edge));
 	save_item(NAME(m_tx_buffer));
 	save_item(NAME(m_tx_buffer_full));
+	save_item(NAME(m_uart_tx_frame));
+	save_item(NAME(m_uart_tx_bits_left));
+	save_item(NAME(m_uart_tx_prescaler));
+	save_item(NAME(m_uart_rx_state));
+	save_item(NAME(m_uart_rx_prescaler));
+	save_item(NAME(m_uart_rx_bits_left));
+	save_item(NAME(m_uart_rx_shift));
 
 	m_sclk_out_cb(m_sclk_out);
 	m_txd_cb(m_txd);
@@ -78,6 +92,13 @@ void tmp94c241_serial_device::device_reset()
 	m_tx_skip_first_falling = false;
 	m_tx_needs_trailing_edge = false;
 	m_tx_buffer_full = false;
+	m_uart_tx_frame = 0;
+	m_uart_tx_bits_left = 0;
+	m_uart_tx_prescaler = 0;
+	m_uart_rx_state = 0;
+	m_uart_rx_prescaler = 0;
+	m_uart_rx_bits_left = 0;
+	m_uart_rx_shift = 0;
 }
 
 void tmp94c241_serial_device::TO2_trigger(int state)
@@ -220,6 +241,29 @@ uint8_t tmp94c241_serial_device::scNbuf_r()
 
 void tmp94c241_serial_device::scNbuf_w(uint8_t data)
 {
+	uint8_t mode = (m_serial_mode >> 2) & 3;
+
+	if (mode == 2)  // 8-bit UART mode
+	{
+		if (m_uart_tx_bits_left > 0)
+		{
+			// TX busy — buffer the data
+			m_tx_buffer = data;
+			m_tx_buffer_full = true;
+			return;
+		}
+
+		// Build 10-bit UART frame: start(0) + 8 data bits LSB first + stop(1)
+		m_uart_tx_frame = (1 << 9) | (uint16_t(data) << 1) | 0;
+		m_uart_tx_bits_left = 10;
+		m_uart_tx_prescaler = 0;
+
+		// Output start bit immediately
+		m_txd_cb(0);
+		return;
+	}
+
+	// Synchronous I/O mode (mode 0) — original implementation
 	// TX double buffering: real TMP94C241 has a TX buffer register and
 	// a TX shift register.  CPU writes always go to the buffer.  If the
 	// shift register is idle, the buffer auto-transfers immediately.
@@ -292,13 +336,13 @@ void tmp94c241_serial_device::scNmod_w(uint8_t data)
 	{
 		case 0: logerror("I/O interface mode\n"); break;
 		case 1: logerror("7-bit uart mode (Not implemented yet)\n"); break;
-		case 2: logerror("8-bit uart mode (Not implemented yet)\n"); break;
+		case 2: logerror("8-bit uart mode\n"); break;
 		case 3: logerror("9-bit uart mode (Not implemented yet)\n"); break;
 	}
 	switch(data & 3)
 	{
 		case 0: logerror("clk source: TO2 trigger\n"); break;
-		case 1: logerror("clk source: Baud rate generator (Not implemented yet)\n"); break;
+		case 1: logerror("clk source: Baud rate generator\n"); break;
 		case 2: logerror("clk source: Internal clock at ϕ1 (Not implemented yet)\n"); break;
 		case 3: logerror("clk source: external clock (SCLK%d) (Not implemented yet)\n", m_channel); break;
 	}
@@ -371,6 +415,115 @@ fc4619: f0 3f 41              ld (0x3f),A
 
 TIMER_CALLBACK_MEMBER(tmp94c241_serial_device::timer_callback)
 {
+	uint8_t mode = (m_serial_mode >> 2) & 3;
+
+	// UART mode (8-bit): timer runs at 16x baud rate for oversampling
+	if (mode == 2)
+	{
+		// --- UART TX ---
+		if (m_uart_tx_bits_left > 0)
+		{
+			if (++m_uart_tx_prescaler >= 16)
+			{
+				m_uart_tx_prescaler = 0;
+
+				// Shift out current bit (already on TXD), advance to next
+				m_uart_tx_frame >>= 1;
+				m_uart_tx_bits_left--;
+
+				if (m_uart_tx_bits_left > 0)
+				{
+					m_txd_cb(m_uart_tx_frame & 1);
+				}
+				else
+				{
+					// Frame complete — line returns to idle (high)
+					m_txd_cb(1);
+
+					// Fire INTTX interrupt
+					m_cpu->m_int_reg[(m_channel == 0) ? INTES0 : INTES1] |= 0x80;
+					m_cpu->m_check_irqs = 1;
+
+					// Auto-load from TX buffer if data is pending
+					if (m_tx_buffer_full)
+					{
+						m_tx_buffer_full = false;
+						uint8_t data = m_tx_buffer;
+						m_uart_tx_frame = (1 << 9) | (uint16_t(data) << 1) | 0;
+						m_uart_tx_bits_left = 10;
+						m_uart_tx_prescaler = 0;
+						m_txd_cb(0);  // Start bit
+					}
+				}
+			}
+		}
+
+		// --- UART RX ---
+		switch (m_uart_rx_state)
+		{
+		case 0:  // Idle — detect start bit (falling edge on RXD)
+			if (m_rxd == 0 && m_rxd_prev == 1)
+			{
+				// Potential start bit detected
+				m_uart_rx_state = 1;
+				m_uart_rx_prescaler = 0;
+			}
+			break;
+
+		case 1:  // Start bit confirmation — wait to center of start bit
+			if (++m_uart_rx_prescaler >= 8)
+			{
+				if (m_rxd == 0)
+				{
+					// Confirmed start bit at center — begin receiving data
+					m_uart_rx_state = 2;
+					m_uart_rx_prescaler = 0;
+					m_uart_rx_bits_left = 8;
+					m_uart_rx_shift = 0;
+				}
+				else
+				{
+					// False start — return to idle
+					m_uart_rx_state = 0;
+				}
+			}
+			break;
+
+		case 2:  // Receiving data bits — sample at center of each bit (every 16 ticks)
+			if (++m_uart_rx_prescaler >= 16)
+			{
+				m_uart_rx_prescaler = 0;
+
+				if (m_uart_rx_bits_left > 0)
+				{
+					// Sample data bit (LSB first)
+					m_uart_rx_shift >>= 1;
+					m_uart_rx_shift |= (m_rxd << 7);
+					m_uart_rx_bits_left--;
+				}
+				else
+				{
+					// This is the stop bit sample point
+					m_rx_buffer = m_uart_rx_shift;
+
+					// Fire INTRX interrupt
+					uint8_t int_reg_idx = (m_channel == 0) ? INTES0 : INTES1;
+					m_cpu->m_int_reg[int_reg_idx] |= 0x08;
+					m_cpu->m_check_irqs = 1;
+
+					m_uart_rx_state = 0;
+				}
+			}
+			break;
+		}
+
+		// Track previous RXD state for edge detection
+		m_rxd_prev = m_rxd;
+		return;
+	}
+
+	// Synchronous I/O mode (mode 0) — original implementation
+
 	// In TO2 trigger mode (mode 0), IOC=1 means the clock comes from an
 	// external device (cpanel's self-clock via SCLK pin after INTA).
 	// Don't drive from the baud rate timer — that would inject extra

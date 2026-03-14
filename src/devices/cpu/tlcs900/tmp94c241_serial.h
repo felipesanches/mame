@@ -70,6 +70,16 @@ protected:
 	uint8_t m_tx_buffer;           // TX double buffer (holds next byte while shift register is busy)
 	bool m_tx_buffer_full;         // True when m_tx_buffer contains data waiting to be loaded
 
+	// UART mode state
+	uint16_t m_uart_tx_frame;      // 10-bit TX frame: start(0) + 8 data bits + stop(1)
+	uint8_t m_uart_tx_bits_left;   // bits remaining to transmit (0 = idle)
+	uint8_t m_uart_tx_prescaler;   // counts 0..15 for 16x oversampling per bit
+
+	uint8_t m_uart_rx_state;       // 0=idle, 1=start_confirm, 2=receiving
+	uint8_t m_uart_rx_prescaler;   // 16x oversampling counter
+	uint8_t m_uart_rx_bits_left;   // data bits remaining to receive
+	uint8_t m_uart_rx_shift;       // assembled received byte (shift register)
+
 	devcb_write_line m_txd_cb;
 	devcb_write_line m_sclk_in_cb;
 	devcb_write_line m_sclk_out_cb;
