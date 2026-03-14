@@ -262,7 +262,11 @@ void kn5000_state::maincpu_mem(address_map &map)
 {
 	map(0x000000, 0x0fffff).ram().share("nvram1"); // 1Mbyte = 2 * 4Mbit DRAMs @ IC9, IC10 (CS3)
 	// Button states and LED control are now handled via serial protocol to cpanel HLE device
-	map(0x110000, 0x11ffff).m(m_fdc, FUNC(upd72067_device::map)); // Floppy Controller @ IC208
+	// Floppy Controller @ IC208 (UPD72068GF)
+	// Register layout matches PC AT (smc37c78-style) with offsets doubled for 16-bit data bus:
+	// MSR at offset 4 (address 0x110008), FIFO at offset 5 (address 0x11000A)
+	map(0x110008, 0x110008).rw(m_fdc, FUNC(upd72067_device::msr_r), FUNC(upd72067_device::auxcmd_w));
+	map(0x11000a, 0x11000a).rw(m_fdc, FUNC(upd72067_device::fifo_r), FUNC(upd72067_device::fifo_w));
 	map(0x120000, 0x12ffff).rw(m_fdc, FUNC(upd72067_device::dma_r), FUNC(upd72067_device::dma_w)); // Floppy DMA Acknowledge
 	map(0x140000, 0x14ffff).r(m_maincpu_latch, FUNC(generic_latch_8_device::read)); // @ IC23
 	map(0x140000, 0x14ffff).w(FUNC(kn5000_state::subcpu_latch_w)); // @ IC22 (logged wrapper)
