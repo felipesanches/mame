@@ -837,8 +837,10 @@ void kn5000_state::kn5000(machine_config &config)
 	midiin_slot(mdin);
 	mdin.rxd_handler().set(m_maincpu->m_serial[0], FUNC(tmp94c241_serial_device::rxd));
 
-	// TODO: MIDI output
-	// midiout_slot(MIDI_PORT(config, "mdout"));
+	// TX0 = MTXD (MIDI output)
+	auto &mdout(MIDI_PORT(config, "mdout"));
+	midiout_slot(mdout);
+	m_maincpu->m_serial[0].lookup()->txd().set("mdout", FUNC(midi_port_device::write_txd));
 
 	// RX1/TX1 = CPDATA
 	// SCLK1 = CPSCK
