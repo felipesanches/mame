@@ -19,6 +19,7 @@
 #include "screen.h"
 #include "kn5000.lh"
 #include "kn5000_cpanel.h"
+#include "kn5000_dsp.h"
 #include "kn5000_tonegen.h"
 
 class mn89304_vga_device : public svga_device
@@ -115,6 +116,7 @@ public:
 		, m_fdc(*this, "fdc")
 		, m_floppy(*this, "fdc:0")
 		, m_tonegen(*this, "tonegen")
+		, m_dsp1(*this, "dsp1")
 		, m_com_select(*this, "COM_SELECT")
 		, m_extension(*this, "extension")
 		, m_CPL_SEG(*this, "CPL_SEG%u", 0U)
@@ -140,6 +142,7 @@ private:
 	required_device<upd72067_device> m_fdc;
 	required_device<floppy_connector> m_floppy;
 	required_device<kn5000_tonegen_device> m_tonegen;
+	required_device<kn5000_dsp1_device> m_dsp1;
 	required_ioport m_com_select;
 	required_device<kn5000_extension_connector> m_extension;
 
@@ -269,11 +272,12 @@ void kn5000_state::subcpu_mem(address_map &map)
 	map(0x110002, 0x110003).r(m_tonegen, FUNC(kn5000_tonegen_device::kbd_status_r)); // Tone gen keybed status
 	map(0x120000, 0x12ffff).r(m_subcpu_latch, FUNC(generic_latch_8_device::read)); // @ IC22
 	map(0x120000, 0x12ffff).w(FUNC(kn5000_state::maincpu_latch_w)); // @ IC23 (logged wrapper)
-	map(0x130000, 0x130003).noprw(); // DSP1 @ IC311 (stub - not yet emulated)
+	map(0x130000, 0x130001).w(m_dsp1, FUNC(kn5000_dsp1_device::addr_w));    // DSP1 @ IC311 register address
+	map(0x130002, 0x130003).rw(m_dsp1, FUNC(kn5000_dsp1_device::data_r), FUNC(kn5000_dsp1_device::data_w)); // DSP1 @ IC311 register data
 	map(0x1e0000, 0x1effff).noprw(); // Waveform/sample RAM (stub - not yet emulated)
 	map(0xfe0000, 0xffffff).rom().region("subcpu", 0); // 1Mbit MASK ROM @ IC30
 
-	// DSP2 @ IC302 uses serial #0 pins (bitbanging)
+	// DSP2 @ IC310 (MN19413) uses GPIO serial: PF.0=SDA, PF.2=SCLK, PE.6=CS2
 }
 
 static void kn5000_floppies(device_slot_interface &device)
@@ -922,6 +926,8 @@ void kn5000_state::kn5000(machine_config &config)
 	/* audio hardware */
 	SPEAKER(config, "lspeaker").front_left();
 	SPEAKER(config, "rspeaker").front_right();
+
+	KN5000_DSP1(config, m_dsp1, 0);
 
 	KN5000_TONEGEN(config, m_tonegen, 0);
 	m_tonegen->add_route(0, "lspeaker", 1.0);
