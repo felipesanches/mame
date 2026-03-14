@@ -203,7 +203,8 @@ void kn5000_tonegen_device::data_w(uint16_t data)
 	if (group == 0 && bank == 1)
 		update_pitch(ch);
 
-	// Volume: velocity in group 0 bank 2, main volume in group 8
+	// Volume/pan: velocity in group 0 bank 2; main volume (bank 0),
+	// pan L (bank 1), pan R (bank 2), DSP send (bank 3) all in group 8
 	if ((group == 0 && bank == 2) || group == 8)
 		update_voice_params(ch);
 }
@@ -278,12 +279,24 @@ void kn5000_tonegen_device::update_voice_params(int ch)
 	// Combined volume: velocity (0-4095) * main (0-255) / 4095 → 0-255
 	int vol = (vel_vol > 0 && main_vol > 0) ? (vel_vol * main_vol / 4095) : 0;
 
-	// Pan: group 4, bank 0 (reg[8]) now holds note key info (note<<8),
-	// not pan. Pan may be elsewhere (group 5 or aux registers).
-	// For now, default to center pan (equal L/R).
-	// TODO: identify actual pan register once firmware pan code is traced.
-	int vol_l = vol;
-	int vol_r = vol;
+	// Pan from group 8 registers (firmware Voice_WriteChPanShift):
+	//   reg[21] (group 8, bank 1, +0x840) = left channel pan
+	//   reg[22] (group 8, bank 2, +0x880) = right channel pan
+	// Range: 0x00 = silence, 0x3C = center, 0x78 = full
+	// ClampS8_0_to_78 in firmware ensures 0-0x78.
+	int pan_l = v.regs[21] & 0xFF; // low byte is pan position
+	int pan_r = v.regs[22] & 0xFF;
+
+	// Default to center pan (0x3C) if no pan values written yet
+	if (pan_l == 0 && pan_r == 0)
+	{
+		pan_l = 0x3C;
+		pan_r = 0x3C;
+	}
+
+	// Scale: vol * pan / 0x3C (center = unity gain)
+	int vol_l = (vol * pan_l) / 0x3C;
+	int vol_r = (vol * pan_r) / 0x3C;
 
 	v.volume_l = int16_t(std::min(vol_l, 255) * 128); // scale to 0-32640
 	v.volume_r = int16_t(std::min(vol_r, 255) * 128);
