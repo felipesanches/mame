@@ -203,8 +203,8 @@ void kn5000_tonegen_device::data_w(uint16_t data)
 	if (group == 0 && bank == 1)
 		update_pitch(ch);
 
-	// Volume registers (group 8)
-	if (group == 8)
+	// Volume: velocity in group 0 bank 2, main volume in group 8
+	if ((group == 0 && bank == 2) || group == 8)
 		update_voice_params(ch);
 }
 
@@ -263,32 +263,27 @@ void kn5000_tonegen_device::update_voice_params(int ch)
 {
 	voice_t &v = m_voice[ch];
 
-	// Volume from register group 8, bank 0-1
-	// reg[20] = group 8, bank 0 (volume main)
-	// reg[21] = group 8, bank 1 (volume secondary)
-	uint16_t vol_main = v.regs[20]; // group 8, bank 0
+	// Velocity volume from reg[2] (group 0, bank 2, offset +0x080)
+	// Firmware computes: vol = (velocity^2 / 4) + 63, range 63-4095 (0x3F-0xFFF)
+	// Bit 15 is the latch strobe (ignore for volume), bits 11:0 are volume.
+	uint16_t vel_vol = v.regs[2] & 0x0FFF; // 0-4095
 
-	// Firmware uses 0xFF00/0xFF80 for mute, lower values for louder
-	// Invert: 0xFF00 → 0, 0x0000 → max volume
-	int vol = 0xFF00 - (vol_main & 0xFF00);
-	vol = (vol >> 8) & 0xFF; // 0-255
+	// Main volume from reg[20] (group 8, bank 0, offset +0x800)
+	// Firmware uses 0xFF80 for mute, lower values for louder.
+	// Invert: 0xFF00 → 0, 0x0000 → max
+	uint16_t vol_main = v.regs[20];
+	int main_vol = 0xFF00 - (vol_main & 0xFF00);
+	main_vol = (main_vol >> 8) & 0xFF; // 0-255
 
-	// Pan from register group 4, bank 0 (reg[8])
-	uint16_t pan_val = v.regs[8]; // group 4, bank 0
-	int pan = (pan_val >> 8) & 0xFF; // 0-255, 128=center
+	// Combined volume: velocity (0-4095) * main (0-255) / 4095 → 0-255
+	int vol = (vel_vol > 0 && main_vol > 0) ? (vel_vol * main_vol / 4095) : 0;
 
-	// Apply pan law (simple linear)
-	int vol_l, vol_r;
-	if (pan <= 128)
-	{
-		vol_l = vol;
-		vol_r = (pan == 0) ? 0 : vol * pan / 128;
-	}
-	else
-	{
-		vol_l = vol * (255 - pan) / 127;
-		vol_r = vol;
-	}
+	// Pan: group 4, bank 0 (reg[8]) now holds note key info (note<<8),
+	// not pan. Pan may be elsewhere (group 5 or aux registers).
+	// For now, default to center pan (equal L/R).
+	// TODO: identify actual pan register once firmware pan code is traced.
+	int vol_l = vol;
+	int vol_r = vol;
 
 	v.volume_l = int16_t(std::min(vol_l, 255) * 128); // scale to 0-32640
 	v.volume_r = int16_t(std::min(vol_r, 255) * 128);
