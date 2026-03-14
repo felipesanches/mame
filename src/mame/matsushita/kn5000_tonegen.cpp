@@ -199,8 +199,8 @@ void kn5000_tonegen_device::data_w(uint16_t data)
 	if (group == 0 && bank == 2 && (data & 0x8000))
 		resolve_waveform(ch);
 
-	// Pitch register (group 0, bank 1 — semitone table value)
-	if (group == 0 && bank == 1)
+	// Pitch: semitone from group 0 bank 1, octave from group 4 bank 0
+	if ((group == 0 && bank == 1) || (group == 4 && bank == 0))
 		update_pitch(ch);
 
 	// Volume/pan: velocity in group 0 bank 2; main volume (bank 0),
@@ -308,27 +308,37 @@ void kn5000_tonegen_device::update_pitch(int ch)
 	voice_t &v = m_voice[ch];
 
 	// Pitch from register group 0, bank 1 (reg[1], offset +0x040)
-	// The firmware writes a 16-bit pitch table value here. ToneGen_SetupPolyVoice
-	// computes: note = (MIDI_note + 36), octave = note / 12, semitone = note % 12,
-	// then looks up a 16-bit value from the pitch table at ROM 0x01217D indexed by
-	// semitone * 2. This value is the waveform playback rate for that semitone.
+	// The firmware writes a 16-bit pitch table value for the semitone component.
+	// Equal-temperament: C=0x8000, C#=0x879C, ..., B=0xF1A1 (0x8000 = 1.0x rate).
 	//
-	// The octave information is encoded in reg[8] (group 4, bank 0, offset +0x400)
-	// as (note_value << 8) | key_flags.
-	//
-	// For now, treat reg[1] as a 16-bit pitch increment where some middle value
-	// corresponds to the native waveform sample rate.
-	uint16_t pitch_reg = v.regs[1]; // group 0, bank 1
+	// Octave comes from reg[8] (group 4, bank 0, +0x400): firmware stores
+	// (note_value << 8) where note_value = (MIDI_note + 36). The octave is
+	// note_value / 12. The base octave (octave 3 = MIDI note 0 + 36 = 36/12 = 3)
+	// corresponds to native waveform rate.
+	uint16_t pitch_reg = v.regs[1]; // group 0, bank 1 — semitone ratio
 	if (pitch_reg == 0)
 	{
-		v.pitch_step = 0x10000; // default: native rate
+		v.pitch_step = 0x10000; // default: native rate (1.0 in 16.16)
 		return;
 	}
 
-	// Scale: treat the 16-bit pitch value as a fixed-point increment.
-	// The firmware's pitch table produces values that represent playback speed
-	// relative to the base waveform rate. Use direct mapping for now.
-	v.pitch_step = uint32_t(pitch_reg) << 8;
+	// Convert semitone ratio: 0x8000 = 1.0x, so pitch_reg * 2 gives 16.16 step
+	uint32_t base_step = uint32_t(pitch_reg) * 2; // 16.16 fixed point
+
+	// Apply octave scaling from reg[8] (note key info)
+	// reg[8] = (note_value << 8), note_value = MIDI_note + 36
+	// octave = note_value / 12; base_octave = 3 (for MIDI note 0)
+	uint16_t note_reg = v.regs[8];
+	int note_value = (note_reg >> 8) & 0x7F;
+	int octave = note_value / 12;
+	int octave_shift = octave - 3; // relative to base octave 3
+
+	if (octave_shift > 0)
+		v.pitch_step = base_step << std::min(octave_shift, 8);
+	else if (octave_shift < 0)
+		v.pitch_step = base_step >> std::min(-octave_shift, 8);
+	else
+		v.pitch_step = base_step;
 
 	LOGMASKED(LOG_VOICE, "tonegen: voice %d pitch reg=0x%04X step=0x%08X\n",
 		ch, pitch_reg, v.pitch_step);
