@@ -758,9 +758,11 @@ void kn5000_state::kn5000(machine_config &config)
 	//   bit 6 (input) = FD.I/O
 	m_maincpu->portd_write().set(m_fdc, FUNC(upd72067_device::reset_w)).bit(0);
 	m_maincpu->portd_read().set([this] {
-		// bit 6 = FD.I/O: floppy disk change signal (active low)
+		// bit 6 = FD.I/O: floppy disk change signal (active low on hardware)
+		// MAME's dskchg_r() returns 1 = "change detected" (active high), so
+		// invert for the active-low hardware signal the firmware expects.
 		floppy_image_device *floppy = m_floppy->get_device();
-		return floppy ? (floppy->dskchg_r() << 6) : 0x40;
+		return floppy ? ((!floppy->dskchg_r()) << 6) : 0x00;
 	});
 
 

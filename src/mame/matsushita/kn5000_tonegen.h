@@ -61,8 +61,10 @@ private:
 	// Voice state
 	struct voice_t
 	{
-		// Register banks (28 registers = 7 groups x 4 banks)
-		uint16_t regs[28];
+		// Register banks (32 registers = 8 groups x 4 banks)
+		// Groups: 0x00, 0x01, 0x04, 0x05, 0x06, 0x08, 0x09, 0x0A
+		static constexpr int NUM_REGS = 32;
+		uint16_t regs[NUM_REGS];
 
 		// Playback state
 		bool     active;        // Voice is producing sound
@@ -73,6 +75,8 @@ private:
 		uint32_t pitch_step;    // Pitch increment (16.16 fixed point)
 		int16_t  volume_l;      // Left channel volume (0-32767)
 		int16_t  volume_r;      // Right channel volume (0-32767)
+		uint32_t release_counter; // Samples remaining in release phase (0 = no release)
+		uint32_t hold_counter;  // Samples remaining in hold phase after key-off
 
 		void reset()
 		{
@@ -85,6 +89,8 @@ private:
 			pitch_step = 0x10000; // 1.0 = native pitch
 			volume_l = 0;
 			volume_r = 0;
+			release_counter = 0;
+			hold_counter = 0;
 		}
 	};
 
@@ -96,9 +102,11 @@ private:
 	};
 
 	void update_voice_params(int ch);
+	void update_pitch(int ch);
 	void process_key_on(int ch);
 	void process_key_off(int ch);
 	int16_t read_waveform_sample(uint32_t byte_offset) const;
+	void resolve_waveform(int ch);
 
 	// State
 	uint16_t     m_addr_latch;           // Current register address
