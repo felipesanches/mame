@@ -339,25 +339,23 @@ void kn5000_tonegen_device::resolve_waveform(int ch)
 {
 	voice_t &v = m_voice[ch];
 
-	// Waveform selection from registers:
-	// reg[2] = group 0, bank 2 (0x080): voice mode/velocity data (bit 15 = latch strobe)
-	//   Firmware writes velocity-to-volume result OR'd here. Low bits may
-	//   encode waveform selection info from the voice template.
-	// reg[3] = group 0, bank 3 (0x0C0): waveform control (cleared on note-off)
+	// Waveform selection: The real tone gen chip (TC183C230002) internally
+	// maps register values to waveform ROM addresses. The firmware writes
+	// synthesis parameters from the Table Data ROM — it does NOT write
+	// waveform addresses directly. Without the chip's internal logic, we
+	// approximate by using reg[3] (waveform control, +0x0C0) as a waveform
+	// index into IC307's index table.
 	//
-	// The 34-byte voice template (copied from ROM 0x12115 to DRAM 0x3B1C)
-	// provides the base waveform selection. For now, extract a waveform index
-	// from the lower bits of reg[2] (excluding the strobe bit 15 and velocity).
-	uint16_t wave_ctrl = v.regs[2]; // group 0, bank 2
+	// reg[2] = group 0, bank 2 (+0x080): velocity volume + latch strobe
+	// reg[3] = group 0, bank 3 (+0x0C0): waveform control (cleared on note-off)
+	uint16_t wave_ctrl = v.regs[3]; // group 0, bank 3
 
-	// Use bits 6:0 of the control register as waveform index
-	int wave_idx = wave_ctrl & 0x7F;
+	// Use low byte as waveform index (approximation)
+	int wave_idx = wave_ctrl & 0xFF;
 	if (wave_idx >= NUM_INDEX_ENTRIES)
-		wave_idx = 0;
+		wave_idx = wave_idx % NUM_INDEX_ENTRIES;
 
-	// Determine ROM chip from reg[1] or wave_hi bits 8-14
-	// For now, only IC307 is dumped (offset 0xC00000). Use it for all lookups
-	// until other ROMs are available.
+	// Only IC307 is dumped (offset 0xC00000). Use it for all lookups.
 	uint32_t chip_base = 0xC00000; // IC307
 
 	// Read index entry from chip's index table
@@ -386,7 +384,7 @@ void kn5000_tonegen_device::resolve_waveform(int ch)
 		else
 			v.wave_length = 256;
 
-		LOGMASKED(LOG_VOICE, "tonegen: voice %d waveform idx=%d start=0x%06X len=%d (ctrl=0x%04X)\n",
+		LOGMASKED(LOG_VOICE, "tonegen: voice %d waveform idx=%d start=0x%06X len=%d (reg3=0x%04X)\n",
 			ch, wave_idx, v.wave_start, v.wave_length, wave_ctrl);
 	}
 	else
