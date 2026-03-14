@@ -112,6 +112,7 @@ public:
 		, m_maincpu_latch(*this, "maincpu_latch")
 		, m_subcpu_latch(*this, "subcpu_latch")
 		, m_fdc(*this, "fdc")
+		, m_floppy(*this, "fdc:0")
 		, m_com_select(*this, "COM_SELECT")
 		, m_extension(*this, "extension")
 		, m_CPL_SEG(*this, "CPL_SEG%u", 0U)
@@ -135,6 +136,7 @@ private:
 	required_device<generic_latch_8_device> m_maincpu_latch;
 	required_device<generic_latch_8_device> m_subcpu_latch;
 	required_device<upd72067_device> m_fdc;
+	required_device<floppy_connector> m_floppy;
 	required_ioport m_com_select;
 	required_device<kn5000_extension_connector> m_extension;
 
@@ -260,8 +262,8 @@ void kn5000_state::maincpu_mem(address_map &map)
 {
 	map(0x000000, 0x0fffff).ram().share("nvram1"); // 1Mbyte = 2 * 4Mbit DRAMs @ IC9, IC10 (CS3)
 	// Button states and LED control are now handled via serial protocol to cpanel HLE device
-	//FIXME: map(0x110000, 0x11ffff).m(m_fdc, FUNC(upd765a_device::map)); // Floppy Controller @ IC208
-	//FIXME: map(0x120000, 0x12ffff).w(m_fdc, FUNC(upd765a_device::dack_w)); // Floppy DMA Acknowledge
+	map(0x110000, 0x11ffff).m(m_fdc, FUNC(upd72067_device::map)); // Floppy Controller @ IC208
+	map(0x120000, 0x12ffff).rw(m_fdc, FUNC(upd72067_device::dma_r), FUNC(upd72067_device::dma_w)); // Floppy DMA Acknowledge
 	map(0x140000, 0x14ffff).r(m_maincpu_latch, FUNC(generic_latch_8_device::read)); // @ IC23
 	map(0x140000, 0x14ffff).w(FUNC(kn5000_state::subcpu_latch_w)); // @ IC22 (logged wrapper)
 	map(0x1703b0, 0x1703df).m("vga", FUNC(mn89304_vga_device::io_map)); // LCD controller @ IC206
@@ -772,7 +774,11 @@ void kn5000_state::kn5000(machine_config &config)
 	//   bit 0 (output) = FDCRST
 	//   bit 6 (input) = FD.I/O
 	m_maincpu->portd_write().set(m_fdc, FUNC(upd72067_device::reset_w)).bit(0);
-	// TODO: bit 6!
+	m_maincpu->portd_read().set([this] {
+		// bit 6 = FD.I/O: floppy disk change signal (active low)
+		floppy_image_device *floppy = m_floppy->get_device();
+		return floppy ? (floppy->dskchg_r() << 6) : 0x40;
+	});
 
 
 	// MAINCPU PORT E:
