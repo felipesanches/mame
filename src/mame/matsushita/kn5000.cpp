@@ -7,7 +7,6 @@
 ******************************************************************************/
 
 #include "emu.h"
-#include <queue>
 #include "bus/technics/kn5000/hdae5000.h"
 #include "bus/midi/midi.h"
 #include "cpu/tlcs900/tmp94c241.h"
@@ -16,9 +15,11 @@
 #include "machine/nvram.h"
 #include "machine/upd765.h"
 #include "video/pc_vga.h"
+#include "speaker.h"
 #include "screen.h"
 #include "kn5000.lh"
 #include "kn5000_cpanel.h"
+#include "kn5000_tonegen.h"
 
 class mn89304_vga_device : public svga_device
 {
@@ -113,6 +114,7 @@ public:
 		, m_subcpu_latch(*this, "subcpu_latch")
 		, m_fdc(*this, "fdc")
 		, m_floppy(*this, "fdc:0")
+		, m_tonegen(*this, "tonegen")
 		, m_com_select(*this, "COM_SELECT")
 		, m_extension(*this, "extension")
 		, m_CPL_SEG(*this, "CPL_SEG%u", 0U)
@@ -137,6 +139,7 @@ private:
 	required_device<generic_latch_8_device> m_subcpu_latch;
 	required_device<upd72067_device> m_fdc;
 	required_device<floppy_connector> m_floppy;
+	required_device<kn5000_tonegen_device> m_tonegen;
 	required_ioport m_com_select;
 	required_device<kn5000_extension_connector> m_extension;
 
@@ -157,11 +160,7 @@ private:
 	void subcpu_latch_w(uint8_t data);
 	void maincpu_latch_w(uint8_t data);
 
-	// Tone generator keybed HLE
-	uint16_t tonegen_status_r();
-	uint16_t tonegen_data_r();
-	struct keybed_event { uint16_t data; };
-	std::queue<keybed_event> m_keybed_queue;
+	// Tone generator keybed scanning
 	uint8_t m_keybed_prev[61];
 	emu_timer *m_keybed_timer;
 	TIMER_CALLBACK_MEMBER(keybed_scan);
@@ -203,25 +202,6 @@ void kn5000_state::maincpu_latch_w(uint8_t data)
 	m_maincpu_latch->write(data);
 }
 
-// Tone generator keybed HLE: status register at 0x110002
-// Bit 0 = data ready (queue non-empty), Bit 1 = 0 (note-on context)
-uint16_t kn5000_state::tonegen_status_r()
-{
-	return m_keybed_queue.empty() ? 0x0000 : 0x0001;
-}
-
-// Tone generator keybed HLE: data register at 0x110000
-// Returns 16-bit word: low byte = raw note (bit 7 = has velocity), high byte = velocity
-uint16_t kn5000_state::tonegen_data_r()
-{
-	if (m_keybed_queue.empty())
-		return 0x0000;
-
-	keybed_event ev = m_keybed_queue.front();
-	m_keybed_queue.pop();
-	return ev.data;
-}
-
 // Scan PC keyboard input ports and generate note-on/note-off events
 // Called every 1ms by timer, matching real IC303 hardware scan rate
 TIMER_CALLBACK_MEMBER(kn5000_state::keybed_scan)
@@ -241,7 +221,7 @@ TIMER_CALLBACK_MEMBER(kn5000_state::keybed_scan)
 			{
 				// Key pressed: data = (velocity << 8) | (raw_note | 0x80)
 				uint16_t data = (uint16_t(KEYBED_VELOCITY) << 8) | (raw_note | 0x80);
-				m_keybed_queue.push({data});
+				m_tonegen->push_keybed_event(data);
 				LOGMASKED(LOG_KEYBED, "Keybed: note ON raw=%d MIDI=%d vel=%d data=0x%04X\n",
 					raw_note, raw_note + 0x24, KEYBED_VELOCITY, data);
 			}
@@ -249,7 +229,7 @@ TIMER_CALLBACK_MEMBER(kn5000_state::keybed_scan)
 			{
 				// Key released: data = (0xFF << 8) | raw_note
 				uint16_t data = (0xFF00) | raw_note;
-				m_keybed_queue.push({data});
+				m_tonegen->push_keybed_event(data);
 				LOGMASKED(LOG_KEYBED, "Keybed: note OFF raw=%d MIDI=%d data=0x%04X\n",
 					raw_note, raw_note + 0x24, data);
 			}
@@ -283,9 +263,10 @@ void kn5000_state::maincpu_mem(address_map &map)
 void kn5000_state::subcpu_mem(address_map &map)
 {
 	map(0x000000, 0x0fffff).ram(); // 1Mbyte = 2 * 4Mbit DRAMs @ IC28, IC29
-	map(0x100000, 0x100003).noprw(); // Tone gen register config (write-only; writes harmlessly discarded)
-	map(0x110000, 0x110001).r(FUNC(kn5000_state::tonegen_data_r));   // Tone gen keybed data (HLE)
-	map(0x110002, 0x110003).r(FUNC(kn5000_state::tonegen_status_r)); // Tone gen keybed status (HLE)
+	map(0x100000, 0x100001).w(m_tonegen, FUNC(kn5000_tonegen_device::addr_w));    // Tone gen register address latch
+	map(0x100002, 0x100003).rw(m_tonegen, FUNC(kn5000_tonegen_device::data_r), FUNC(kn5000_tonegen_device::data_w)); // Tone gen register data
+	map(0x110000, 0x110001).r(m_tonegen, FUNC(kn5000_tonegen_device::kbd_data_r));   // Tone gen keybed data
+	map(0x110002, 0x110003).r(m_tonegen, FUNC(kn5000_tonegen_device::kbd_status_r)); // Tone gen keybed status
 	map(0x120000, 0x12ffff).r(m_subcpu_latch, FUNC(generic_latch_8_device::read)); // @ IC22
 	map(0x120000, 0x12ffff).w(FUNC(kn5000_state::maincpu_latch_w)); // @ IC23 (logged wrapper)
 	map(0x130000, 0x130003).noprw(); // DSP1 @ IC311 (stub - not yet emulated)
@@ -689,8 +670,6 @@ void kn5000_state::machine_reset()
 
 	// Clear keybed state
 	memset(m_keybed_prev, 0, sizeof(m_keybed_prev));
-	while (!m_keybed_queue.empty())
-		m_keybed_queue.pop();
 }
 
 void kn5000_state::nvram2_init(nvram_device &device, void *data, size_t size)
@@ -938,6 +917,14 @@ void kn5000_state::kn5000(machine_config &config)
 	// iochrdy tied to refresh pin and SA19, A21 and A20 to GND
 	// TODO: VGA.A18 signal, banking? From maincpu thru a T7W139F decoder
 
+	/* audio hardware */
+	SPEAKER(config, "lspeaker").front_left();
+	SPEAKER(config, "rspeaker").front_right();
+
+	KN5000_TONEGEN(config, m_tonegen, 0);
+	m_tonegen->add_route(0, "lspeaker", 1.0);
+	m_tonegen->add_route(1, "rspeaker", 1.0);
+
 	NVRAM(config, "nvram1", nvram_device::DEFAULT_ALL_0);
 	NVRAM(config, "nvram2").set_custom_handler(FUNC(kn5000_state::nvram2_init));
 
@@ -1014,4 +1001,4 @@ ROM_END
 } // anonymous namespace
 
 //   YEAR  NAME   PARENT  COMPAT  MACHINE INPUT   STATE         INIT        COMPANY      FULLNAME             FLAGS
-CONS(1998, kn5000,    0,       0, kn5000, kn5000, kn5000_state, empty_init, "Technics", "SX-KN5000", MACHINE_NOT_WORKING|MACHINE_NO_SOUND)
+CONS(1998, kn5000,    0,       0, kn5000, kn5000, kn5000_state, empty_init, "Technics", "SX-KN5000", MACHINE_NOT_WORKING|MACHINE_IMPERFECT_SOUND)
