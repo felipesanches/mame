@@ -199,12 +199,12 @@ void kn5000_tonegen_device::data_w(uint16_t data)
 	if (group == 0 && bank == 2 && (data & 0x8000))
 		resolve_waveform(ch);
 
-	// Pitch registers (group 1)
-	if (group == 1)
+	// Pitch register (group 0, bank 1 — semitone table value)
+	if (group == 0 && bank == 1)
 		update_pitch(ch);
 
-	// Volume/pan registers (group 4 for pan, group 8 for volume)
-	if (group == 4 || group == 8)
+	// Volume registers (group 8)
+	if (group == 8)
 		update_voice_params(ch);
 }
 
@@ -299,27 +299,27 @@ void kn5000_tonegen_device::update_pitch(int ch)
 {
 	voice_t &v = m_voice[ch];
 
-	// Pitch from register group 1 (regs 4-7)
-	// reg[4] = group 1, bank 0: pitch coarse (firmware init: 0x017F)
-	// reg[5] = group 1, bank 1: pitch fine (firmware init: 0x7F7F)
+	// Pitch from register group 0, bank 1 (reg[1], offset +0x040)
+	// The firmware writes a 16-bit pitch table value here. ToneGen_SetupPolyVoice
+	// computes: note = (MIDI_note + 36), octave = note / 12, semitone = note % 12,
+	// then looks up a 16-bit value from the pitch table at ROM 0x01217D indexed by
+	// semitone * 2. This value is the waveform playback rate for that semitone.
 	//
-	// The tone generator chip uses these to set the playback rate.
-	// Interpretation: reg[4] high byte = octave/coarse, low byte = note fraction.
-	// The firmware's ToneGen_Calc_Pitch adds 0x24 (36) to MIDI note before
-	// computing the pitch value, suggesting the register encodes a note number
-	// offset from some base.
+	// The octave information is encoded in reg[8] (group 4, bank 0, offset +0x400)
+	// as (note_value << 8) | key_flags.
 	//
-	// For now, treat reg[4] as a 16-bit pitch increment where 0x0100 = native
-	// sample rate (1.0x). This gives range 0x0001 (~1/256x) to 0xFFFF (~256x).
-	uint16_t pitch_reg = v.regs[4]; // group 1, bank 0
+	// For now, treat reg[1] as a 16-bit pitch increment where some middle value
+	// corresponds to the native waveform sample rate.
+	uint16_t pitch_reg = v.regs[1]; // group 0, bank 1
 	if (pitch_reg == 0)
 	{
 		v.pitch_step = 0x10000; // default: native rate
 		return;
 	}
 
-	// Scale: reg[4] = 0x0100 → pitch_step = 0x10000 (1.0x native)
-	// This maps each unit of reg[4] to 256 units of pitch_step
+	// Scale: treat the 16-bit pitch value as a fixed-point increment.
+	// The firmware's pitch table produces values that represent playback speed
+	// relative to the base waveform rate. Use direct mapping for now.
 	v.pitch_step = uint32_t(pitch_reg) << 8;
 
 	LOGMASKED(LOG_VOICE, "tonegen: voice %d pitch reg=0x%04X step=0x%08X\n",
@@ -331,18 +331,19 @@ void kn5000_tonegen_device::resolve_waveform(int ch)
 {
 	voice_t &v = m_voice[ch];
 
-	// Waveform pointer from registers:
-	// reg[1] = group 0, bank 1 (0x040): waveform pointer low
-	// reg[2] = group 0, bank 2 (0x080): waveform pointer high (bit 15 = latch strobe)
+	// Waveform selection from registers:
+	// reg[2] = group 0, bank 2 (0x080): voice mode/velocity data (bit 15 = latch strobe)
+	//   Firmware writes velocity-to-volume result OR'd here. Low bits may
+	//   encode waveform selection info from the voice template.
+	// reg[3] = group 0, bank 3 (0x0C0): waveform control (cleared on note-off)
 	//
-	// Together these form a waveform address. The exact encoding depends on
-	// the hardware — for now use reg[2] bits 6:0 as a waveform index (0-127)
-	// within the appropriate ROM chip, and reg[1] for fine addressing.
-	uint16_t wave_lo = v.regs[1]; // group 0, bank 1
-	uint16_t wave_hi = v.regs[2]; // group 0, bank 2
+	// The 34-byte voice template (copied from ROM 0x12115 to DRAM 0x3B1C)
+	// provides the base waveform selection. For now, extract a waveform index
+	// from the lower bits of reg[2] (excluding the strobe bit 15 and velocity).
+	uint16_t wave_ctrl = v.regs[2]; // group 0, bank 2
 
-	// Extract waveform index from low 7 bits of wave_hi (bit 15 is strobe)
-	int wave_idx = wave_hi & 0x7F;
+	// Use bits 6:0 of the control register as waveform index
+	int wave_idx = wave_ctrl & 0x7F;
 	if (wave_idx >= NUM_INDEX_ENTRIES)
 		wave_idx = 0;
 
@@ -377,8 +378,8 @@ void kn5000_tonegen_device::resolve_waveform(int ch)
 		else
 			v.wave_length = 256;
 
-		LOGMASKED(LOG_VOICE, "tonegen: voice %d waveform idx=%d start=0x%06X len=%d (lo=0x%04X hi=0x%04X)\n",
-			ch, wave_idx, v.wave_start, v.wave_length, wave_lo, wave_hi);
+		LOGMASKED(LOG_VOICE, "tonegen: voice %d waveform idx=%d start=0x%06X len=%d (ctrl=0x%04X)\n",
+			ch, wave_idx, v.wave_start, v.wave_length, wave_ctrl);
 	}
 	else
 	{
