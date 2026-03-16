@@ -282,6 +282,7 @@ void kn5000_state::subcpu_mem(address_map &map)
 
 static void kn5000_floppies(device_slot_interface &device)
 {
+	device.option_add("35hd", FLOPPY_35_HD);
 	device.option_add("35dd", FLOPPY_35_DD);
 }
 
@@ -904,7 +905,7 @@ void kn5000_state::kn5000(machine_config &config)
 	// m_fdc->??_wr_callback().set_inputline(m_maincpu, TLCS900_INT7);
 
 
-	FLOPPY_CONNECTOR(config, "fdc:0", kn5000_floppies, "35dd", floppy_image_device::default_mfm_floppy_formats).enable_sound(true);
+	FLOPPY_CONNECTOR(config, "fdc:0", kn5000_floppies, "35hd", floppy_image_device::default_mfm_floppy_formats).enable_sound(true);
 
 	/* Extension port */
 	KN5000_EXTENSION(config, m_extension, kn5000_extension_intf, nullptr);
