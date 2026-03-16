@@ -128,6 +128,9 @@ public:
 	auto portz_read()  { return m_port_read[PORT_Z].bind(); }
 	auto portz_write() { return m_port_write[PORT_Z].bind(); }
 
+	// Timer output callbacks
+	auto to0_callback() { return m_to0_cb.bind(); }
+
 protected:
 	// device_t implementation
 	virtual void device_config_complete() override ATTR_COLD;
@@ -235,6 +238,9 @@ private:
 	// I/O Ports
 	devcb_read8::array<NUM_PORTS> m_port_read;
 	devcb_write8::array<NUM_PORTS> m_port_write;
+
+	// Timer output callbacks
+	devcb_write_line m_to0_cb;
 	uint8_t m_port_latch[NUM_PORTS];
 	uint8_t m_port_control[NUM_PORTS];
 	uint8_t m_port_function[NUM_PORTS];

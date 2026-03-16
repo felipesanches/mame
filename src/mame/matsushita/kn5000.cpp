@@ -727,7 +727,8 @@ void kn5000_state::kn5000(machine_config &config)
 	// Interrupt 9: HDDINT
 	// Interrupt A <edge>: ~CPSCK "Control Panel Serial Clock"
 	// ~NMI: SNS
-	// TC0: FDCTC
+	// TC0: FDCTC — Timer 0 match output pulses FDC Terminal Count
+	m_maincpu->to0_callback().set(m_fdc, FUNC(upd72067_device::tc_line_w));
 
 
 	// MAINCPU PORT 7:
@@ -901,7 +902,7 @@ void kn5000_state::kn5000(machine_config &config)
 	// Interrupt 7: FDC.I/O
 	//
 	// m_fdc->hdl_wr_callback().set_inputline(m_maincpu, TLCS900_INT6);
-	// TODO: tc coming from maincpu TC0 signal
+	// TC is wired above via m_maincpu->to0_callback()
 	// m_fdc->??_wr_callback().set_inputline(m_maincpu, TLCS900_INT7);
 
 

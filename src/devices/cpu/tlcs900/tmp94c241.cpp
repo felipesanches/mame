@@ -77,6 +77,7 @@ tmp94c241_device::tmp94c241_device(const machine_config &mconfig, const char *ta
 	m_an_read(*this, 0),
 	m_port_read(*this, 0),
 	m_port_write(*this),
+	m_to0_cb(*this),
 	m_port_latch{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 	m_port_control{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 	m_port_function{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
@@ -138,6 +139,7 @@ void tmp94c241_device::device_resolve_objects()
 	{
 		m_level[i] = CLEAR_LINE;
 	}
+	// m_to0_cb is auto-resolved by devcb framework
 }
 
 //-------------------------------------------------
@@ -1402,6 +1404,13 @@ void tmp94c241_device::tlcs900_handle_timers()
 								m_timer_8[timer_index] = 0;
 								m_int_reg[interrupt] |= interrupt_mask;
 								m_check_irqs = 1;
+							}
+
+							// Timer 0 match pulses the TO0 output callback
+							if (timer_index == 0)
+							{
+								m_to0_cb(ASSERT_LINE);
+								m_to0_cb(CLEAR_LINE);
 							}
 						}
 						else
