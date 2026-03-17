@@ -663,7 +663,7 @@ void kn5000_state::machine_start()
 	}
 
 	// Keybed scan timer: poll keyboard input ports every 1ms
-	memset(m_keybed_prev, 0, sizeof(m_keybed_prev));
+	std::fill(std::begin(m_keybed_prev), std::end(m_keybed_prev), 0);
 	m_keybed_timer = timer_alloc(FUNC(kn5000_state::keybed_scan), this);
 	m_keybed_timer->adjust(attotime::from_msec(1), 0, attotime::from_msec(1));
 }
@@ -674,7 +674,7 @@ void kn5000_state::machine_reset()
 	m_checking_device_led_cn12 = 0;
 
 	// Clear keybed state
-	memset(m_keybed_prev, 0, sizeof(m_keybed_prev));
+	std::fill(std::begin(m_keybed_prev), std::end(m_keybed_prev), 0);
 }
 
 void kn5000_state::nvram2_init(nvram_device &device, void *data, size_t size)
@@ -689,7 +689,7 @@ void kn5000_state::nvram2_init(nvram_device &device, void *data, size_t size)
 	// Checksum: one's complement of sum of 0x24B8 LE words from offset 0x10,
 	// stored at offset 0x72A8.
 	uint8_t *dest = reinterpret_cast<uint8_t *>(data);
-	memset(dest, 0, size);
+	std::fill_n(dest, size, 0);
 
 	const uint8_t *rom = memregion("program")->base();
 	static constexpr uint32_t FACTORY_DEFAULTS_ROM_OFFSET = 0x0A0150;
@@ -698,7 +698,7 @@ void kn5000_state::nvram2_init(nvram_device &device, void *data, size_t size)
 	static constexpr uint32_t CHECKSUM_DATA_OFFSET = 0x10;
 	static constexpr uint32_t CHECKSUM_STORE_OFFSET = 0x72A8;
 
-	memcpy(dest, rom + FACTORY_DEFAULTS_ROM_OFFSET, FACTORY_DEFAULTS_SIZE);
+	std::copy_n(rom + FACTORY_DEFAULTS_ROM_OFFSET, FACTORY_DEFAULTS_SIZE, dest);
 
 	// Compute checksum matching firmware's validation routine (LABEL_FEF93B):
 	// ADD DE, (XWA+) loop over 0x24B8 words, then CPL DE
@@ -733,7 +733,7 @@ void kn5000_state::kn5000(machine_config &config)
 
 	// MAINCPU PORT 7:
 	//   bit 5 (~BUSRQ pin): RY/~BY pin of maincpu ROMs
-	m_maincpu->port7_read().set_constant(1 << 5); // checked at EF3735 (v10 ROM)
+	m_maincpu->port7_read().set_constant(0x20); // bit 5: checked at EF3735 (v10 ROM)
 
 
 	// MAINCPU PORT 8:
@@ -786,7 +786,7 @@ void kn5000_state::kn5000(machine_config &config)
 
 	// MAINCPU PORT F:
 	//   bit 2 (OUTPUT) = Something related to "RESET CONTROL" circuits?
-	m_maincpu->portf_read().set_constant(1 << 6); //checked at FC437A (v10 ROM)
+	m_maincpu->portf_read().set_constant(0x40); // bit 6: checked at FC437A (v10 ROM)
 
 
 	// MAINCPU PORT G:
@@ -908,11 +908,11 @@ void kn5000_state::kn5000(machine_config &config)
 
 	FLOPPY_CONNECTOR(config, "fdc:0", kn5000_floppies, "35hd", floppy_image_device::default_mfm_floppy_formats).enable_sound(true);
 
-	/* Extension port */
+	// Extension port
 	KN5000_EXTENSION(config, m_extension, kn5000_extension_intf, nullptr);
 	m_extension->irq_callback().set_inputline(m_maincpu, TLCS900_INT9);
 
-	/* video hardware */
+	// video hardware
 	// LCD Controller MN89304 @ IC206 24_MHz_XTAL
 	screen_device &screen(SCREEN(config, "screen", SCREEN_TYPE_LCD));
 	screen.set_raw(XTAL(40'000'000)/6, 424, 0, 320, 262, 0, 240);
@@ -925,7 +925,7 @@ void kn5000_state::kn5000(machine_config &config)
 	// iochrdy tied to refresh pin and SA19, A21 and A20 to GND
 	// TODO: VGA.A18 signal, banking? From maincpu thru a T7W139F decoder
 
-	/* audio hardware */
+	// audio hardware
 	SPEAKER(config, "lspeaker").front_left();
 	SPEAKER(config, "rspeaker").front_right();
 
