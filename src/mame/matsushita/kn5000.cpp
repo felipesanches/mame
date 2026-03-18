@@ -103,6 +103,7 @@ public:
 		, m_extension(*this, "extension")
 		, m_CPL_SEG(*this, "CPL_SEG%u", 0U)
 		, m_CPR_SEG(*this, "CPR_SEG%u", 0U)
+		, m_encoder(*this, "ENCODER")
 		, m_checking_device_led_cn11(*this, "checking_device_led_cn11")
 		, m_checking_device_led_cn12(*this, "checking_device_led_cn12")
 		, m_mstat(0)
@@ -124,6 +125,7 @@ private:
 
 	required_ioport_array<11> m_CPL_SEG; // buttons on "Control Panel Left" PCB
 	required_ioport_array<11> m_CPR_SEG; // buttons on "Control Panel Right" PCB
+	required_ioport m_encoder;           // Program data wheel (rotary encoder)
 	output_finder<> m_checking_device_led_cn11;
 	output_finder<> m_checking_device_led_cn12;
 	uint8_t m_mstat;
@@ -442,6 +444,9 @@ static INPUT_PORTS_START(kn5000)
 	PORT_BIT( 0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("UP 1")
 	PORT_BIT( 0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("DOWN 2")
 	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD ) PORT_NAME("UP 2")
+
+	PORT_START("ENCODER")
+	PORT_BIT( 0xff, 0x00, IPT_DIAL ) PORT_NAME("Program") PORT_SENSITIVITY(25) PORT_KEYDELTA(5)
 INPUT_PORTS_END
 
 
@@ -457,12 +462,21 @@ void kn5000_state::machine_start()
 	m_checking_device_led_cn11.resolve();
 	m_checking_device_led_cn12.resolve();
 
+	// DEBUG: Log writes to DRAM[49277-49278] (0xC07D) — the control panel
+	// event type/data that CtrlPanel_HandleSerialPort checks for value 33.
+	m_maincpu->space(AS_PROGRAM).install_write_tap(0xc07c, 0xc07d, "cpanel_event_debug",
+		[this] (offs_t offset, u16 &data, u16 mem_mask) {
+			if ((data & 0xff00) || (mem_mask & 0xff00))
+				logerror("DRAM[0xC07D] write: 0x%04X mask=%04X (PC=%06X)\n", data, mem_mask, m_maincpu->pc());
+		});
+
 	// Connect button input ports to control panel HLE device
 	for (int i = 0; i < 11; i++)
 	{
 		m_cpanel->set_cpl_port(i, m_CPL_SEG[i].target());
 		m_cpanel->set_cpr_port(i, m_CPR_SEG[i].target());
 	}
+	m_cpanel->set_encoder_port(m_encoder.target());
 }
 
 void kn5000_state::machine_reset()

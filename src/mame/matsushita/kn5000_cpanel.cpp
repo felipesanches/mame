@@ -29,8 +29,9 @@
 #define LOG_SERIAL   (1U << 2)
 #define LOG_BUTTONS  (1U << 3)
 #define LOG_LEDS     (1U << 4)
+#define LOG_ENCODER  (1U << 5)
 
-#define VERBOSE 0
+#define VERBOSE (LOG_ENCODER | LOG_COMMANDS)
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(KN5000_CPANEL, kn5000_cpanel_device, "kn5000_cpanel", "KN5000 Control Panel HLE")
@@ -69,6 +70,9 @@ kn5000_cpanel_device::kn5000_cpanel_device(const machine_config &mconfig, const 
 	std::fill(std::begin(m_pending_button_state), std::end(m_pending_button_state), 0);
 	std::fill(std::begin(m_cpl_ports), std::end(m_cpl_ports), nullptr);
 	std::fill(std::begin(m_cpr_ports), std::end(m_cpr_ports), nullptr);
+	m_encoder_port = nullptr;
+	m_encoder_prev = 0;
+	m_encoder_latch = 0;
 }
 
 void kn5000_cpanel_device::device_start()
@@ -104,6 +108,8 @@ void kn5000_cpanel_device::device_start()
 	save_item(NAME(m_self_clock_bytes_sent));
 	save_item(NAME(m_last_button_state));
 	save_item(NAME(m_pending_button_state));
+	save_item(NAME(m_encoder_prev));
+	save_item(NAME(m_encoder_latch));
 
 	// Initial state - line idle high
 	m_txd_cb(1);
@@ -453,6 +459,17 @@ void kn5000_cpanel_device::process_command()
 		else if (segment <= 0x0b)
 		{
 			send_button_packet(segment, false);  // right panel
+
+			// When the scan flag (bit 4) is set, append encoder status
+			// if the data wheel has moved.  On real hardware, the MCU
+			// piggybacks pending encoder changes onto polled responses.
+			if ((param & 0x10) && m_encoder_latch)
+			{
+				LOGMASKED(LOG_ENCODER, "Encoder: appending seg 0x0B (0x%02X) to E0 response\n",
+					m_encoder_latch);
+				send_button_packet(0x0b, false);
+				m_encoder_latch = 0;
+			}
 		}
 		else
 		{
@@ -556,6 +573,14 @@ uint8_t kn5000_cpanel_device::read_button_segment(int segment, bool is_left_pane
 	return 0;
 }
 
+uint8_t kn5000_cpanel_device::read_status_register()
+{
+	// Segment 0x0B is a hardware status register from the left panel MCU.
+	// Bit 7 = data wheel rotated clockwise (UP)
+	// Bit 6 = data wheel rotated counter-clockwise (DOWN)
+	return m_encoder_latch;
+}
+
 void kn5000_cpanel_device::send_button_packet(int segment, bool is_left_panel)
 {
 	// Button packet header: bits 7:6 = panel (00=right, 11=left),
@@ -563,7 +588,8 @@ void kn5000_cpanel_device::send_button_packet(int segment, bool is_left_panel)
 	// The firmware dispatches via a ROM lookup table that only maps
 	// bits 7:6=00 and bits 7:6=11 to valid event indices.
 
-	uint8_t state = read_button_segment(segment, is_left_panel);
+	uint8_t state = (segment == 0x0b) ? read_status_register()
+	                                  : read_button_segment(segment, is_left_panel);
 
 	uint8_t header = (segment & 0x0f);
 	if (is_left_panel)
@@ -575,10 +601,14 @@ void kn5000_cpanel_device::send_button_packet(int segment, bool is_left_panel)
 	LOGMASKED(LOG_BUTTONS, "Button packet: seg=%d left=%d state=%02X\n",
 		segment, is_left_panel, state);
 
-	// Track state for change detection
-	int state_idx = is_left_panel ? (segment + 11) : segment;
-	m_last_button_state[state_idx] = state;
-	m_pending_button_state[state_idx] = state;
+	// Track state for change detection (segments 0-10 only; segment 0x0B
+	// is the encoder status register and is tracked separately)
+	if (segment <= 0x0a)
+	{
+		int state_idx = is_left_panel ? (segment + 11) : segment;
+		m_last_button_state[state_idx] = state;
+		m_pending_button_state[state_idx] = state;
+	}
 }
 
 void kn5000_cpanel_device::send_all_button_states(bool is_left_panel)
@@ -589,6 +619,8 @@ void kn5000_cpanel_device::send_all_button_states(bool is_left_panel)
 		send_button_packet(seg, is_left_panel);
 	}
 }
+
+
 
 
 void kn5000_cpanel_device::process_led_command(uint8_t row, uint8_t data)
@@ -905,9 +937,25 @@ TIMER_CALLBACK_MEMBER(kn5000_cpanel_device::button_scan_callback)
 		}
 	}
 
+	// Latch encoder direction for delivery on the next E0 13 poll response.
+	// The real MCU piggybacks encoder status onto the polled response when
+	// the scan flag (param bit 4) is set.
+	if (m_encoder_port)
+	{
+		int32_t pos = m_encoder_port->read();
+		int32_t delta = pos - m_encoder_prev;
+		if (delta != 0)
+		{
+			m_encoder_prev = pos;
+			m_encoder_latch = (delta > 0) ? 0x80 : 0x40;
+			LOGMASKED(LOG_ENCODER, "Encoder: %s pos=%d delta=%d latch=0x%02X\n",
+				(delta > 0) ? "CW" : "CCW", pos, delta, m_encoder_latch);
+		}
+	}
+
 	if (changed)
 	{
-		LOGMASKED(LOG_BUTTONS, "confirmed button change, triggering INTA delivery\n");
+		LOGMASKED(LOG_BUTTONS, "confirmed button/encoder change, triggering INTA delivery\n");
 		m_idle_detect_timer->adjust(attotime::from_usec(50));
 	}
 }

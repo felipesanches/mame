@@ -186,6 +186,7 @@ license:CC0-1.0
 		]]></data></image>
 	</element>
 
+
 	<element name="contrast_track">
 		<image><data><![CDATA[
 			<svg width="7" height="69">
@@ -768,7 +769,7 @@ license:CC0-1.0
 	<element ref="dark_37x21_button" inputtag="CPL_SEG1" inputmask="0x08"><bounds x="332" y="477" width="37" height="21"/></element>
 	<element name="cpl_led_4" ref="green_led"><!-- SOUND ARRANGER: ON/OFF --><bounds x="348" y="469" width="5" height="5"/></element>
 
-	<element id="tempo_program_encoder" ref="tempo_encoder"><bounds x="591" y="460" width="91" height="91"/></element>
+	<element id="tempo_program_encoder" ref="tempo_encoder" inputtag="ENCODER" inputmask="0xff" inputraw="yes"><bounds x="591" y="460" width="91" height="91"/></element>
 	<element id="tempo_program_encoder_finger" ref="tempo_encoder_finger"><bounds x="641" y="512" width="27" height="27"/></element>
 
 	<element ref="light_ellipse_button" inputtag="CPL_SEG1" inputmask="0x10"><bounds x="444" y="455" width="81" height="23"/></element>
@@ -1334,4 +1335,51 @@ license:CC0-1.0
 		<bounds x="320" y="30" width="640" height="390"/>
 		<group ref="compact"><bounds x="0" y="0" width="1280" height="640"/></group>
 	</view>
+
+	<script><![CDATA[
+		-- Rotate the encoder finger grip based on the ENCODER port value.
+		-- The finger circle orbits the knob center, full 360 degrees.
+		local encoder_port = nil
+
+		file:set_resolve_tags_callback(function()
+			encoder_port = file.device:ioport("ENCODER")
+			if not encoder_port then
+				emu.print_error("kn5000 layout: ENCODER port not found")
+				return
+			end
+
+			for _, name in ipairs({"Full Unit", "Compact", "Screen close-up"}) do
+				local view = file.views[name]
+				if not view then goto continue end
+
+				local finger = view.items["tempo_program_encoder_finger"]
+				local knob = view.items["tempo_program_encoder"]
+				if not finger or not knob then goto continue end
+
+				-- Read initial geometry before installing callback
+				local knob_b = knob.bounds
+				local finger_b = finger.bounds
+				local knob_cx = knob_b.x0 + knob_b.width / 2.0
+				local knob_cy = knob_b.y0 + knob_b.height / 2.0
+				local finger_w = finger_b.width
+				local finger_h = finger_b.height
+				local finger_cx = finger_b.x0 + finger_w / 2.0
+				local finger_cy = finger_b.y0 + finger_h / 2.0
+				local radius = math.sqrt((finger_cx - knob_cx)^2 + (finger_cy - knob_cy)^2)
+				local aspect = finger_b.aspect  -- correct for non-square rendering
+
+				finger:set_bounds_callback(function()
+					local val = encoder_port:read()
+					local angle = val / 255.0 * 2.0 * math.pi  -- full 360 degrees
+					local rx = radius * math.sin(angle) * aspect
+					local ry = -radius * math.cos(angle)
+					local x = knob_cx + rx - finger_w / 2.0
+					local y = knob_cy + ry - finger_h / 2.0
+					return emu.render_bounds(x, y, x + finger_w, y + finger_h)
+				end)
+
+				::continue::
+			end
+		end)
+	]]></script>
 </mamelayout>

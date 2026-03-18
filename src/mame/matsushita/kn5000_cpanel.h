@@ -41,6 +41,7 @@ public:
 	// Button input port setters (called from main driver)
 	void set_cpl_port(int n, ioport_port *port) { m_cpl_ports[n] = port; }
 	void set_cpr_port(int n, ioport_port *port) { m_cpr_ports[n] = port; }
+	void set_encoder_port(ioport_port *port) { m_encoder_port = port; }
 
 protected:
 	// device_t overrides
@@ -68,6 +69,7 @@ private:
 
 	// Read button state from input ports
 	uint8_t read_button_segment(int segment, bool is_left_panel);
+	uint8_t read_status_register();
 
 	// Timers
 	emu_timer *m_timer;
@@ -113,6 +115,9 @@ private:
 	// Input port pointers (set by main driver)
 	ioport_port *m_cpl_ports[11];  // Left panel segments 0-10
 	ioport_port *m_cpr_ports[11];  // Right panel segments 0-10
+	ioport_port *m_encoder_port;   // Program data wheel (rotary encoder)
+	int32_t m_encoder_prev;        // Previous encoder position for delta detection
+	uint8_t m_encoder_latch;       // Direction bits for segment 0x0B response
 
 	// LED outputs
 	output_finder<50> m_cpl_leds;  // Left panel LEDs (CPL_0 through CPL_49)
