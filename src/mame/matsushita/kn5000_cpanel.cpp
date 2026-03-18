@@ -459,17 +459,6 @@ void kn5000_cpanel_device::process_command()
 		else if (segment <= 0x0b)
 		{
 			send_button_packet(segment, false);  // right panel
-
-			// When the scan flag (bit 4) is set, append encoder status
-			// if the data wheel has moved.  On real hardware, the MCU
-			// piggybacks pending encoder changes onto polled responses.
-			if ((param & 0x10) && m_encoder_latch)
-			{
-				LOGMASKED(LOG_ENCODER, "Encoder: appending seg 0x0B (0x%02X) to E0 response\n",
-					m_encoder_latch);
-				send_button_packet(0x0b, false);
-				m_encoder_latch = 0;
-			}
 		}
 		else
 		{
@@ -937,9 +926,10 @@ TIMER_CALLBACK_MEMBER(kn5000_cpanel_device::button_scan_callback)
 		}
 	}
 
-	// Latch encoder direction for delivery on the next E0 13 poll response.
-	// The real MCU piggybacks encoder status onto the polled response when
-	// the scan flag (param bit 4) is set.
+	// Scan data wheel (rotary encoder).  The left panel MCU reports
+	// encoder direction via segment 0x0B: bit 7 = clockwise, bit 6 =
+	// counter-clockwise.  The firmware reads this as a button state
+	// byte at DRAM[0x8E55] and derives encoder direction from bits 7-6.
 	if (m_encoder_port)
 	{
 		int32_t pos = m_encoder_port->read();
@@ -950,6 +940,20 @@ TIMER_CALLBACK_MEMBER(kn5000_cpanel_device::button_scan_callback)
 			m_encoder_latch = (delta > 0) ? 0x80 : 0x40;
 			LOGMASKED(LOG_ENCODER, "Encoder: %s pos=%d delta=%d latch=0x%02X\n",
 				(delta > 0) ? "CW" : "CCW", pos, delta, m_encoder_latch);
+
+			// Send segment 0x0B button packet with direction bits.
+			// Header 0x0B (no panel flag) → firmware stores at
+			// STATE_OF_CPANEL_BUTTONS + 0x0B = DRAM[0x8E55].
+			send_button_packet(0x0b, false);
+			changed = true;
+		}
+		else if (m_encoder_latch)
+		{
+			// Encoder stopped — send neutral (0x00) so firmware sees
+			// the transition back to idle state (0x0C).
+			m_encoder_latch = 0;
+			send_button_packet(0x0b, false);
+			changed = true;
 		}
 	}
 
