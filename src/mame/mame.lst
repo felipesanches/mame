@@ -26170,9 +26170,6 @@ jr200u
 @source:matsushita/kn5000.cpp
 kn5000
 
-@source:matsushita/kn5000_techmanager.cpp
-kn5000tm
-
 @source:matsushita/myb3k.cpp
 myb3k
 jb3000
