@@ -7,6 +7,7 @@
 ******************************************************************************/
 
 #include "emu.h"
+#include "kn5000.h"
 #include "bus/technics/kn5000/hdae5000.h"
 #include "cpu/tlcs900/tmp94c241.h"
 #include "cpu/tlcs900/tmp94c241_serial.h"
@@ -86,56 +87,32 @@ uint16_t mn89304_vga_device::offset()
 }
 
 
-namespace {
+//**************************************************************************
+//  KN5000 DEVICE
+//**************************************************************************
 
-class kn5000_state : public driver_device
+DEFINE_DEVICE_TYPE(KN5000, kn5000_state, "kn5000_device", "Technics SX-KN5000")
+
+kn5000_state::kn5000_state(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: device_t(mconfig, KN5000, tag, owner, clock)
+	, m_cpanel(*this, "cpanel")
+	, m_maincpu(*this, "maincpu")
+	, m_subcpu(*this, "subcpu")
+	, m_maincpu_latch(*this, "maincpu_latch")
+	, m_subcpu_latch(*this, "subcpu_latch")
+	, m_fdc(*this, "fdc")
+	, m_com_select(*this, "COM_SELECT")
+	, m_extension(*this, "extension")
+	, m_CPL_SEG(*this, "CPL_SEG%u", 0U)
+	, m_CPR_SEG(*this, "CPR_SEG%u", 0U)
+	, m_checking_device_led_cn11(*this, "checking_device_led_cn11")
+	, m_checking_device_led_cn12(*this, "checking_device_led_cn12")
+	, m_mstat(0)
+	, m_sstat(0)
+	, m_cpanel_inta(0)
 {
-public:
-	kn5000_state(const machine_config &mconfig, device_type type, const char *tag)
-		: driver_device(mconfig, type, tag)
-		, m_cpanel(*this, "cpanel")
-		, m_maincpu(*this, "maincpu")
-		, m_subcpu(*this, "subcpu")
-		, m_maincpu_latch(*this, "maincpu_latch")
-		, m_subcpu_latch(*this, "subcpu_latch")
-		, m_fdc(*this, "fdc")
-		, m_com_select(*this, "COM_SELECT")
-		, m_extension(*this, "extension")
-		, m_CPL_SEG(*this, "CPL_SEG%u", 0U)
-		, m_CPR_SEG(*this, "CPR_SEG%u", 0U)
-		, m_checking_device_led_cn11(*this, "checking_device_led_cn11")
-		, m_checking_device_led_cn12(*this, "checking_device_led_cn12")
-		, m_mstat(0)
-		, m_sstat(0)
-		, m_cpanel_inta(0)
-	{ }
+}
 
-	void kn5000(machine_config &config);
-
-private:
-	required_device<kn5000_cpanel_device> m_cpanel;
-	required_device<tmp94c241_device> m_maincpu;
-	required_device<tmp94c241_device> m_subcpu;
-	required_device<generic_latch_8_device> m_maincpu_latch;
-	required_device<generic_latch_8_device> m_subcpu_latch;
-	required_device<upd72067_device> m_fdc;
-	required_ioport m_com_select;
-	required_device<kn5000_extension_connector> m_extension;
-
-	required_ioport_array<11> m_CPL_SEG; // buttons on "Control Panel Left" PCB
-	required_ioport_array<11> m_CPR_SEG; // buttons on "Control Panel Right" PCB
-	output_finder<> m_checking_device_led_cn11;
-	output_finder<> m_checking_device_led_cn12;
-	uint8_t m_mstat;
-	uint8_t m_sstat;
-	uint8_t m_cpanel_inta;
-
-	virtual void machine_start() override ATTR_COLD;
-	virtual void machine_reset() override ATTR_COLD;
-
-	void maincpu_mem(address_map &map) ATTR_COLD;
-	void subcpu_mem(address_map &map) ATTR_COLD;
-};
 
 void kn5000_state::maincpu_mem(address_map &map)
 {
@@ -445,8 +422,13 @@ static INPUT_PORTS_START(kn5000)
 INPUT_PORTS_END
 
 
+ioport_constructor kn5000_state::device_input_ports() const
+{
+	return INPUT_PORTS_NAME(kn5000);
+}
 
-void kn5000_state::machine_start()
+
+void kn5000_state::device_start()
 {
 	save_item(NAME(m_mstat));
 	save_item(NAME(m_sstat));
@@ -465,13 +447,13 @@ void kn5000_state::machine_start()
 	}
 }
 
-void kn5000_state::machine_reset()
+void kn5000_state::device_reset()
 {
 	m_checking_device_led_cn11 = 0;
 	m_checking_device_led_cn12 = 0;
 }
 
-void kn5000_state::kn5000(machine_config &config)
+void kn5000_state::device_add_mconfig(machine_config &config)
 {
 	// Note: The CPU has an internal clock doubler
 	TMP94C241(config, m_maincpu, 2 * 8_MHz_XTAL); // TMP94C241F @ IC5
@@ -660,7 +642,7 @@ void kn5000_state::kn5000(machine_config &config)
 	config.set_default_layout(layout_kn5000);
 }
 
-ROM_START(kn5000)
+ROM_START(kn5000_device)
 	ROM_DEFAULT_BIOS("v10")
 	ROM_SYSTEM_BIOS(0, "v10", "Version 10 - August 2nd, 1999")
 	ROM_SYSTEM_BIOS(1, "v9", "Version 9 - January 26th, 1999")
@@ -726,7 +708,42 @@ ROM_START(kn5000)
 	ROM_LOAD("kn5000_waveform_rom.ic307", 0xc00000, 0x400000, CRC(20ff4629) SHA1(4b511bff6625f4655cabd96a263bf548d2ef4bf7))
 ROM_END
 
+const tiny_rom_entry *kn5000_state::device_rom_region() const
+{
+	return ROM_NAME(kn5000_device);
+}
+
+
+//**************************************************************************
+//  STANDALONE DRIVER WRAPPER
+//**************************************************************************
+
+namespace {
+
+class kn5000_driver_state : public driver_device
+{
+public:
+	kn5000_driver_state(const machine_config &mconfig, device_type type, const char *tag)
+		: driver_device(mconfig, type, tag)
+		, m_kn5000(*this, "kn5000")
+	{ }
+
+	void kn5000(machine_config &config);
+
+private:
+	required_device<kn5000_state> m_kn5000;
+};
+
+void kn5000_driver_state::kn5000(machine_config &config)
+{
+	KN5000(config, m_kn5000, 0);
+}
+
 } // anonymous namespace
 
-//   YEAR  NAME   PARENT  COMPAT  MACHINE INPUT   STATE         INIT        COMPANY      FULLNAME             FLAGS
-CONS(1998, kn5000,    0,       0, kn5000, kn5000, kn5000_state, empty_init, "Technics", "SX-KN5000", MACHINE_NOT_WORKING|MACHINE_NO_SOUND)
+ROM_START(kn5000)
+	// ROMs are provided by the kn5000_state sub-device via device_rom_region()
+ROM_END
+
+//   YEAR  NAME   PARENT  COMPAT  MACHINE INPUT   STATE               INIT        COMPANY      FULLNAME             FLAGS
+CONS(1998, kn5000,    0,       0, kn5000, kn5000, kn5000_driver_state, empty_init, "Technics", "SX-KN5000", MACHINE_NOT_WORKING|MACHINE_NO_SOUND)
