@@ -132,6 +132,7 @@ device_centronics_peripheral_interface::~device_centronics_peripheral_interface(
 #include "mz1p16.h"
 #include "nec_p72.h"
 #include "nlq401.h"
+#include "kn5000_cable.h"
 #include "pc6022.h"
 #include "printer.h"
 #include "samdac.h"
@@ -159,6 +160,7 @@ void centronics_devices(device_slot_interface &device)
 	device.option_add("nlq401", NLQ401);
 	device.option_add("mz1p16", MZ1P16);
 	device.option_add("pc6022", PC6022);
+	device.option_add("kn5000_cable", KN5000_PARPORT_CABLE);
 
 	device.option_add_internal("hasp_savquest", HASP_SAVQUEST);
 	// TODO: will become option_add_internal when misc/neomania.cpp will have a working chipset
