@@ -77,7 +77,14 @@ void pc_lpt_device::device_add_mconfig(machine_config &config)
 
 uint8_t pc_lpt_device::data_r()
 {
-	// pull up mechanism for input lines, zeros are provided by peripheral
+	if (!(m_control & CONTROL_OUTPUT_ENABLED))
+	{
+		// PS/2 bidirectional mode: control bit 5 set by CPU (inverted in m_control)
+		// disables output drivers, data port reads peripheral data directly
+		return m_cent_data_in->read();
+	}
+
+	// SPP mode: pull up mechanism for input lines, zeros are provided by peripheral
 	return m_data & m_cent_data_in->read();
 }
 
