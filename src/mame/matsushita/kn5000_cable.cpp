@@ -9,28 +9,33 @@
     the PC's parallel port signals are cross-wired to the HDAE5000's PPI:
 
     PC -> KN5000 direction:
-      PC Data (0x378)           ->  HDAE5000 PPI Port A input
-      PC STROBE/AUTOFD/INIT/SEL ->  HDAE5000 PPI Port C input (handshake)
+      PC Data (0x378)           ->  HDAE5000 PPI Port A input ("parport_data_in")
+      PC STROBE/AUTOFD/INIT/SEL ->  HDAE5000 PPI Port C input ("parport_status")
 
     KN5000 -> PC direction:
-      HDAE5000 PPI Port A output ->  PC Data input
-      HDAE5000 PPI Port B output ->  PC BUSY/ACK/SELECT/FAULT
+      HDAE5000 PPI Port A output ->  PC Data input (via centronics output_data)
+      HDAE5000 PPI Port B output ->  PC Status (via centronics busy/ack/select/fault)
 
-    This enables running the original unmodified HD-TechManager5000 Windows
-    software on a stock MAME PC driver (e.g., at486) with the KN5000 as
-    a peripheral:
+    The HDAE5000's own "parport" centronics slot remains empty — this device
+    bypasses it by driving the PPI input buffers directly and intercepting
+    PPI output signals via the HDAE5000's centronics output callbacks.
 
-      fs_mame at486 -board4:lpt:centronics kn5000_hdae
+    Usage on a stock MAME PC driver:
+
+      fs_mame ct486 -board4:lpt:lpt:centronics kn5000_cable \
+          -board4:lpt:lpt:centronics:kn5000_cable:kn5000:extension hdae5000
 
 ***************************************************************************/
 
 #include "emu.h"
 #include "bus/centronics/kn5000_cable.h"
+#include "bus/centronics/ctronics.h"
 #include "bus/technics/kn5000/hdae5000.h"
 #include "cpu/tlcs900/tmp94c241.h"
 #include "cpu/tlcs900/tmp94c241_serial.h"
 #include "imagedev/floppy.h"
 #include "machine/gen_latch.h"
+#include "machine/input_merger.h"
 #include "machine/upd765.h"
 #include "kn5000.h"
 #include "kn5000_cpanel.h"
@@ -70,8 +75,19 @@ private:
 	uint8_t m_pc_data;     // accumulated data byte from PC
 	uint8_t m_pc_control;  // accumulated control bits from PC
 
+	// Cached pointers to HDAE5000's PPI input buffers (resolved at device_start)
+	input_buffer_device *m_hdae_data_in;   // HDAE5000's "parport_data_in"
+	input_buffer_device *m_hdae_status_in; // HDAE5000's "parport_status"
+
 	void update_kn_data();
 	void update_kn_status();
+
+	// KN5000 -> PC direction: callbacks from HDAE5000's centronics output
+	void kn_data_w(uint8_t data);
+	void kn_busy_w(int state);
+	void kn_ack_w(int state);
+	void kn_select_w(int state);
+	void kn_fault_w(int state);
 };
 
 
@@ -80,7 +96,9 @@ kn5000_parport_cable_device::kn5000_parport_cable_device(const machine_config &m
 	device_centronics_peripheral_interface(mconfig, *this),
 	m_kn5000(*this, "kn5000"),
 	m_pc_data(0),
-	m_pc_control(0)
+	m_pc_control(0),
+	m_hdae_data_in(nullptr),
+	m_hdae_status_in(nullptr)
 {
 }
 
@@ -96,22 +114,75 @@ void kn5000_parport_cable_device::device_start()
 {
 	save_item(NAME(m_pc_data));
 	save_item(NAME(m_pc_control));
+
+	// Resolve pointers to HDAE5000's PPI input buffers.
+	// These are deep in the sub-device tree:
+	//   kn5000 -> extension -> hdae5000 -> parport_data_in / parport_status
+	// They will be null if the HDAE5000 extension is not selected.
+	m_hdae_data_in = subdevice<input_buffer_device>("kn5000:extension:hdae5000:parport_data_in");
+	m_hdae_status_in = subdevice<input_buffer_device>("kn5000:extension:hdae5000:parport_status");
+
+	if (!m_hdae_data_in || !m_hdae_status_in)
+		logerror("kn5000_cable: HDAE5000 extension not found — parallel port communication disabled\n");
 }
 
 
+// --- PC -> HDAE5000 direction ---
+
 void kn5000_parport_cable_device::update_kn_data()
 {
-	// PC data byte -> HDAE5000 PPI Port A input
-	// TODO: Write m_pc_data into the HDAE5000's PPI Port A input buffer.
-	logerror("PC->KN5000 data: 0x%02X\n", m_pc_data);
+	// PC data byte -> HDAE5000 PPI Port A input buffer
+	if (m_hdae_data_in)
+		m_hdae_data_in->write(m_pc_data);
 }
 
 
 void kn5000_parport_cable_device::update_kn_status()
 {
-	// PC control signals -> HDAE5000 PPI Port C input
-	// TODO: Write m_pc_control into the HDAE5000's PPI Port C input buffer.
-	logerror("PC->KN5000 control: 0x%02X\n", m_pc_control);
+	// PC control signals -> HDAE5000 PPI Port C input buffer
+	// The HDAE5000 firmware reads Port C to check handshake signals from the PC.
+	// Bit mapping: strobe=0, autofeed=1, init=2, select_in=3
+	if (m_hdae_status_in)
+		m_hdae_status_in->write(m_pc_control);
+}
+
+
+// --- HDAE5000 -> PC direction ---
+// These are called by the HDAE5000's centronics output signals and
+// forwarded to the PC's LPT status register via the centronics
+// peripheral interface's output methods.
+
+void kn5000_parport_cable_device::kn_data_w(uint8_t data)
+{
+	// HDAE5000 PPI Port A output -> PC data input
+	output_data0(BIT(data, 0));
+	output_data1(BIT(data, 1));
+	output_data2(BIT(data, 2));
+	output_data3(BIT(data, 3));
+	output_data4(BIT(data, 4));
+	output_data5(BIT(data, 5));
+	output_data6(BIT(data, 6));
+	output_data7(BIT(data, 7));
+}
+
+void kn5000_parport_cable_device::kn_busy_w(int state)
+{
+	output_busy(state);
+}
+
+void kn5000_parport_cable_device::kn_ack_w(int state)
+{
+	output_ack(state);
+}
+
+void kn5000_parport_cable_device::kn_select_w(int state)
+{
+	output_select(state);
+}
+
+void kn5000_parport_cable_device::kn_fault_w(int state)
+{
+	output_fault(state);
 }
 
 } // anonymous namespace
