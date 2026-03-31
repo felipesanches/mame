@@ -123,7 +123,43 @@ void kn5000_parport_cable_device::device_start()
 	m_hdae_status_in = subdevice<input_buffer_device>("kn5000:extension:hdae5000:parport_status");
 
 	if (!m_hdae_data_in || !m_hdae_status_in)
+	{
 		logerror("kn5000_cable: HDAE5000 extension not found — parallel port communication disabled\n");
+		return;
+	}
+
+	// KN5000 -> PC direction: install write taps on the PPI I/O addresses
+	// in the main CPU's address space to intercept HDAE5000 firmware writes.
+	//
+	// The PPI is mapped at 0x160000-0x160007 with umask16(0x00ff) (low byte only).
+	// Register offsets (byte addresses): Port A=0x160000, Port B=0x160002,
+	// Port C=0x160004, Control=0x160006.
+	//
+	// When the firmware writes to Port A (data to PC) or Port B (status to PC),
+	// the tap forwards the value to the PC's LPT via centronics output methods.
+	address_space &space = m_kn5000->maincpu()->space(AS_PROGRAM);
+
+	// Tap Port A writes (0x160000): HDAE5000 data -> PC data input
+	space.install_write_tap(0x160000, 0x160001, "ppi_pa_tap",
+		[this](offs_t offset, u16 &data, u16 mem_mask) {
+			if (ACCESSING_BITS_0_7)
+				kn_data_w(data & 0xff);
+		});
+
+	// Tap Port B writes (0x160002): HDAE5000 control -> PC status
+	// The HDAE5000's ppi_pb_w maps: bit0=strobe, bit1=autofeed, bit2=init, bit3=select_in
+	// These become PC status signals: busy, ack, select, fault
+	space.install_write_tap(0x160002, 0x160003, "ppi_pb_tap",
+		[this](offs_t offset, u16 &data, u16 mem_mask) {
+			if (ACCESSING_BITS_0_7)
+			{
+				uint8_t pb = data & 0xff;
+				kn_busy_w(BIT(pb, 0));
+				kn_ack_w(BIT(pb, 1));
+				kn_select_w(BIT(pb, 2));
+				kn_fault_w(BIT(pb, 3));
+			}
+		});
 }
 
 
@@ -133,7 +169,16 @@ void kn5000_parport_cable_device::update_kn_data()
 {
 	// PC data byte -> HDAE5000 PPI Port A input buffer
 	if (m_hdae_data_in)
-		m_hdae_data_in->write(m_pc_data);
+	{
+		m_hdae_data_in->write_bit0(BIT(m_pc_data, 0));
+		m_hdae_data_in->write_bit1(BIT(m_pc_data, 1));
+		m_hdae_data_in->write_bit2(BIT(m_pc_data, 2));
+		m_hdae_data_in->write_bit3(BIT(m_pc_data, 3));
+		m_hdae_data_in->write_bit4(BIT(m_pc_data, 4));
+		m_hdae_data_in->write_bit5(BIT(m_pc_data, 5));
+		m_hdae_data_in->write_bit6(BIT(m_pc_data, 6));
+		m_hdae_data_in->write_bit7(BIT(m_pc_data, 7));
+	}
 }
 
 
@@ -143,7 +188,12 @@ void kn5000_parport_cable_device::update_kn_status()
 	// The HDAE5000 firmware reads Port C to check handshake signals from the PC.
 	// Bit mapping: strobe=0, autofeed=1, init=2, select_in=3
 	if (m_hdae_status_in)
-		m_hdae_status_in->write(m_pc_control);
+	{
+		m_hdae_status_in->write_bit0(BIT(m_pc_control, 0));
+		m_hdae_status_in->write_bit1(BIT(m_pc_control, 1));
+		m_hdae_status_in->write_bit2(BIT(m_pc_control, 2));
+		m_hdae_status_in->write_bit3(BIT(m_pc_control, 3));
+	}
 }
 
 
