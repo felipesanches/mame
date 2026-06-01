@@ -80,8 +80,10 @@ private:
 	u8   gpib_r(offs_t offset);      // 0xB8-0xBF: GPIB (TMS9914A), stubbed
 	void gpib_w(offs_t offset, u8 data);
 	void z80ctl_w(u8 data);          // 0xC0: Z80 control-bus reset latch
+	void fdc_irq_w(int state);       // uPD765 INT line
 
-	// recompute the PERQ -> Z80 FIFO interrupt line (IM2 vector 0x20)
+	// drive the Z80 /INT from the IOB's soft interrupt sources (the FIFO and
+	// the uPD765), picking the highest-priority active one's IM2 vector
 	void update_z80_int();
 
 	void iob_mem_map(address_map &map) ATTR_COLD;
@@ -104,6 +106,8 @@ private:
 	bool m_z80_running = false;        // Z80 held in reset until the PERQ turns it on (port 0xC1)
 	bool m_z80_int_enabled = false;    // IOREG3 bit 2 (PRQENB): gate the PERQ->Z80 FIFO IRQ to the Z80
 	bool m_z80_data_in_req = false;    // 0xC7 bit 8: raise IRQ_Z80_DATA_IN once the Z80 drains the FIFO
+	bool m_flp_int_enabled = false;    // IOREG3 bit 0 (FLPENB): gate the uPD765 IRQ to the Z80
+	bool m_fdc_irq = false;            // latched uPD765 INT line
 	u8   m_dma_select = 0;             // IOREG3 bits 7:5 (DMA device select; used in the floppy phase)
 };
 
@@ -122,6 +126,8 @@ void perq_state::machine_reset()
 	m_z80_running     = false;
 	m_z80_int_enabled = false;
 	m_z80_data_in_req = false;
+	m_flp_int_enabled = false;
+	m_fdc_irq         = false;
 	m_dma_select      = 0;
 
 	// the IOB Z80 stays in reset until the boot microcode turns it on (port 0xC1)
@@ -257,7 +263,8 @@ void perq_state::ioreg3_w(u8 data)
 {
 	m_dma_select      = (data >> 5) & 0x07;   // DMA device select (floppy phase)
 	m_z80_int_enabled = BIT(data, 2);         // PRQENB: PERQ -> Z80 FIFO interrupt enable
-	// bit 1 (KBDENB) and bit 0 (FLPENB) gate the keyboard/floppy IRQs (later phases)
+	m_flp_int_enabled = BIT(data, 0);         // FLPENB: uPD765 floppy interrupt enable
+	// bit 1 (KBDENB) gates the keyboard IRQ (wired when the keyboard comes online)
 	update_z80_int();
 }
 
@@ -280,13 +287,30 @@ void perq_state::z80ctl_w(u8 data)
 	// Z80 control-bus reset latch; the firmware writes 0 here during init
 }
 
+void perq_state::fdc_irq_w(int state)
+{
+	m_fdc_irq = (state != 0);
+	update_z80_int();
+}
+
 void perq_state::update_z80_int()
 {
-	// the PERQ -> Z80 FIFO drives the Z80 /INT (IM2 vector 0x20) when it holds
-	// data and IOREG3 has enabled it.  The SIO/CTC keep their own daisy-chain
-	// vectors; a dedicated daisy device for this line is a later refinement.
-	const bool active = m_z80_running && m_z80_int_enabled && !m_perq_to_z80.empty();
-	m_iob->set_input_line_and_vector(INPUT_LINE_IRQ0, active ? ASSERT_LINE : CLEAR_LINE, 0x20);
+	// The IOB's "soft" interrupt sources (the PERQ->Z80 FIFO and the uPD765)
+	// are not Z80 daisy devices; the board's priority logic puts a fixed IM2
+	// vector on the bus.  Reproduce that here, highest priority first: the
+	// FIFO (vector 0x20) then the floppy (0x24).  The SIO/CTC keep their own
+	// daisy-chain vectors, used by the Z80 whenever one of them is requesting;
+	// a dedicated daisy device for these soft sources is a later refinement.
+	int vector = -1;
+	if (m_z80_int_enabled && !m_perq_to_z80.empty())
+		vector = 0x20;   // PERQ -> Z80 FIFO (PRQVEC)
+	else if (m_flp_int_enabled && m_fdc_irq)
+		vector = 0x24;   // uPD765 floppy controller (FLPVEC)
+
+	if (m_z80_running && vector >= 0)
+		m_iob->set_input_line_and_vector(INPUT_LINE_IRQ0, ASSERT_LINE, vector);
+	else
+		m_iob->set_input_line_and_vector(INPUT_LINE_IRQ0, CLEAR_LINE, 0);
 }
 
 
@@ -378,6 +402,7 @@ void perq_state::perq1a(machine_config &config)
 	// the DMA data path (memory/IO routing via IOREG3) is wired in the floppy phase
 
 	UPD765A(config, m_fdc, 8'000'000, true, true);
+	m_fdc->intrq_wr_callback().set(FUNC(perq_state::fdc_irq_w));
 	FLOPPY_CONNECTOR(config, "fdc:0", perq_floppies, "8dsdd", perq_state::floppy_formats);
 
 	// Shugart SA4000-series hard disk (connected to the main CPU's controller)
