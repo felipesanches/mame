@@ -198,13 +198,35 @@ void perq_cpu_device::device_start()
 	save_item(NAME(m_disk.m_seek_state));
 	save_item(NAME(m_disk.m_seek_data));
 
+	// video controller state
+	save_item(NAME(m_video.m_display_addr));
+	save_item(NAME(m_video.m_cursor_addr));
+	save_item(NAME(m_video.m_cursor_x));
+	save_item(NAME(m_video.m_cursor_y));
+	save_item(NAME(m_video.m_cursor_func));
+	save_item(NAME(m_video.m_video_status));
+	save_item(NAME(m_video.m_line_counter));
+	save_item(NAME(m_video.m_line_counter_init));
+	save_item(NAME(m_video.m_line_count_overflow));
+	save_item(NAME(m_video.m_scanline));
+
 	m_disk_busy_timer  = timer_alloc(FUNC(perq_cpu_device::disk_busy_done), this);
 	m_disk_index_timer = timer_alloc(FUNC(perq_cpu_device::disk_index_edge), this);
 	m_disk_index_timer->adjust(attotime::from_usec(20000));   // first index pulse after one revolution
+
+	// free-running scanline timer driving the video line counter
+	m_video_line_timer = timer_alloc(FUNC(perq_cpu_device::video_line_tick), this);
+	m_video_line_timer->adjust(attotime::from_ticks(perq_video::CPU_CLOCKS_PER_LINE, clock()));
 }
 
 TIMER_CALLBACK_MEMBER(perq_cpu_device::disk_busy_done)  { m_disk.on_busy_done(); }
 TIMER_CALLBACK_MEMBER(perq_cpu_device::disk_index_edge) { m_disk.on_index_edge(); }
+
+TIMER_CALLBACK_MEMBER(perq_cpu_device::video_line_tick)
+{
+	m_video.line_tick();
+	m_video_line_timer->adjust(attotime::from_ticks(perq_video::CPU_CLOCKS_PER_LINE, clock()));
+}
 
 void perq_cpu_device::device_reset()
 {

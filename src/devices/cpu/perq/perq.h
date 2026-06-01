@@ -150,6 +150,9 @@ private:
 	TIMER_CALLBACK_MEMBER(disk_busy_done);
 	TIMER_CALLBACK_MEMBER(disk_index_edge);
 
+	// video scanline timer (drives the line-counter interrupt)
+	TIMER_CALLBACK_MEMBER(video_line_tick);
+
 	// helpers
 	u8   bpc() const           { return m_bpc & 0xf; }
 	bool op_file_empty() const  { return (bpc() & 0x8) != 0; }
@@ -173,6 +176,7 @@ private:
 	perq_shugart m_disk;
 	emu_timer   *m_disk_busy_timer = nullptr;
 	emu_timer   *m_disk_index_timer = nullptr;
+	emu_timer   *m_video_line_timer = nullptr;
 
 	// datapath
 	perq_alu       m_alu;
