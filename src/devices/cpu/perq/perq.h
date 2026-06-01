@@ -190,7 +190,6 @@ private:
 	bool m_increment_bpc;
 	bool m_wcs_hold;       // one-cycle stall after a WCS write
 	bool m_rom_enabled;    // boot ROM overlays 0x000-0x1ff while true
-	u16  m_mdi;            // memory data in (stubbed until the Phase 2 memory FSM)
 	u8   m_muldiv_inst = 0; // current hardware multiply/divide command (WidRasterOp <7:6>)
 
 	u64  m_rom[512];       // boot microcode (overlaid over the low control store)

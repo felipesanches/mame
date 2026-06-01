@@ -70,6 +70,10 @@ inline u16 zop_fill(u8 z)
 ROM_START( perq_cpu )
 	ROM_REGION( 0x1000, "boot", 0 )
 	ROM_LOAD( "boot.bin", 0x0000, 0x0d98, CRC(a2b9b7ea) SHA1(75b4b7743e4e65fc14b9f3dbb08421c16cde0f11) )
+
+	// memory-board state-machine lookup ROM (bkm16emu)
+	ROM_REGION( 0x0100, "bkm", 0 )
+	ROM_LOAD( "bkm16emu.rom", 0x0000, 0x0100, CRC(88c33732) SHA1(70fb0ce24f78dd8b5078b19394443de30ef6c4bf) )
 ROM_END
 
 const tiny_rom_entry *perq_cpu_device::device_rom_region() const
@@ -104,7 +108,6 @@ perq_cpu_device::perq_cpu_device(const machine_config &mconfig, const char *tag,
 	, m_increment_bpc(false)
 	, m_wcs_hold(false)
 	, m_rom_enabled(true)
-	, m_mdi(0)
 	, m_interrupt(0)
 	, m_icount(0)
 {
@@ -143,6 +146,11 @@ void perq_cpu_device::device_start()
 
 	load_boot_rom();
 
+	if (memory_region *const r = memregion("bkm"))
+		m_mem_state.load_bookmark_rom(r->base(), r->bytes());
+	else
+		logerror("PERQ: memory bookmark ROM region missing\n");
+
 	set_icountptr(m_icount);
 
 	state_add(STATE_GENPC,     "GENPC", m_genpc).noshow();
@@ -166,7 +174,6 @@ void perq_cpu_device::device_start()
 	save_item(NAME(m_increment_bpc));
 	save_item(NAME(m_wcs_hold));
 	save_item(NAME(m_rom_enabled));
-	save_item(NAME(m_mdi));
 	save_item(NAME(m_muldiv_inst));
 	save_item(NAME(m_interrupt));
 }
@@ -187,7 +194,6 @@ void perq_cpu_device::device_reset()
 	m_register_base = 0;
 	m_mq_enabled   = false;
 	m_muldiv_inst  = MDC_OFF;
-	m_mdi          = 0;
 	m_genpc        = 0;
 	m_gens         = 0;
 
@@ -340,16 +346,16 @@ u32 perq_cpu_device::get_amux(microinstruction &uop)
 		if (op_file_empty() && m_victim == 0xffff)
 			m_victim = m_pc.value();
 		m_increment_bpc = true;
-		return 0;   // OpFile[BPC] is filled by the Phase 2 memory state machine
+		return m_mem_state.op_file(bpc());
 
 	case AMUX_IOD:
 		return m_iod;
 
 	case AMUX_MDI:
-		return m_mdi;
+		return m_mem_state.mdi();
 
 	case AMUX_MDX:
-		return (m_mdi & 0xf) << 16;
+		return (m_mem_state.mdi() & 0xf) << 16;
 
 	case AMUX_USTATE:
 		return microstate_register();
@@ -539,8 +545,8 @@ void perq_cpu_device::dispatch_function(microinstruction &uop)
 			break;
 		}
 
-		case 0xa:   // LoadOp - disables the boot ROM overlay
-			// m_mem_state.load_op_file();  (Phase 2)
+		case 0xa:   // LoadOp - refill the OpFile and disable the boot ROM overlay
+			m_mem_state.load_op_file();
 			if (m_rom_enabled)
 				m_rom_enabled = false;
 			break;
@@ -623,11 +629,10 @@ void perq_cpu_device::dispatch_function(microinstruction &uop)
 
 		case 0x8: case 0x9: case 0xa: case 0xb:
 		case 0xc: case 0xd: case 0xe: case 0xf:
-			// Fetch/Store: the cycle-accurate memory state machine is Phase 2.
-			// For now, fetch cycles do an immediate functional read into MDI;
-			// stores are deferred to Phase 2.
-			if ((uop.sf & 1) == 0)
-				m_mdi = mem_read(m_alu.registers().r & 0xfffff);
+			// Fetch/Store: issue the cycle at MA := R.  The memory state
+			// machine routes fetch vs store and drives MDI/MDO over the
+			// following T-states.
+			m_mem_state.request_cycle(int(m_alu.registers().r & 0xfffff), uop.memory_request);
 			break;
 		}
 		break;
@@ -698,9 +703,8 @@ void perq_cpu_device::dispatch_jump(const microinstruction &uop)
 	case JMP_NEXTINST:
 		if (uop.h == 0)
 		{
-			// DoNextInst: q-code dispatch from the OpFile (filled by the Phase 2
-			// memory state machine; reads 0 for now)
-			const u8 next = 0;
+			// DoNextInst: q-code dispatch from the OpFile
+			const u8 next = m_mem_state.op_file(bpc());
 			m_pc.set_lo(zop_fill(uop.not_z) | ((~next & 0xff) << 2));
 			m_increment_bpc = true;
 		}
@@ -823,9 +827,15 @@ void perq_cpu_device::execute_run()
 
 		microinstruction uop = decode(pc);
 
-		// The cycle-accurate memory state machine arrives in Phase 2; until
-		// then the only stall is the one-cycle hold after a WCS write.
-		if (m_wcs_hold)
+		// clock the memory state machine at the top of the cycle, before the
+		// abort test - aborts still advance the T-state so a pending request
+		// lands in its correct slot
+		m_mem_state.tick(uop.memory_request);
+
+		const bool abort = m_wcs_hold
+				|| m_mem_state.wait()
+				|| (uop.want_mdi && !m_mem_state.mdi_valid());
+		if (abort)
 		{
 			m_wcs_hold = false;
 			m_icount--;
@@ -859,6 +869,11 @@ void perq_cpu_device::execute_run()
 			m_alu.do_op(amux, bmux, uop.alu);
 
 		do_writeback(uop);
+
+		// store half-cycle: commit a pending store (a RasterOp result would
+		// supersede the ALU here, but RasterOp is not yet wired)
+		if (m_mem_state.mdo_needed())
+			m_mem_state.tock(u16(m_alu.registers().r));
 
 		dispatch_function(uop);
 		dispatch_jump(uop);
