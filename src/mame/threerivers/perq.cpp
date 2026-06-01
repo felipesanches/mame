@@ -15,7 +15,22 @@
     The PERQ microengine, main memory, RasterOp, video controller and Shugart hard-disk controller live in the perq_cpu_device
     (src/devices/cpu/perq), following MAME's Xerox Alto precedent.  This file wires that CPU device to the display and to the
     real Z80 I/O board (a Z80 running the dumped pz80.bin firmware with Z80 SIO/CTC/DMA peripherals and a uPD765 floppy
-    controller).  Phase 0: everything is wired and the machine launches; the subsystems are progressively filled in.
+    controller).
+
+    Booting
+    -------
+    Attach a PERQ hard-disk image and the machine boots the operating system on it:
+
+        perq1a -hard somedisk.phd
+
+    The front-panel DDS counter shows the boot's progress (a 3-digit diagnostic count the microcode bumps at each milestone);
+    a healthy power-up climbs through the self-test and the memory/disk checks and on into the OS, the picture appearing on
+    the portrait display along the way.
+
+    With no key held the PERQ boots a default operating system on its own, exactly as the real machine does.  To boot a
+    different OS the operator holds a "boot character" down during start-up (e.g. on a typical disk 'a' selects the default
+    boot and 'z' selects Accent).  Following the hardware, this driver does not synthesise that boot character: a non-default
+    boot is selected by a real keypress, exactly as an operator would hold the key, rather than the key being faked.
 
 ************************************************************************************************************************************/
 
