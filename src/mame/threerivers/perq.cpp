@@ -71,12 +71,18 @@ private:
 	void iobus_w(offs_t port, u16 data);
 
 	// Z80 I/O board ports
-	u8   perq_r_fifo();         // 0xA0: PERQ -> Z80 input FIFO
-	void perq_w_fifo(u8 data);  // 0xD0: Z80 -> PERQ output FIFO
-	u8   kbd_r();               // 0x80: keyboard
-	u8   ioreg1_r();            // 0x88: Z80 -> PERQ FIFO status
-	void ioreg3_w(u8 data);     // 0xC8: DMA select + interrupt enables
-	void disk_seek_w(u8 data);  // 0xD8: hard-disk seek pulse
+	u8   perq_r_fifo();              // 0xA0: PERQ -> Z80 input FIFO
+	void perq_w_fifo(u8 data);       // 0xD0: Z80 -> PERQ output FIFO
+	u8   kbd_r();                    // 0x80: keyboard
+	u8   ioreg1_r();                 // 0x88: Z80 -> PERQ FIFO status
+	void ioreg3_w(u8 data);          // 0xC8: DMA select + interrupt enables
+	void disk_seek_w(u8 data);       // 0xD8: hard-disk seek pulse
+	u8   gpib_r(offs_t offset);      // 0xB8-0xBF: GPIB (TMS9914A), stubbed
+	void gpib_w(offs_t offset, u8 data);
+	void z80ctl_w(u8 data);          // 0xC0: Z80 control-bus reset latch
+
+	// recompute the PERQ -> Z80 FIFO interrupt line (IM2 vector 0x20)
+	void update_z80_int();
 
 	void iob_mem_map(address_map &map) ATTR_COLD;
 	void iob_io_map(address_map &map) ATTR_COLD;
@@ -91,10 +97,14 @@ private:
 	required_device<upd765a_device>  m_fdc;
 	output_finder<3>                 m_dds_digits;
 
-	// PERQ <-> Z80 communication FIFOs (the handshake/interrupt state
-	// machine is fleshed out in a later phase)
-	std::queue<u8> m_z80_to_perq;
-	std::queue<u8> m_perq_to_z80;
+	// PERQ <-> Z80 communication FIFOs and their handshake/interrupt state
+	std::queue<u8> m_z80_to_perq;      // Z80 writes 0xD0 -> PERQ reads 0x46 (IRQ_Z80_DATA_OUT)
+	std::queue<u8> m_perq_to_z80;      // PERQ writes 0xC7 -> Z80 reads 0xA0 (Z80 INT, vector 0x20)
+
+	bool m_z80_running = false;        // Z80 held in reset until the PERQ turns it on (port 0xC1)
+	bool m_z80_int_enabled = false;    // IOREG3 bit 2 (PRQENB): gate the PERQ->Z80 FIFO IRQ to the Z80
+	bool m_z80_data_in_req = false;    // 0xC7 bit 8: raise IRQ_Z80_DATA_IN once the Z80 drains the FIFO
+	u8   m_dma_select = 0;             // IOREG3 bits 7:5 (DMA device select; used in the floppy phase)
 };
 
 
@@ -108,6 +118,15 @@ void perq_state::machine_reset()
 {
 	std::queue<u8>().swap(m_z80_to_perq);
 	std::queue<u8>().swap(m_perq_to_z80);
+
+	m_z80_running     = false;
+	m_z80_int_enabled = false;
+	m_z80_data_in_req = false;
+	m_dma_select      = 0;
+
+	// the IOB Z80 stays in reset until the boot microcode turns it on (port 0xC1)
+	m_iob->set_input_line(INPUT_LINE_RESET, ASSERT_LINE);
+	update_z80_int();
 }
 
 void perq_state::dds_w(u16 data)
@@ -129,14 +148,22 @@ u16 perq_state::iobus_r(offs_t port)
 {
 	switch (port)
 	{
-	case 0x46:  // read Z80 -> PERQ output FIFO
+	case 0x46:  // read Z80 -> PERQ FIFO; clear the data-ready IRQ once drained
 		if (!m_z80_to_perq.empty())
 		{
 			const u8 v = m_z80_to_perq.front();
 			m_z80_to_perq.pop();
+			if (m_z80_to_perq.empty())
+				m_maincpu->clear_interrupt(perq_cpu_device::IRQ_Z80_DATA_OUT);
 			return v;
 		}
 		return 0;
+
+	// OIO board PERQLink: with no microcode-debugger link attached the status
+	// port reads 0xff ("nothing connected"), steering the boot to the normal
+	// Z80/disk path.  A full OIO board is a later phase.
+	case 0x20:  return 0x00ff;
+	case 0x22:  return 0;
 
 	default:
 		return 0;
@@ -147,11 +174,39 @@ void perq_state::iobus_w(offs_t port, u16 data)
 {
 	switch (port)
 	{
-	case 0xc7:  // load PERQ -> Z80 input FIFO
-		m_perq_to_z80.push(u8(data));
+	case 0xc1:  // Z80 on/off (low bits are Shugart disk control, handled in the CPU device)
+		if (data == 0x80 && m_z80_running)
+		{
+			m_z80_running = false;
+			m_iob->set_input_line(INPUT_LINE_RESET, ASSERT_LINE);
+			update_z80_int();
+		}
+		else if (data == 0 && !m_z80_running)
+		{
+			m_z80_running = true;
+			m_z80_int_enabled = false;   // reset clears the FIFO's interrupt-enable
+			std::queue<u8>().swap(m_z80_to_perq);
+			std::queue<u8>().swap(m_perq_to_z80);
+			m_iob->set_input_line(INPUT_LINE_RESET, CLEAR_LINE);   // run pz80.bin from 0x0000
+			update_z80_int();
+		}
 		break;
 
-	case 0xc1:  // Z80 command / control register
+	case 0xc7:  // load PERQ -> Z80 FIFO; bit 8 latches the DataInReady IRQ request
+		if (BIT(data, 8))
+		{
+			m_z80_data_in_req = true;
+		}
+		else
+		{
+			m_z80_data_in_req = false;
+			m_maincpu->clear_interrupt(perq_cpu_device::IRQ_Z80_DATA_IN);
+		}
+		if (m_z80_running)
+		{
+			m_perq_to_z80.push(u8(data));
+			update_z80_int();
+		}
 		break;
 
 	default:
@@ -166,18 +221,25 @@ void perq_state::iobus_w(offs_t port, u16 data)
 
 u8 perq_state::perq_r_fifo()
 {
-	if (!m_perq_to_z80.empty())
+	if (m_perq_to_z80.empty())
+		return 0;
+
+	const u8 v = m_perq_to_z80.front();
+	m_perq_to_z80.pop();
+	if (m_perq_to_z80.empty())
 	{
-		const u8 v = m_perq_to_z80.front();
-		m_perq_to_z80.pop();
-		return v;
+		// the PERQ asked to be told once the Z80 consumed everything it sent
+		if (m_z80_data_in_req)
+			m_maincpu->raise_interrupt(perq_cpu_device::IRQ_Z80_DATA_IN);
+		update_z80_int();
 	}
-	return 0;
+	return v;
 }
 
 void perq_state::perq_w_fifo(u8 data)
 {
 	m_z80_to_perq.push(data);
+	m_maincpu->raise_interrupt(perq_cpu_device::IRQ_Z80_DATA_OUT);
 }
 
 u8 perq_state::kbd_r()
@@ -187,16 +249,44 @@ u8 perq_state::kbd_r()
 
 u8 perq_state::ioreg1_r()
 {
-	// bit 6 reflects Z80 -> PERQ FIFO readiness (stub)
-	return m_z80_to_perq.empty() ? 0x40 : 0x00;
+	// bit 6 = Z80 -> PERQ FIFO not-ready (full); the FIFO is always ready to accept
+	return 0x00;
 }
 
 void perq_state::ioreg3_w(u8 data)
 {
+	m_dma_select      = (data >> 5) & 0x07;   // DMA device select (floppy phase)
+	m_z80_int_enabled = BIT(data, 2);         // PRQENB: PERQ -> Z80 FIFO interrupt enable
+	// bit 1 (KBDENB) and bit 0 (FLPENB) gate the keyboard/floppy IRQs (later phases)
+	update_z80_int();
 }
 
 void perq_state::disk_seek_w(u8 data)
 {
+	// hard-disk single-step strobe; wired to the Shugart controller in a later phase
+}
+
+u8 perq_state::gpib_r(offs_t offset)
+{
+	return 0xff;
+}
+
+void perq_state::gpib_w(offs_t offset, u8 data)
+{
+}
+
+void perq_state::z80ctl_w(u8 data)
+{
+	// Z80 control-bus reset latch; the firmware writes 0 here during init
+}
+
+void perq_state::update_z80_int()
+{
+	// the PERQ -> Z80 FIFO drives the Z80 /INT (IM2 vector 0x20) when it holds
+	// data and IOREG3 has enabled it.  The SIO/CTC keep their own daisy-chain
+	// vectors; a dedicated daisy device for this line is a later refinement.
+	const bool active = m_z80_running && m_z80_int_enabled && !m_perq_to_z80.empty();
+	m_iob->set_input_line_and_vector(INPUT_LINE_IRQ0, active ? ASSERT_LINE : CLEAR_LINE, 0x20);
 }
 
 
@@ -215,11 +305,12 @@ void perq_state::iob_io_map(address_map &map)
 	map(0x98, 0x98).rw(m_dma, FUNC(z80dma_device::read), FUNC(z80dma_device::write));
 	map(0xa0, 0xa0).r(FUNC(perq_state::perq_r_fifo));
 	map(0xa8, 0xa9).m(m_fdc, FUNC(upd765a_device::map));
-	map(0xb0, 0xb3).rw(m_sio, FUNC(z80sio_device::cd_ba_r), FUNC(z80sio_device::cd_ba_w));
+	map(0xb0, 0xb3).rw(m_sio, FUNC(z80sio_device::ba_cd_r), FUNC(z80sio_device::ba_cd_w));
+	map(0xb8, 0xbf).rw(FUNC(perq_state::gpib_r), FUNC(perq_state::gpib_w));   // GPIB (TMS9914A) stub
+	map(0xc0, 0xc0).w(FUNC(perq_state::z80ctl_w));
 	map(0xc8, 0xc8).w(FUNC(perq_state::ioreg3_w));
 	map(0xd0, 0xd0).w(FUNC(perq_state::perq_w_fifo));
 	map(0xd8, 0xd8).w(FUNC(perq_state::disk_seek_w));
-	// 0xB8-0xBB GPIB (TMS9914A) is added in a later phase
 }
 
 
@@ -264,6 +355,10 @@ void perq_state::perq1a(machine_config &config)
 
 	config.set_default_layout(layout_perq1a);
 
+	// the PERQ and the Z80 hand-shake through tight cross-CPU spin loops, so
+	// they have to interleave finely
+	config.set_perfect_quantum(m_maincpu);
+
 	// Z80 I/O board: 2.4576 MHz Z80 with SIO/CTC/DMA and a uPD765 floppy controller
 	Z80(config, m_iob, 2'457'600);
 	m_iob->set_addrmap(AS_PROGRAM, &perq_state::iob_mem_map);
@@ -272,11 +367,15 @@ void perq_state::perq1a(machine_config &config)
 
 	Z80CTC(config, m_ctc, 2'457'600);
 	m_ctc->intr_callback().set_inputline(m_iob, INPUT_LINE_IRQ0);
+	m_ctc->zc_callback<0>().set(m_sio, FUNC(z80sio_device::rxca_w));   // ch0 -> SIO ch A baud
+	m_ctc->zc_callback<0>().append(m_sio, FUNC(z80sio_device::txca_w));
 
 	Z80SIO(config, m_sio, 2'457'600);
 	m_sio->out_int_callback().set_inputline(m_iob, INPUT_LINE_IRQ0);
+	// channel A = RS232, channel B = Kriz tablet (serial devices attached in a later phase)
 
 	Z80DMA(config, m_dma, 2'457'600);
+	// the DMA data path (memory/IO routing via IOREG3) is wired in the floppy phase
 
 	UPD765A(config, m_fdc, 8'000'000, true, true);
 	FLOPPY_CONNECTOR(config, "fdc:0", perq_floppies, "8dsdd", perq_state::floppy_formats);
