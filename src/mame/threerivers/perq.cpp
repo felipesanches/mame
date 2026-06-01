@@ -45,6 +45,8 @@
 #include "machine/z80dma.h"
 #include "machine/upd765.h"
 #include "machine/keyboard.h"
+#include "machine/clock.h"
+#include "machine/perq_iob_irq.h"
 #include "imagedev/floppy.h"
 #include "imagedev/perq_hdc.h"
 
@@ -70,6 +72,7 @@ public:
 		, m_dma(*this, "dma")
 		, m_fdc(*this, "fdc")
 		, m_hdd(*this, "hdd")
+		, m_iobirq(*this, "iobirq")
 		, m_dds_digits(*this, "digit%u", 0U)
 	{ }
 
@@ -116,6 +119,7 @@ private:
 	required_device<z80dma_device>   m_dma;
 	required_device<upd765a_device>  m_fdc;
 	optional_device<perq_harddisk_image_device> m_hdd;
+	required_device<perq_iob_irq_device> m_iobirq;
 	output_finder<3>                 m_dds_digits;
 
 	// PERQ <-> Z80 communication FIFOs and their handshake/interrupt state
@@ -336,24 +340,13 @@ void perq_state::fdc_irq_w(int state)
 
 void perq_state::update_z80_int()
 {
-	// The IOB's "soft" interrupt sources (the PERQ->Z80 FIFO and the uPD765)
-	// are not Z80 daisy devices; the board's priority logic puts a fixed IM2
-	// vector on the bus.  Reproduce that here, highest priority first: the
-	// FIFO (vector 0x20) then the floppy (0x24).  The SIO/CTC keep their own
-	// daisy-chain vectors, used by the Z80 whenever one of them is requesting;
-	// a dedicated daisy device for these soft sources is a later refinement.
-	int vector = -1;
-	if (m_z80_int_enabled && !m_perq_to_z80.empty())
-		vector = 0x20;   // PERQ -> Z80 FIFO (PRQVEC)
-	else if (m_flp_int_enabled && m_fdc_irq)
-		vector = 0x24;   // uPD765 floppy controller (FLPVEC)
-	else if (m_kbd_int_enabled && m_kbd_pending)
-		vector = 0x28;   // keyboard (KBDVEC)
-
-	if (m_z80_running && vector >= 0)
-		m_iob->set_input_line_and_vector(INPUT_LINE_IRQ0, ASSERT_LINE, vector);
-	else
-		m_iob->set_input_line_and_vector(INPUT_LINE_IRQ0, CLEAR_LINE, 0);
+	// Drive the IOB's soft interrupt sources into the daisy-chain arbiter, which
+	// raises the Z80's /INT and supplies the right IM2 vector during the
+	// acknowledge - arbitrating priority against the real SIO and CTC.
+	const bool run = m_z80_running;
+	m_iobirq->fifo_w(run && m_z80_int_enabled && !m_perq_to_z80.empty());
+	m_iobirq->fdc_w (run && m_flp_int_enabled && m_fdc_irq);
+	m_iobirq->kbd_w (run && m_kbd_int_enabled && m_kbd_pending);
 }
 
 
@@ -397,8 +390,9 @@ static void perq_floppies(device_slot_interface &device)
 
 static const z80_daisy_config iob_daisy_chain[] =
 {
-	{ "sio" },
-	{ "ctc" },
+	{ "iobirq" },   // FIFO / floppy / keyboard soft interrupts (vectors 0x20-0x28)
+	{ "sio" },      // vectors 0x40-0x4e
+	{ "ctc" },      // vectors 0x50-0x58
 	{ nullptr }
 };
 
@@ -436,6 +430,19 @@ void perq_state::perq1a(machine_config &config)
 	m_ctc->intr_callback().set_inputline(m_iob, INPUT_LINE_IRQ0);
 	m_ctc->zc_callback<0>().set(m_sio, FUNC(z80sio_device::rxca_w));   // ch0 -> SIO ch A baud
 	m_ctc->zc_callback<0>().append(m_sio, FUNC(z80sio_device::txca_w));
+
+	// the CTC's counter-mode channels (the hard-disk seek step timing on ch2, etc.)
+	// count an external clock on their trigger inputs; feed them a ~100 kHz tick.
+	// ch0 is a timer-mode baud generator (clocked from the chip), so trg0 is left
+	// unconnected.
+	clock_device &ctc_clk(CLOCK(config, "ctc_clk", 100'000));
+	ctc_clk.signal_handler().set(m_ctc, FUNC(z80ctc_device::trg1));
+	ctc_clk.signal_handler().append(m_ctc, FUNC(z80ctc_device::trg2));
+	ctc_clk.signal_handler().append(m_ctc, FUNC(z80ctc_device::trg3));
+
+	// the FIFO / floppy / keyboard soft interrupts, arbitrated as one daisy member
+	PERQ_IOB_IRQ(config, m_iobirq);
+	m_iobirq->int_handler().set_inputline(m_iob, INPUT_LINE_IRQ0);
 
 	Z80SIO(config, m_sio, 2'457'600);
 	m_sio->out_int_callback().set_inputline(m_iob, INPUT_LINE_IRQ0);

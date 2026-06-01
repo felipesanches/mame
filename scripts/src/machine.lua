@@ -23,6 +23,8 @@ files {
 	MAME_DIR .. "src/devices/machine/laserdsc.h",
 	MAME_DIR .. "src/devices/machine/nvram.cpp",
 	MAME_DIR .. "src/devices/machine/nvram.h",
+	MAME_DIR .. "src/devices/machine/perq_iob_irq.cpp",
+	MAME_DIR .. "src/devices/machine/perq_iob_irq.h",
 	MAME_DIR .. "src/devices/machine/ram.cpp",
 	MAME_DIR .. "src/devices/machine/ram.h",
 	MAME_DIR .. "src/devices/machine/legscsi.cpp",
