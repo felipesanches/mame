@@ -3512,6 +3512,29 @@ if opt_tool(CPUS, "ALTO2") then
 	table.insert(disasm_files , MAME_DIR .. "src/devices/cpu/alto2/alto2dsm.h")
 end
 
+--------------------------------------------------
+-- Three Rivers PERQ microengine
+--@src/devices/cpu/perq/perq.h,CPUS["PERQ"] = true
+--------------------------------------------------
+
+if CPUS["PERQ"] then
+	files {
+		MAME_DIR .. "src/devices/cpu/perq/perq.cpp",
+		MAME_DIR .. "src/devices/cpu/perq/perq.h",
+		MAME_DIR .. "src/devices/cpu/perq/perqmem.cpp",
+		MAME_DIR .. "src/devices/cpu/perq/perqmem.h",
+		MAME_DIR .. "src/devices/cpu/perq/perqvid.cpp",
+		MAME_DIR .. "src/devices/cpu/perq/perqvid.h",
+		MAME_DIR .. "src/devices/cpu/perq/perqdsk.cpp",
+		MAME_DIR .. "src/devices/cpu/perq/perqdsk.h",
+	}
+end
+
+if opt_tool(CPUS, "PERQ") then
+	table.insert(disasm_files , MAME_DIR .. "src/devices/cpu/perq/perqdasm.cpp")
+	table.insert(disasm_files , MAME_DIR .. "src/devices/cpu/perq/perqdasm.h")
+end
+
 ------------------------------------------
 -- Sun SPARCv7, SPARCv8 implementation
 --@src/devices/cpu/sparc/sparc.h,CPUS["SPARC"] = true

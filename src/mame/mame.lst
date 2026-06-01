@@ -44532,8 +44532,8 @@ pegasos2
 @source:skeleton/pencil2.cpp
 pencil2
 
-@source:skeleton/perq.cpp
-perq
+@source:threerivers/perq.cpp
+perq1a
 
 @source:skeleton/pes.cpp
 pes
