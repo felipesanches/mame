@@ -6,7 +6,7 @@
 
     Five cascaded 74S181 4-bit ALUs (20 bits) plus a condition-code PAL.
     PERQemu models the datapath directly and replaces the PAL with a
-    64-entry precomputed flag table; this port reproduces both.
+    64-entry precomputed flag table; this driver reproduces both.
 
     Ported from PERQemu CPU/ALU.cs by Josh Dersch (GPL-3.0+); see perq.h.
 

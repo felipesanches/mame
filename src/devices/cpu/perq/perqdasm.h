@@ -6,7 +6,7 @@
 
     Ported from PERQemu (https://github.com/skeezicsb/PERQemu, originally
     https://github.com/jdersch/PERQemu) by Josh Dersch, which is licensed
-    under the GNU General Public License v3 or later.  This MAME port
+    under the GNU General Public License v3 or later.  This driver
     therefore inherits the GPL-3.0+ license.
 
 ***************************************************************************/
