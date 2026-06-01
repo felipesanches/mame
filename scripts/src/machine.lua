@@ -51,6 +51,8 @@ files {
 	MAME_DIR .. "src/devices/imagedev/floppy.h",
 	MAME_DIR .. "src/devices/imagedev/harddriv.cpp",
 	MAME_DIR .. "src/devices/imagedev/harddriv.h",
+	MAME_DIR .. "src/devices/imagedev/perq_hdc.cpp",
+	MAME_DIR .. "src/devices/imagedev/perq_hdc.h",
 	MAME_DIR .. "src/devices/imagedev/magtape.cpp",
 	MAME_DIR .. "src/devices/imagedev/magtape.h",
 	MAME_DIR .. "src/devices/imagedev/memcard.cpp",

@@ -72,6 +72,12 @@ public:
 	u16  mem_read(offs_t word_addr)            { return m_mem_state.read(word_addr); }
 	void mem_write(offs_t word_addr, u16 data) { m_mem_state.write(word_addr, data); }
 
+	// Shugart hard-disk hookup: attach the loaded image and let the controller
+	// arm its status (busy) and index timers
+	void set_hard_disk(perq_harddisk_image_device *hd) { m_disk.set_image(hd); }
+	void disk_arm_busy_timer(const attotime &delay)    { m_disk_busy_timer->adjust(delay); }
+	void disk_arm_index_timer(const attotime &delay)   { m_disk_index_timer->adjust(delay); }
+
 protected:
 	// device_t
 	virtual void device_start() override ATTR_COLD;
@@ -140,6 +146,10 @@ private:
 	// boot ROM
 	void load_boot_rom();
 
+	// Shugart controller timers
+	TIMER_CALLBACK_MEMBER(disk_busy_done);
+	TIMER_CALLBACK_MEMBER(disk_index_edge);
+
 	// helpers
 	u8   bpc() const           { return m_bpc & 0xf; }
 	bool op_file_empty() const  { return (bpc() & 0x8) != 0; }
@@ -161,6 +171,8 @@ private:
 	perq_memory  m_mem_state;
 	perq_video   m_video;
 	perq_shugart m_disk;
+	emu_timer   *m_disk_busy_timer = nullptr;
+	emu_timer   *m_disk_index_timer = nullptr;
 
 	// datapath
 	perq_alu       m_alu;

@@ -30,7 +30,7 @@
 #include "machine/z80dma.h"
 #include "machine/upd765.h"
 #include "imagedev/floppy.h"
-#include "imagedev/harddriv.h"
+#include "imagedev/perq_hdc.h"
 
 #include "emupal.h"
 #include "screen.h"
@@ -53,6 +53,7 @@ public:
 		, m_sio(*this, "sio")
 		, m_dma(*this, "dma")
 		, m_fdc(*this, "fdc")
+		, m_hdd(*this, "hdd")
 		, m_dds_digits(*this, "digit%u", 0U)
 	{ }
 
@@ -97,6 +98,7 @@ private:
 	required_device<z80sio_device>   m_sio;
 	required_device<z80dma_device>   m_dma;
 	required_device<upd765a_device>  m_fdc;
+	optional_device<perq_harddisk_image_device> m_hdd;
 	output_finder<3>                 m_dds_digits;
 
 	// PERQ <-> Z80 communication FIFOs and their handshake/interrupt state
@@ -116,6 +118,8 @@ void perq_state::machine_start()
 {
 	m_dds_digits.resolve();
 	dds_w(0);   // the DDS reads 000 out of reset
+
+	m_maincpu->set_hard_disk(m_hdd.target());   // hand the loaded .phd to the Shugart controller
 }
 
 void perq_state::machine_reset()
@@ -405,8 +409,8 @@ void perq_state::perq1a(machine_config &config)
 	m_fdc->intrq_wr_callback().set(FUNC(perq_state::fdc_irq_w));
 	FLOPPY_CONNECTOR(config, "fdc:0", perq_floppies, "8dsdd", perq_state::floppy_formats);
 
-	// Shugart SA4000-series hard disk (connected to the main CPU's controller)
-	HARDDISK(config, "harddisk");
+	// Shugart SA4000-series hard disk (.phd image; the controller lives in the CPU device)
+	PERQ_HARDDISK(config, m_hdd);
 }
 
 

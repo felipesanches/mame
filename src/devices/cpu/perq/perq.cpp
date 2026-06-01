@@ -176,7 +176,35 @@ void perq_cpu_device::device_start()
 	save_item(NAME(m_rom_enabled));
 	save_item(NAME(m_muldiv_inst));
 	save_item(NAME(m_interrupt));
+
+	// Shugart hard-disk controller state + timers
+	save_item(NAME(m_disk.m_controller_status));
+	save_item(NAME(m_disk.m_track_zero));
+	save_item(NAME(m_disk.m_drive_fault));
+	save_item(NAME(m_disk.m_seek_complete));
+	save_item(NAME(m_disk.m_unit_ready));
+	save_item(NAME(m_disk.m_index));
+	save_item(NAME(m_disk.m_cylinder));
+	save_item(NAME(m_disk.m_phys_cylinder));
+	save_item(NAME(m_disk.m_head));
+	save_item(NAME(m_disk.m_sector));
+	save_item(NAME(m_disk.m_serial_low));
+	save_item(NAME(m_disk.m_serial_high));
+	save_item(NAME(m_disk.m_block_number));
+	save_item(NAME(m_disk.m_header_addr_low));
+	save_item(NAME(m_disk.m_header_addr_high));
+	save_item(NAME(m_disk.m_data_buffer_low));
+	save_item(NAME(m_disk.m_data_buffer_high));
+	save_item(NAME(m_disk.m_seek_state));
+	save_item(NAME(m_disk.m_seek_data));
+
+	m_disk_busy_timer  = timer_alloc(FUNC(perq_cpu_device::disk_busy_done), this);
+	m_disk_index_timer = timer_alloc(FUNC(perq_cpu_device::disk_index_edge), this);
+	m_disk_index_timer->adjust(attotime::from_usec(20000));   // first index pulse after one revolution
 }
+
+TIMER_CALLBACK_MEMBER(perq_cpu_device::disk_busy_done)  { m_disk.on_busy_done(); }
+TIMER_CALLBACK_MEMBER(perq_cpu_device::disk_index_edge) { m_disk.on_index_edge(); }
 
 void perq_cpu_device::device_reset()
 {
@@ -916,6 +944,13 @@ void perq_cpu_device::iobus_write(u8 port, u16 data)
 {
 	if (port >= 0xe0 && port <= 0xe4)   // video registers
 		m_video.io_write(port, data);
+	else if (port == 0xc1)
+	{
+		// 0xC1 is shared: the Shugart command register AND the Z80 on/off
+		// control register, so both consumers see the write
+		m_disk.io_write(port, data);
+		m_iobus_out(port, data);        // driver: Z80 I/O board on/off
+	}
 	else if (port == 0xc2 || (port >= 0xc8 && port <= 0xcb)
 			|| port == 0xd0 || port == 0xd1 || port == 0xd8 || port == 0xd9)
 		m_disk.io_write(port, data);    // Shugart register loads
