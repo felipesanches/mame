@@ -207,6 +207,8 @@ void perq_cpu_device::device_reset()
 	m_mem_state.reset();
 	m_video.reset();
 	m_disk.reset();
+
+	m_dds_cb(0);   // the boot/reset switch clears the front-panel display to 000
 }
 
 void perq_cpu_device::load_boot_rom()
