@@ -44,6 +44,7 @@
 #include "machine/z80sio.h"
 #include "machine/z80dma.h"
 #include "machine/upd765.h"
+#include "machine/keyboard.h"
 #include "imagedev/floppy.h"
 #include "imagedev/perq_hdc.h"
 
@@ -89,7 +90,7 @@ private:
 	// Z80 I/O board ports
 	u8   perq_r_fifo();              // 0xA0: PERQ -> Z80 input FIFO
 	void perq_w_fifo(u8 data);       // 0xD0: Z80 -> PERQ output FIFO
-	u8   kbd_r();                    // 0x80: keyboard
+	u8   kbd_r();                    // 0x80: keyboard data
 	u8   ioreg1_r();                 // 0x88: Z80 -> PERQ FIFO status
 	void ioreg3_w(u8 data);          // 0xC8: DMA select + interrupt enables
 	void disk_seek_w(u8 data);       // 0xD8: hard-disk seek pulse
@@ -97,9 +98,10 @@ private:
 	void gpib_w(offs_t offset, u8 data);
 	void z80ctl_w(u8 data);          // 0xC0: Z80 control-bus reset latch
 	void fdc_irq_w(int state);       // uPD765 INT line
+	void kbd_put(u8 data);           // a key arrived from the host keyboard
 
-	// drive the Z80 /INT from the IOB's soft interrupt sources (the FIFO and
-	// the uPD765), picking the highest-priority active one's IM2 vector
+	// drive the Z80 /INT from the IOB's soft interrupt sources (the FIFO, the
+	// uPD765 and the keyboard), picking the highest-priority active one's IM2 vector
 	void update_z80_int();
 
 	void iob_mem_map(address_map &map) ATTR_COLD;
@@ -125,6 +127,9 @@ private:
 	bool m_z80_data_in_req = false;    // 0xC7 bit 8: raise IRQ_Z80_DATA_IN once the Z80 drains the FIFO
 	bool m_flp_int_enabled = false;    // IOREG3 bit 0 (FLPENB): gate the uPD765 IRQ to the Z80
 	bool m_fdc_irq = false;            // latched uPD765 INT line
+	bool m_kbd_int_enabled = false;    // IOREG3 bit 1 (KBDENB): gate the keyboard IRQ to the Z80
+	bool m_kbd_pending = false;        // a keycode is waiting to be read at port 0x80
+	u8   m_kbd_data = 0;               // the last keycode from the host keyboard
 	u8   m_dma_select = 0;             // IOREG3 bits 7:5 (DMA device select; used in the floppy phase)
 };
 
@@ -147,6 +152,9 @@ void perq_state::machine_reset()
 	m_z80_data_in_req = false;
 	m_flp_int_enabled = false;
 	m_fdc_irq         = false;
+	m_kbd_int_enabled = false;
+	m_kbd_pending     = false;
+	m_kbd_data        = 0;
 	m_dma_select      = 0;
 
 	// the IOB Z80 stays in reset until the boot microcode turns it on (port 0xC1)
@@ -269,7 +277,21 @@ void perq_state::perq_w_fifo(u8 data)
 
 u8 perq_state::kbd_r()
 {
-	return 0;
+	// reading the keycode clears the keyboard's interrupt
+	m_kbd_pending = false;
+	update_z80_int();
+	return m_kbd_data;
+}
+
+void perq_state::kbd_put(u8 data)
+{
+	// a key was pressed (or auto-repeated) on the host keyboard; latch it and
+	// raise the keyboard interrupt (the Z80 reads it and forwards it to the PERQ).
+	// (The real keyboard sends Ctrl+letter as letter|0x80; the generic keyboard
+	// sends the C0 control code instead, so Ctrl chords are not faithful yet.)
+	m_kbd_data = data;
+	m_kbd_pending = true;
+	update_z80_int();
 }
 
 u8 perq_state::ioreg1_r()
@@ -282,8 +304,8 @@ void perq_state::ioreg3_w(u8 data)
 {
 	m_dma_select      = (data >> 5) & 0x07;   // DMA device select (floppy phase)
 	m_z80_int_enabled = BIT(data, 2);         // PRQENB: PERQ -> Z80 FIFO interrupt enable
+	m_kbd_int_enabled = BIT(data, 1);         // KBDENB: keyboard interrupt enable
 	m_flp_int_enabled = BIT(data, 0);         // FLPENB: uPD765 floppy interrupt enable
-	// bit 1 (KBDENB) gates the keyboard IRQ (wired when the keyboard comes online)
 	update_z80_int();
 }
 
@@ -325,6 +347,8 @@ void perq_state::update_z80_int()
 		vector = 0x20;   // PERQ -> Z80 FIFO (PRQVEC)
 	else if (m_flp_int_enabled && m_fdc_irq)
 		vector = 0x24;   // uPD765 floppy controller (FLPVEC)
+	else if (m_kbd_int_enabled && m_kbd_pending)
+		vector = 0x28;   // keyboard (KBDVEC)
 
 	if (m_z80_running && vector >= 0)
 		m_iob->set_input_line_and_vector(INPUT_LINE_IRQ0, ASSERT_LINE, vector);
@@ -426,6 +450,15 @@ void perq_state::perq1a(machine_config &config)
 
 	// Shugart SA4000-series hard disk (.phd image; the controller lives in the CPU device)
 	PERQ_HARDDISK(config, m_hdd);
+
+	// 60-key ASCII keyboard.  Three Rivers' spec sheets describe it as having
+	// N-key rollover and autorepeat (and no dedicated REPEAT key), so the generic
+	// keyboard's typematic repeat-while-held faithfully models the real keyboard:
+	// holding a boot character down selects an OS, as an operator would.  A keypress
+	// lands a code at Z80 port 0x80 and raises the keyboard interrupt (vector 0x28);
+	// the Z80 forwards it to the PERQ.
+	generic_keyboard_device &keyboard(GENERIC_KEYBOARD(config, "keyboard", 0));
+	keyboard.set_keyboard_callback(FUNC(perq_state::kbd_put));
 }
 
 
