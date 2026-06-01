@@ -35,6 +35,8 @@
 #include "emupal.h"
 #include "screen.h"
 
+#include "perq1a.lh"
+
 #include <queue>
 
 
@@ -51,14 +53,19 @@ public:
 		, m_sio(*this, "sio")
 		, m_dma(*this, "dma")
 		, m_fdc(*this, "fdc")
+		, m_dds_digits(*this, "digit%u", 0U)
 	{ }
 
 	void perq1a(machine_config &config);
 
 protected:
+	virtual void machine_start() override ATTR_COLD;
 	virtual void machine_reset() override ATTR_COLD;
 
 private:
+	// front-panel DDS readout: decode the 0..999 value to three 7-seg digits
+	void dds_w(u16 data);
+
 	// PERQ main-CPU I/O bus (ports not handled inside the CPU device land here)
 	u16  iobus_r(offs_t port);
 	void iobus_w(offs_t port, u16 data);
@@ -82,6 +89,7 @@ private:
 	required_device<z80sio_device>   m_sio;
 	required_device<z80dma_device>   m_dma;
 	required_device<upd765a_device>  m_fdc;
+	output_finder<3>                 m_dds_digits;
 
 	// PERQ <-> Z80 communication FIFOs (the handshake/interrupt state
 	// machine is fleshed out in a later phase)
@@ -90,10 +98,26 @@ private:
 };
 
 
+void perq_state::machine_start()
+{
+	m_dds_digits.resolve();
+	dds_w(0);   // the DDS reads 000 out of reset
+}
+
 void perq_state::machine_reset()
 {
 	std::queue<u8>().swap(m_z80_to_perq);
 	std::queue<u8>().swap(m_perq_to_z80);
+}
+
+void perq_state::dds_w(u16 data)
+{
+	static const u8 led_map[10] = { 0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f };
+
+	data %= 1000;
+	m_dds_digits[0] = led_map[data % 10];          // units
+	m_dds_digits[1] = led_map[(data / 10) % 10];   // tens
+	m_dds_digits[2] = led_map[(data / 100) % 10];  // hundreds
 }
 
 
@@ -226,6 +250,7 @@ void perq_state::perq1a(machine_config &config)
 	PERQ(config, m_maincpu, 5'882'353);
 	m_maincpu->iobus_in_cb().set(FUNC(perq_state::iobus_r));
 	m_maincpu->iobus_out_cb().set(FUNC(perq_state::iobus_w));
+	m_maincpu->dds_update_cb().set(FUNC(perq_state::dds_w));
 
 	// portrait 768x1024 black-on-white display, served from the CPU device
 	screen_device &screen(SCREEN(config, "screen", SCREEN_TYPE_RASTER));
@@ -236,6 +261,8 @@ void perq_state::perq1a(machine_config &config)
 	screen.set_palette("palette");
 
 	PALETTE(config, "palette", palette_device::MONOCHROME);
+
+	config.set_default_layout(layout_perq1a);
 
 	// Z80 I/O board: 2.4576 MHz Z80 with SIO/CTC/DMA and a uPD765 floppy controller
 	Z80(config, m_iob, 2'457'600);
@@ -267,9 +294,8 @@ static INPUT_PORTS_START( perq1a )
 INPUT_PORTS_END
 
 ROM_START( perq1a )
-	// boot microcode, loaded into the writable control store at reset
-	ROM_REGION( 0x1000, "maincpu", 0 )
-	ROM_LOAD( "boot.bin",      0x0000, 0x0d98, CRC(a2b9b7ea) SHA1(75b4b7743e4e65fc14b9f3dbb08421c16cde0f11) )
+	// boot.bin (the boot microcode) is supplied by the perq_cpu_device's own
+	// device_rom_region as the "boot" region.
 
 	// Z80 I/O board firmware
 	ROM_REGION( 0x2000, "iob", 0 )

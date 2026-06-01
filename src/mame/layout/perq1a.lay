@@ -1,0 +1,55 @@
+<?xml version="1.0"?>
+<!--
+license:GPL-3.0+
+copyright-holders:Felipe Sanches
+
+Three Rivers PERQ 1A internal layout.
+
+The portrait 768x1024 display plus the 3-digit DDS (Digital Diagnostic
+System) readout.  The DDS is reset to 0 by the boot switch and bumped by
+the CPU on every clear-stack microinstruction; the number it reaches is
+the power-on self-test progress / failure code.
+-->
+<mamelayout version="2">
+
+	<element name="panel">
+		<rect><color red="0.06" green="0.06" blue="0.07" /></rect>
+	</element>
+
+	<element name="digit" defstate="0">
+		<led7seg><color red="0.95" green="0.13" blue="0.13" /></led7seg>
+	</element>
+
+	<element name="label_dds">
+		<text string="DDS"><color red="0.55" green="0.55" blue="0.58" /></text>
+	</element>
+
+	<!-- three digits: hundreds, tens, units (left to right) -->
+	<group name="dds">
+		<bounds x="0" y="0" width="200" height="72" />
+		<element ref="panel"><bounds x="0" y="0" width="200" height="72" /></element>
+		<element name="digit2" ref="digit"><bounds x="14"  y="8" width="52" height="56" /></element>
+		<element name="digit1" ref="digit"><bounds x="74"  y="8" width="52" height="56" /></element>
+		<element name="digit0" ref="digit"><bounds x="134" y="8" width="52" height="56" /></element>
+	</group>
+
+
+	<!-- the display with the diagnostic readout below it -->
+	<view name="Screen and DDS">
+		<screen index="0"><bounds x="0" y="0" width="768" height="1024" /></screen>
+		<element ref="panel"><bounds x="0" y="1024" width="768" height="120" /></element>
+		<element ref="label_dds"><bounds x="270" y="1030" width="60" height="20" /></element>
+		<group ref="dds"><bounds x="284" y="1052" width="200" height="72" /></group>
+	</view>
+
+	<!-- just the display -->
+	<view name="Screen Only">
+		<screen index="0"><bounds x="0" y="0" width="768" height="1024" /></screen>
+	</view>
+
+	<!-- just the diagnostic readout -->
+	<view name="DDS Only">
+		<group ref="dds"><bounds x="0" y="0" width="200" height="72" /></group>
+	</view>
+
+</mamelayout>

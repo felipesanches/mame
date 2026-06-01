@@ -5,14 +5,13 @@
     Three Rivers PERQ microengine (CPU device)
 
     The PERQ is a microcoded bit-slice machine: an AM2910 microsequencer
-    drives a 48-bit horizontal microword out of a 4K (PERQ 1) or 16K
-    (PERQ 1A) writable control store; 74S181 ALUs implement a 20-bit ALU
-    over a 256-entry register file.  A bootstrap ROM overlays the control
-    store at reset.  Memory, the RasterOp pipeline, the video controller
-    and the Shugart hard-disk controller are all clocked off the
-    microengine's T-states, so (following MAME's Xerox Alto precedent)
-    they live inside this CPU device.  The Z80 I/O board is wired up
-    separately in the driver.
+    drives a 48-bit horizontal microword out of a 16K (PERQ 1A) writable
+    control store; 74S181 ALUs implement a 20-bit ALU over a 256-entry
+    register file.  A bootstrap ROM overlays the low control store at
+    reset.  Memory, the RasterOp pipeline, the video controller and the
+    Shugart hard-disk controller are all clocked off the microengine's
+    T-states, so (following MAME's Xerox Alto precedent) they live inside
+    this CPU device.  The Z80 I/O board is wired up separately in the driver.
 
     This is a port of PERQemu by Josh Dersch (GPL-3.0+):
         https://github.com/skeezicsb/PERQemu
@@ -25,6 +24,9 @@
 
 #pragma once
 
+#include "perqalu.h"
+#include "perqshift.h"
+#include "perqcstack.h"
 #include "perqmem.h"
 #include "perqvid.h"
 #include "perqdsk.h"
@@ -40,6 +42,10 @@ public:
 	// to the driver, where the Z80 I/O board and its FIFOs live.
 	auto iobus_in_cb()  { return m_iobus_in.bind(); }
 	auto iobus_out_cb() { return m_iobus_out.bind(); }
+
+	// front-panel DDS diagnostic display: fired (with the current 0..999 value)
+	// each time the boot/OS microcode resets the expression stack
+	auto dds_update_cb() { return m_dds_cb.bind(); }
 
 	// portrait 768x1024 1bpp display, served from main memory
 	u32 screen_update(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
@@ -70,6 +76,7 @@ protected:
 	// device_t
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
+	virtual const tiny_rom_entry *device_rom_region() const override ATTR_COLD;
 
 	// device_execute_interface
 	virtual u32 execute_min_cycles() const noexcept override { return 1; }
@@ -84,31 +91,116 @@ protected:
 	virtual std::unique_ptr<util::disasm_interface> create_disassembler() override;
 
 private:
-	// AS_PROGRAM = control store (48-bit microwords).  Main memory is a
-	// plain word array owned by perq_memory (matching both the Alto CPU
-	// device and PERQemu's own array-backed memory model).
+	// a decoded 48-bit microinstruction (decoded per fetch; next_address is
+	// mutable because the MA:=Shift special function rewrites it in place)
+	struct microinstruction
+	{
+		u64 ucode;
+		u16 pc;
+
+		u8  x, y, a, b, w, h, alu, f, sf, z, cnd, jmp;
+
+		u16 not_z;
+		u16 long_constant;
+		bool is_io_input;
+		u8  io_port;
+		u16 vector_dispatch_address;
+		bool is_special_function;
+		u16 bmux_input;
+		bool want_mdi;
+		u8  memory_request;     // MemoryCycle
+		u16 next_address;
+	};
+
+	// address map for the control store (AS_PROGRAM)
 	void ucode_map(address_map &map) ATTR_COLD;
+
+	// microengine
+	u64  fetch_microword(u16 addr);
+	microinstruction decode(u16 addr);
+	u32  get_amux(microinstruction &uop);
+	void do_writeback(const microinstruction &uop);
+	void do_muldiv_alu_op(u32 amux, u32 bmux, u16 mq, u8 op);
+	void dispatch_function(microinstruction &uop);
+	void dispatch_jump(const microinstruction &uop);
+	bool condition_satisfied(u8 cnd);
+	int  interrupt_priority();
+	u16  microstate_register();
+
+	// expression stack + DDS
+	void stack_reset();
+	void stack_push(u32 value);
+	void stack_pop();
+	void increment_dds();
+
+	// writable control store
+	void write_control_store(int which, u16 data);
+	static u64 unscramble_control_store_word(u64 current, int which, u16 data);
+
+	// boot ROM
+	void load_boot_rom();
+
+	// helpers
+	u8   bpc() const           { return m_bpc & 0xf; }
+	bool op_file_empty() const  { return (bpc() & 0x8) != 0; }
 
 	// main-CPU I/O bus dispatch (ports decoded to the on-board peripherals,
 	// or forwarded to the driver via the callbacks)
 	u16  iobus_read(u8 port);
 	void iobus_write(u8 port, u16 data);
 
+	// AS_PROGRAM = control store (48-bit microwords)
 	address_space_config m_ucode_config;
+	address_space *m_ucode;
 
 	devcb_read16  m_iobus_in;
 	devcb_write16 m_iobus_out;
+	devcb_write16 m_dds_cb;
 
 	// on-board subsystems (clocked off the microengine)
 	perq_memory  m_mem_state;
 	perq_video   m_video;
 	perq_shugart m_disk;
 
-	// microengine state (a minimal subset for now; the full datapath is
-	// ported in a later phase)
-	u16 m_pc;           // microcode program counter (12/14 bits)
-	u8  m_interrupt;    // hardware interrupt latch (see IRQ_* above)
-	int m_icount;
+	// datapath
+	perq_alu       m_alu;
+	perq_alu::regs m_old_alu;     // previous cycle's ALU flags (conditions read these)
+	perq_shifter   m_shifter;
+	perq_shifter   m_mq_shifter;  // 16K hardware multiply/divide shifter
+
+	// sequencer
+	perq_extended_register m_pc;  // 14-bit microcode PC
+	perq_extended_register m_s;   // 14-bit S register
+	perq_callstack         m_cstack;
+
+	// register file and expression stack
+	u32 m_r[256];
+	u32 m_estack[16];
+	int m_stack_pointer;
+
+	// misc CPU state
+	u8   m_bpc;            // byte program counter (low 4 bits; bit3 = opfile empty)
+	int  m_dds;            // diagnostic display counter (front-panel)
+	u16  m_iod;            // last word read from the I/O bus
+	u16  m_victim;         // victim latch (0xffff == unset)
+	u8   m_register_base;  // 16K register-base for X/Y < 0x40
+	u16  m_mq;             // multiplier/quotient register
+	bool m_mq_enabled;
+	int  m_last_bmux;
+	bool m_increment_bpc;
+	bool m_wcs_hold;       // one-cycle stall after a WCS write
+	bool m_rom_enabled;    // boot ROM overlays 0x000-0x1ff while true
+	u16  m_mdi;            // memory data in (stubbed until the Phase 2 memory FSM)
+	u8   m_muldiv_inst = 0; // current hardware multiply/divide command (WidRasterOp <7:6>)
+
+	u64  m_rom[512];       // boot microcode (overlaid over the low control store)
+
+	u8   m_interrupt;      // hardware interrupt latch (see IRQ_* above)
+	int  m_icount;
+
+	// debugger-visible staging copies of the 14-bit PC/S (updated each cycle)
+	u16  m_genpc = 0;
+	u16  m_gens  = 0;
 };
 
 DECLARE_DEVICE_TYPE(PERQ, perq_cpu_device)
