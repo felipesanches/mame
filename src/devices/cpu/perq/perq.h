@@ -78,6 +78,10 @@ public:
 	void disk_arm_busy_timer(const attotime &delay)    { m_disk_busy_timer->adjust(delay); }
 	void disk_arm_index_timer(const attotime &delay)   { m_disk_index_timer->adjust(delay); }
 
+	// Z80 I/O-board single-step strobe (Z80 port 0xD8): step the head one
+	// cylinder in the direction last latched in the Shugart command register
+	void disk_step_head()                              { m_disk.do_single_seek(); }
+
 protected:
 	// device_t
 	virtual void device_start() override ATTR_COLD;

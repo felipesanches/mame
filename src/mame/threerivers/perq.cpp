@@ -185,16 +185,25 @@ u16 perq_state::iobus_r(offs_t port)
 {
 	switch (port)
 	{
-	case 0x46:  // read Z80 -> PERQ FIFO; clear the data-ready IRQ once drained
+	case 0x46:  // read Z80 -> PERQ FIFO; the Z80DataOut IRQ tracks "FIFO not empty"
+	{
+		u8 v = 0;
 		if (!m_z80_to_perq.empty())
 		{
-			const u8 v = m_z80_to_perq.front();
+			v = m_z80_to_perq.front();
 			m_z80_to_perq.pop();
-			if (m_z80_to_perq.empty())
-				m_maincpu->clear_interrupt(perq_cpu_device::IRQ_Z80_DATA_OUT);
-			return v;
 		}
-		return 0;
+		// Mirror the real IOB latch: any read that leaves the FIFO empty clears
+		// the data-out interrupt, including a read of an already-empty FIFO.
+		// (PERQemu Z80ToPERQFIFO.Dequeue checks Count==0 unconditionally.)  If the
+		// clear were gated on the read having consumed the last byte, an empty-FIFO
+		// poll would return 0 yet leave IRQ_Z80_DATA_OUT set, so the microcode's
+		// "if intrpend Vector(Z80Int)" wait loop (SYSB RecZ80Byte) would spin on a
+		// stale interrupt forever instead of timing out.
+		if (m_z80_to_perq.empty())
+			m_maincpu->clear_interrupt(perq_cpu_device::IRQ_Z80_DATA_OUT);
+		return v;
+	}
 
 	// OIO board PERQLink: with no microcode-debugger link attached the status
 	// port reads 0xff ("nothing connected"), steering the boot to the normal
@@ -224,6 +233,14 @@ void perq_state::iobus_w(offs_t port, u16 data)
 			m_z80_int_enabled = false;   // reset clears the FIFO's interrupt-enable
 			std::queue<u8>().swap(m_z80_to_perq);
 			std::queue<u8>().swap(m_perq_to_z80);
+			// the FIFOs' "data ready" outputs are level signals that drive the
+			// PERQ's Z80-data interrupts, so emptying the FIFOs here must also drop
+			// those interrupts.  Otherwise the latch stays set over an empty FIFO
+			// and the next RecZ80Byte vectors on a stale level, reads a phantom 0
+			// byte and derails the keyboard scan that should drain the Z80's
+			// post-reset floppy-status message.
+			m_maincpu->clear_interrupt(perq_cpu_device::IRQ_Z80_DATA_OUT);
+			m_maincpu->clear_interrupt(perq_cpu_device::IRQ_Z80_DATA_IN);
 			m_iob->set_input_line(INPUT_LINE_RESET, CLEAR_LINE);   // run pz80.bin from 0x0000
 			update_z80_int();
 		}
@@ -273,8 +290,14 @@ u8 perq_state::perq_r_fifo()
 	return v;
 }
 
+//**************************************************************************
+//  Z80 -> PERQ FIFO producer
+//**************************************************************************
 void perq_state::perq_w_fifo(u8 data)
 {
+	// Deliver every byte verbatim and raise the data-out interrupt.  The real
+	// pz80.bin sends SeekComplete (6B 0A) ahead of device status (6B 0B), and
+	// WaitSeek / the POS Z80 dispatcher resync on the 6B start-of-message byte.
 	m_z80_to_perq.push(data);
 	m_maincpu->raise_interrupt(perq_cpu_device::IRQ_Z80_DATA_OUT);
 }
@@ -315,7 +338,12 @@ void perq_state::ioreg3_w(u8 data)
 
 void perq_state::disk_seek_w(u8 data)
 {
-	// hard-disk single-step strobe; wired to the Shugart controller in a later phase
+	// Z80 I/O port 0xD8: the IOB firmware pulses one step per cylinder while
+	// servicing a HardDriveSeek message (out (0d8h),08h then out (0d8h),0), so a
+	// non-zero write steps the head one cylinder in the direction the PERQ
+	// latched in the Shugart command register (port 0xC1, direction bit 0x8).
+	if (data != 0)
+		m_maincpu->disk_step_head();
 }
 
 u8 perq_state::gpib_r(offs_t offset)
