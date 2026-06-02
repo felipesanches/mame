@@ -298,7 +298,7 @@ void perq_cpu_device::load_boot_rom()
 	// disassemble it (execution still fetches from m_rom while the overlay
 	// is enabled)
 	for (int i = 0; i < 512; i++)
-		m_ucode->write_qword(m_ucode->address_to_byte(i), m_rom[i]);
+		m_ucode->write_qword(i, m_rom[i]);
 }
 
 
@@ -312,7 +312,13 @@ u64 perq_cpu_device::fetch_microword(u16 addr)
 	if (m_rom_enabled && addr < 0x200)
 		return m_rom[addr];
 
-	return m_ucode->read_qword(m_ucode->address_to_byte(addr)) & 0x0000'ffff'ffff'ffffULL;
+	// The control store is a qword-granular space (data width 64, addr-shift -3):
+	// read_qword()/write_qword() take the NATIVE control-store word address and apply
+	// the shift internally.  address_to_byte() must NOT be used here -- it would
+	// double-apply the shift (addr<<3), overflowing the 14-bit space and wrapping every
+	// address >= 0x800 onto a low one (e.g. 0xff1 aliasing 0x7f1), which silently
+	// corrupted CkMic's own NextData word during the interpreter load.
+	return m_ucode->read_qword(addr) & 0x0000'ffff'ffff'ffffULL;
 }
 
 perq_cpu_device::microinstruction perq_cpu_device::decode(u16 addr)
@@ -523,9 +529,9 @@ u64 perq_cpu_device::unscramble_control_store_word(u64 current, int which, u16 d
 void perq_cpu_device::write_control_store(int which, u16 data)
 {
 	const u16 addr = m_s.value();
-	u64 current = m_ucode->read_qword(m_ucode->address_to_byte(addr)) & 0x0000'ffff'ffff'ffffULL;
+	u64 current = m_ucode->read_qword(addr) & 0x0000'ffff'ffff'ffffULL;
 	current = unscramble_control_store_word(current, which, data);
-	m_ucode->write_qword(m_ucode->address_to_byte(addr), current);
+	m_ucode->write_qword(addr, current);
 	m_wcs_hold = true;   // one-cycle wait state
 }
 
