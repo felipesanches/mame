@@ -3528,6 +3528,8 @@ if CPUS["PERQ"] then
 		MAME_DIR .. "src/devices/cpu/perq/perqcstack.h",
 		MAME_DIR .. "src/devices/cpu/perq/perqmem.cpp",
 		MAME_DIR .. "src/devices/cpu/perq/perqmem.h",
+		MAME_DIR .. "src/devices/cpu/perq/perqrop.cpp",
+		MAME_DIR .. "src/devices/cpu/perq/perqrop.h",
 		MAME_DIR .. "src/devices/cpu/perq/perqvid.cpp",
 		MAME_DIR .. "src/devices/cpu/perq/perqvid.h",
 		MAME_DIR .. "src/devices/cpu/perq/perqdsk.cpp",

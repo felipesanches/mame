@@ -8,12 +8,11 @@
         https://github.com/skeezicsb/PERQemu
         https://github.com/jdersch/PERQemu
 
-    Phase 1 implements the full microengine datapath: the 48-bit
+    This driver implements the full microengine datapath: the 48-bit
     microinstruction decode, the Execute() micro-cycle, DispatchFunction
-    and DispatchJump (the Am2910-style sequencer), the boot-ROM overlay
-    and the DDS power-up diagnostic counter.  The cycle-accurate memory
-    state machine and the RasterOp pipeline are the Phase 2 boundary, so
-    memory fetches are functional/immediate and stores are deferred; the
+    and DispatchJump (the Am2910-style sequencer), the boot-ROM overlay,
+    the DDS power-up diagnostic counter, the cycle-accurate memory state
+    machine and the RasterOp block-transfer pipeline (see perqrop.*).  The
     first DDS tick (proof of life) happens at the very first instruction,
     before any memory access.
 
@@ -74,6 +73,14 @@ ROM_START( perq_cpu )
 	// memory-board state-machine lookup ROM (bkm16emu)
 	ROM_REGION( 0x0100, "bkm", 0 )
 	ROM_LOAD( "bkm16emu.rom", 0x0000, 0x0100, CRC(88c33732) SHA1(70fb0ce24f78dd8b5078b19394443de30ef6c4bf) )
+
+	// RasterOp synthesized edge-mask lookup ROMs (RDS00 9-bit -> CombinerFlags,
+	// RSC03 7-bit -> EdgeStrategy).  These are the emu tables, NOT the real PROM
+	// dumps rds00.rom/rsc03.rom.
+	ROM_REGION( 0x0200, "rds", 0 )
+	ROM_LOAD( "rds00emu.rom", 0x0000, 0x0200, CRC(5f771cd1) SHA1(ca266f8adb4bc0e802de395fb95eb06ad69deb7c) )
+	ROM_REGION( 0x0080, "rsc", 0 )
+	ROM_LOAD( "rsc03emu.rom", 0x0000, 0x0080, CRC(404a39b6) SHA1(5f98e37e4033ec6225005dfe0bb2d34b990d159f) )
 ROM_END
 
 const tiny_rom_entry *perq_cpu_device::device_rom_region() const
@@ -94,6 +101,7 @@ perq_cpu_device::perq_cpu_device(const machine_config &mconfig, const char *tag,
 	, m_iobus_out(*this)
 	, m_dds_cb(*this)
 	, m_mem_state()
+	, m_rasterop(m_mem_state)
 	, m_video(*this)
 	, m_disk(*this)
 	, m_stack_pointer(0)
@@ -150,6 +158,13 @@ void perq_cpu_device::device_start()
 		m_mem_state.load_bookmark_rom(r->base(), r->bytes());
 	else
 		logerror("PERQ: memory bookmark ROM region missing\n");
+
+	memory_region *const rds = memregion("rds");
+	memory_region *const rsc = memregion("rsc");
+	if (rds && rsc)
+		m_rasterop.load_roms(rds->base(), rds->bytes(), rsc->base(), rsc->bytes());
+	else
+		logerror("PERQ: RasterOp lookup ROM region missing\n");
 
 	set_icountptr(m_icount);
 
@@ -261,6 +276,7 @@ void perq_cpu_device::device_reset()
 	std::fill(std::begin(m_estack), std::end(m_estack), 0);
 
 	m_mem_state.reset();
+	m_rasterop.reset();
 	m_video.reset();
 	m_disk.reset();
 
@@ -575,13 +591,20 @@ void perq_cpu_device::dispatch_function(microinstruction &uop)
 			stack_pop();
 			break;
 
-		case 0x6:   // CntlRasterOp := Z   (Phase 2)
-		case 0x7:   // SrcRasterOp := R    (Phase 2)
-		case 0x8:   // DstRasterOp := R    (Phase 2)
+		case 0x6:   // CntlRasterOp := Z (enable/phase/direction; programs the datapath)
+			m_rasterop.cntl_rasterop(uop.z);
+			m_mem_state.set_rasterop_enabled(m_rasterop.enabled());
+			break;
+		case 0x7:   // SrcRasterOp := R
+			m_rasterop.src_rasterop(m_alu.registers().r & 0xffff);
+			break;
+		case 0x8:   // DstRasterOp := R
+			m_rasterop.dst_rasterop(m_alu.registers().r & 0xffff);
 			break;
 
-		case 0x9:   // WidRasterOp := R (RasterOp Phase 2; bits <7:6> drive MulDiv)
+		case 0x9:   // WidRasterOp := R (widths -> RasterOp; bits <7:6> drive the 16K MulDiv)
 		{
+			m_rasterop.wid_rasterop(m_alu.registers().r & 0xffff);
 			m_muldiv_inst = (m_alu.registers().r & 0xc0) >> 6;
 			switch (m_muldiv_inst)
 			{
@@ -926,10 +949,14 @@ void perq_cpu_device::execute_run()
 
 		do_writeback(uop);
 
-		// store half-cycle: commit a pending store (a RasterOp result would
-		// supersede the ALU here, but RasterOp is not yet wired)
+		// clock the RasterOp pipeline after writeback, before the store commits
+		// (mirrors PERQemu: DoWriteBack -> RasterOp.Clock -> Tock).  Clock() is a
+		// no-op while the datapath is disabled.
+		m_rasterop.clock();
+
+		// store half-cycle: a pending RasterOp result supersedes the ALU
 		if (m_mem_state.mdo_needed())
-			m_mem_state.tock(u16(m_alu.registers().r));
+			m_mem_state.tock(m_rasterop.result_ready() ? m_rasterop.result() : u16(m_alu.registers().r));
 
 		dispatch_function(uop);
 		dispatch_jump(uop);

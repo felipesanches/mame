@@ -57,6 +57,7 @@ void perq_memory::reset()
 	m_mdi = 0;
 	m_wait = false;
 	m_load_op_file = false;
+	m_rasterop_enabled = false;
 	for (auto &b : m_op_file)
 		b = 0xff;
 	// main memory keeps its contents across reset (do not reallocate)

@@ -59,8 +59,14 @@ public:
 	void request_cycle(int address, u8 cycle_type); // issue a Fetch/Store
 	void load_op_file();                          // start an OpFile refill (LoadOp)
 
+	// the RasterOp unit reports when it is active so the overlapped Fetch/Store
+	// bookmark cases in the memory state machine become live
+	void set_rasterop_enabled(bool e) { m_rasterop_enabled = e; }
+
 	// status read by the CPU
 	u16  mdi() const          { return m_mdi; }
+	int  mdi_address() const  { return m_mdi_q.address; }   // PERQemu MemoryBoard.MADR
+	int  mdi_index() const    { return m_mdi_q.index; }     // PERQemu MemoryBoard.MIndex
 	bool mdi_valid() const    { return m_mdi_q.valid; }
 	bool mdo_needed() const   { return m_mdo_q.valid; }
 	bool wait() const         { return m_wait; }
@@ -99,7 +105,7 @@ private:
 	const bookmark &ctl_bookmark_entry(int book, mem_state st) const;
 
 	void execute_fetch();
-	bool rasterop_enabled() const { return false; }   // RasterOp lands in a later phase
+	bool rasterop_enabled() const { return m_rasterop_enabled; }
 
 	static constexpr u32 MEM_WORDS = 0x80000;   // 512KW (1MB)
 	static constexpr u32 MEM_MASK  = 0x7ffff;
@@ -112,6 +118,7 @@ private:
 	u16  m_mdi;           // last fetched word
 	bool m_wait;          // board-level CPU wait
 	bool m_load_op_file;  // an OpFile refill is in progress
+	bool m_rasterop_enabled = false;  // the RasterOp datapath is active
 	u8   m_op_file[16];   // the opcode file (q-code bytes)
 
 	std::vector<u16> m_ram;

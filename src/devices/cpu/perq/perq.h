@@ -28,6 +28,7 @@
 #include "perqshift.h"
 #include "perqcstack.h"
 #include "perqmem.h"
+#include "perqrop.h"
 #include "perqvid.h"
 #include "perqdsk.h"
 
@@ -176,6 +177,7 @@ private:
 
 	// on-board subsystems (clocked off the microengine)
 	perq_memory  m_mem_state;
+	perq_rasterop m_rasterop;   // RasterOp datapath (holds a ref to m_mem_state, so declared after it)
 	perq_video   m_video;
 	perq_shugart m_disk;
 	emu_timer   *m_disk_busy_timer = nullptr;
