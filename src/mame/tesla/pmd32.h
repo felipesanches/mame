@@ -82,7 +82,7 @@ private:
 	devcb_write8 m_out_ctrl_cb;
 	uint8_t m_host_byte;
 	uint8_t m_drive;
-	bool m_seen_out;       // one-shot bring-up marker: firmware reached port-A output
+	uint8_t m_out_count;   // bring-up: count of logged port-A writes (capped)
 };
 
 DECLARE_DEVICE_TYPE(PMD32, pmd32_device)

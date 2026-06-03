@@ -14,8 +14,12 @@
 #include "emu.h"
 #include "pmd32.h"
 
+#define LOG_PROTO (1U << 1)   // verbose: drive/motor latch + per-byte
+
 #define VERBOSE (LOG_GENERAL)
 #include "logmacro.h"
+
+#define LOGPROTO(...) LOGMASKED(LOG_PROTO, __VA_ARGS__)
 
 
 DEFINE_DEVICE_TYPE(PMD32, pmd32_device, "pmd32", "PMD-32 floppy disk unit")
@@ -32,7 +36,7 @@ pmd32_device::pmd32_device(const machine_config &mconfig, const char *tag, devic
 	, m_out_ctrl_cb(*this)
 	, m_host_byte(0xff)
 	, m_drive(0)
-	, m_seen_out(false)
+	, m_out_count(0)
 {
 }
 
@@ -128,10 +132,10 @@ void pmd32_device::device_add_mconfig(machine_config &config)
 void pmd32_device::ppi_pa_w(uint8_t data)
 {
 	// the unit's firmware put a byte on the host link (e.g. the 0xAA presentation)
-	if (!m_seen_out)
+	if (m_out_count < 16)
 	{
-		m_seen_out = true;
-		LOG("firmware running; first byte to host = %02X\n", data);
+		LOG("unit -> host: %02X%s\n", data, (data == 0xaa) ? "  (presentation)" : "");
+		m_out_count++;
 	}
 	m_out_data_cb(data);
 }
@@ -152,7 +156,7 @@ void pmd32_device::host_data_w(uint8_t data)
 void pmd32_device::drive_w(uint8_t data)
 {
 	// E0: DS1 DS0 MO1 MO0 ENA . . .  -- select drive + spin motor
-	LOG("drive/motor latch = %02X (drive %u)\n", data, BIT(data, 6));
+	LOGPROTO("drive/motor latch = %02X (drive %u)\n", data, BIT(data, 6));
 	m_drive = data;
 	floppy_image_device *fd = m_floppy[BIT(data, 6)]->get_device();
 	if (fd)
@@ -184,11 +188,11 @@ void pmd32_device::device_start()
 {
 	save_item(NAME(m_host_byte));
 	save_item(NAME(m_drive));
-	save_item(NAME(m_seen_out));
+	save_item(NAME(m_out_count));
 }
 
 void pmd32_device::device_reset()
 {
-	m_seen_out = false;
+	m_out_count = 0;
 	LOG("PMD-32 unit reset; its 8080 will run the firmware\n");
 }
