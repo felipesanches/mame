@@ -1,35 +1,18 @@
-// license:GPL-3.0-or-later
-// copyright-holders:Roman Bórik, Martin Bórik, Felipe Corrêa da Silva Sanches
+// license:BSD-3-Clause
+// copyright-holders:Felipe Corrêa da Silva Sanches
 /*******************************************************************************
 
-    PMD-32 floppy disk unit (high-level emulation)
+    PMD-32 floppy disk unit (low-level emulation) -- see pmd32.h.
 
-    Ported from the Pmd32 class of GPMD85Emulator (GPL-3.0-or-later) by
-    Roman Bórik and Martin Bórik.  See pmd32.h for the overview.
-
-    The unit hangs off an Intel 8255 PPI run in mode 2 by the host's disk
-    EPROM (GPIO at I/O 4Ch-4Fh on the Consul 2717).  Bytes from the host arrive
-    through the 8255's port-A output callback (data_w); bytes to the host are
-    presented through the port-A input callback (data_r) and strobed in with
-    pc4_w; the mode-2 handshake status is observed through the port-C output
-    callback (pc_w).  A periodic timer paces the unit's outgoing bytes, the way
-    the real unit's processor would.
-
-    The wire protocol: the host opens with PRESENTATION (0xAA), then a command
-    byte, command-specific arguments, and a CRC (XOR of all bytes); the unit
-    answers ACK/NAK, a result code, and (for reads) the sector data and its CRC.
+    This models the real PMD-32 hardware (8080A + 8255 + 8272A FDC + 8257 DMA +
+    two 5.25" drives) running the unit's own control program.  WIP: the DMA/FDC
+    inter-chip wiring and the host parallel link are a first cut and are not yet
+    verified on a host build.
 
 *******************************************************************************/
 
 #include "emu.h"
 #include "pmd32.h"
-
-#define LOG_PROTO (1U << 1)   // per-byte protocol firehose
-
-#define VERBOSE (LOG_GENERAL)
-#include "logmacro.h"
-
-#define LOGPROTO(...) LOGMASKED(LOG_PROTO, __VA_ARGS__)
 
 
 DEFINE_DEVICE_TYPE(PMD32, pmd32_device, "pmd32", "PMD-32 floppy disk unit")
@@ -37,431 +20,147 @@ DEFINE_DEVICE_TYPE(PMD32, pmd32_device, "pmd32", "PMD-32 floppy disk unit")
 
 pmd32_device::pmd32_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: device_t(mconfig, PMD32, tag, owner, clock)
-	, device_image_interface(mconfig, *this)
-	, m_ppi(*this, finder_base::DUMMY_TAG)
-	, m_timer(nullptr)
-	, m_tracks(0)
-	, m_sectors(0)
-	, m_state(WAIT_PRESENT)
-	, m_command(0)
-	, m_crc(0)
-	, m_drvnum(0)
-	, m_track(0)
-	, m_sector(0)
-	, m_address(0)
-	, m_length(0)
-	, m_wp(1)
-	, m_byte_counter(0)
-	, m_to_send(PRESENTATION)
-	, m_no_send(true)
-	, m_ibf(false)
-	, m_seen_mode2(false)
-	, m_point(0)
+	, m_cpu(*this, "cpu")
+	, m_ppi(*this, "ppi")
+	, m_fdc(*this, "fdc")
+	, m_dma(*this, "dma")
+	, m_floppy(*this, "fdc:%u", 0U)
+	, m_out_data_cb(*this)
+	, m_out_ctrl_cb(*this)
+	, m_host_byte(0xff)
+	, m_drive(0)
 {
 }
 
+
+//-------------------------------------------------
+//  ROM -- a BAD_DUMP reconstruction (see header / PROVENANCE.md)
+//-------------------------------------------------
+
+ROM_START(pmd32)
+	ROM_REGION(0x0800, "rom", 0)
+	// RECONSTRUCTION, not a verified silicon dump: assembled from RM-TEAM's
+	// commented disassembly of the PMD-32 control program (Roman Bórik, 2006;
+	// pmd85.borik.net download id 16). Cross-checked two ways (round-trip
+	// disassembly and an independent ASL assembly) but never verified against a
+	// real EPROM, so it is flagged BAD_DUMP. The unprogrammed tail (0x069E-0x07FF)
+	// is padded 0xFF by assumption. A real dump is still wanted.
+	ROM_LOAD("pmd32-reconstructed.bin", 0x0000, 0x0800, BAD_DUMP CRC(2da51576) SHA1(e4b0bc86a27d3e64e2fca492a947a6fda3463504))
+ROM_END
+
+const tiny_rom_entry *pmd32_device::device_rom_region() const
+{
+	return ROM_NAME(pmd32);
+}
+
+
+//-------------------------------------------------
+//  address maps
+//-------------------------------------------------
+
+void pmd32_device::mem_map(address_map &map)
+{
+	map(0x0000, 0x07ff).rom().region("rom", 0);
+	map(0x1800, 0x1bff).ram();
+}
+
+void pmd32_device::io_map(address_map &map)
+{
+	map.global_mask(0xff);
+	map(0x00, 0x00).r(m_fdc, FUNC(i8272a_device::msr_r));                                  // FDC status
+	map(0x01, 0x01).rw(m_fdc, FUNC(i8272a_device::fifo_r), FUNC(i8272a_device::fifo_w));   // FDC data
+	map(0x20, 0x23).rw(m_ppi, FUNC(i8255_device::read), FUNC(i8255_device::write));        // host link
+	map(0x40, 0x48).rw(m_dma, FUNC(i8257_device::read), FUNC(i8257_device::write));        // DMA
+	map(0xe0, 0xe0).w(FUNC(pmd32_device::drive_w));                                         // drive/motor latch
+}
+
+
+//-------------------------------------------------
+//  config
+//-------------------------------------------------
+
+void pmd32_device::floppy_formats(format_registration &fr)
+{
+	fr.add_mfm_containers();
+}
+
+static void pmd32_floppies(device_slot_interface &device)
+{
+	device.option_add("525dd", FLOPPY_525_DD);
+}
+
+void pmd32_device::device_add_mconfig(machine_config &config)
+{
+	I8080(config, m_cpu, 2'048'000);   // MHB 8080A; clock approximate
+	m_cpu->set_addrmap(AS_PROGRAM, &pmd32_device::mem_map);
+	m_cpu->set_addrmap(AS_IO, &pmd32_device::io_map);
+
+	I8255(config, m_ppi);
+	m_ppi->in_pa_callback().set(FUNC(pmd32_device::host_byte_r));
+	m_ppi->out_pa_callback().set(FUNC(pmd32_device::ppi_pa_w));
+	m_ppi->out_pc_callback().set(FUNC(pmd32_device::ppi_pc_w));
+
+	I8272A(config, m_fdc, 8'000'000);
+	m_fdc->drq_wr_callback().set(m_dma, FUNC(i8257_device::dreq0_w));
+	m_fdc->intrq_wr_callback().set_inputline(m_cpu, I8085_INTR_LINE);
+
+	I8257(config, m_dma, 2'048'000);
+	m_dma->out_hrq_cb().set(FUNC(pmd32_device::hrq_w));
+	m_dma->in_memr_cb().set(FUNC(pmd32_device::dma_mem_r));
+	m_dma->out_memw_cb().set(FUNC(pmd32_device::dma_mem_w));
+	m_dma->in_ior_cb<0>().set(m_fdc, FUNC(i8272a_device::dma_r));
+	m_dma->out_iow_cb<0>().set(m_fdc, FUNC(i8272a_device::dma_w));
+	m_dma->out_tc_cb().set(m_fdc, FUNC(i8272a_device::tc_line_w));
+
+	FLOPPY_CONNECTOR(config, "fdc:0", pmd32_floppies, "525dd", pmd32_device::floppy_formats);
+	FLOPPY_CONNECTOR(config, "fdc:1", pmd32_floppies, "525dd", pmd32_device::floppy_formats);
+}
+
+
+//-------------------------------------------------
+//  host parallel link (8255 port A) and DMA glue
+//-------------------------------------------------
+
+void pmd32_device::host_data_w(uint8_t data)
+{
+	// host wrote a byte: present it on the drive 8255's port-A input and strobe
+	m_host_byte = data;
+	m_ppi->pc4_w(0);
+	m_ppi->pc4_w(1);
+}
+
+void pmd32_device::drive_w(uint8_t data)
+{
+	// E0: DS1 DS0 MO1 MO0 ENA . . .  -- select drive + spin motor
+	m_drive = data;
+	floppy_image_device *fd = m_floppy[BIT(data, 6)]->get_device();
+	if (fd)
+		fd->mon_w(BIT(data, 4) ? 0 : 1);   // motor on when MO bit set (active-low mon)
+}
+
+uint8_t pmd32_device::dma_mem_r(offs_t offset)
+{
+	return m_cpu->space(AS_PROGRAM).read_byte(offset);
+}
+
+void pmd32_device::dma_mem_w(offs_t offset, uint8_t data)
+{
+	m_cpu->space(AS_PROGRAM).write_byte(offset, data);
+}
+
+void pmd32_device::hrq_w(int state)
+{
+	m_cpu->set_input_line(INPUT_LINE_HALT, state);
+	m_dma->hlda_w(state);
+}
+
+
+//-------------------------------------------------
+//  device_t
+//-------------------------------------------------
 
 void pmd32_device::device_start()
 {
-	m_timer = timer_alloc(FUNC(pmd32_device::service), this);
-
-	std::fill(std::begin(m_buffer), std::end(m_buffer), 0);
-	std::fill(std::begin(m_memory), std::end(m_memory), 0);
-
-	save_item(NAME(m_tracks));
-	save_item(NAME(m_sectors));
-	save_item(NAME(m_state));
-	save_item(NAME(m_command));
-	save_item(NAME(m_crc));
-	save_item(NAME(m_drvnum));
-	save_item(NAME(m_track));
-	save_item(NAME(m_sector));
-	save_item(NAME(m_address));
-	save_item(NAME(m_length));
-	save_item(NAME(m_wp));
-	save_item(NAME(m_byte_counter));
-	save_item(NAME(m_to_send));
-	save_item(NAME(m_no_send));
-	save_item(NAME(m_ibf));
-	save_item(NAME(m_seen_mode2));
-	save_item(NAME(m_point));
-	save_item(NAME(m_buffer));
-	save_item(NAME(m_memory));
-}
-
-
-void pmd32_device::device_reset()
-{
-	m_state = WAIT_PRESENT;
-	m_command = 0;
-	m_crc = 0;
-	m_byte_counter = 0;
-	m_point = 0;
-	m_to_send = PRESENTATION;
-	m_no_send = true;
-	m_ibf = false;
-	m_seen_mode2 = false;
-
-	LOG("reset; offering presentation, awaiting the host\n");
-
-	// run the unit's byte-pump at ~100 us/byte, matching the original model
-	m_timer->adjust(attotime::from_usec(100), 0, attotime::from_usec(100));
-}
-
-
-//-------------------------------------------------
-//  i8255 mode-2 glue
-//-------------------------------------------------
-
-uint8_t pmd32_device::data_r()
-{
-	// the byte the unit is presenting; sampled by the 8255 on a pc4_w strobe
-	return m_to_send;
-}
-
-
-void pmd32_device::pc_w(uint8_t data)
-{
-	// PC5 = IBFa: set while the host still holds a byte we strobed in
-	m_ibf = BIT(data, 5);
-}
-
-
-void pmd32_device::strobe_to_host(uint8_t data)
-{
-	m_to_send = data;
-	m_ppi->pc4_w(0);   // strobe low: 8255 latches data_r() into input, raises IBF (+INTRa)
-	m_ppi->pc4_w(1);
-
-	LOGPROTO("tx %02X (state %u)\n", data, m_state);
-	if (m_ibf && !m_seen_mode2)
-	{
-		m_seen_mode2 = true;
-		LOG("8255 mode 2 active; first byte strobed to the host\n");
-	}
-}
-
-
-void pmd32_device::data_w(uint8_t data)
-{
-	// host wrote a byte to port A (mode-2 output); run the receive state machine
-	LOGPROTO("rx %02X (state %u)\n", data, m_state);
-
-	switch (m_state)
-	{
-	case WAIT_PRESENT:
-		if (data == PRESENTATION)
-		{
-			m_state = WAIT_COMMAND;
-			LOG("host answered presentation; entering command phase\n");
-		}
-		break;
-
-	case WAIT_COMMAND:
-		m_command = data;
-		LOG("command '%c' (%02X)\n", (data >= 0x20 && data < 0x7f) ? char(data) : '?', data);
-		switch (data)
-		{
-		case 'B': // boot
-		case '*': // fast mode
-		case '@': // slow mode
-			m_state = WAIT_CRC;
-			break;
-
-		case 'Q': case 'R': // read logical sector
-		case 'T': case 'W': // write logical sector
-		case 'S':           // write physical sector
-		case 'F':           // format track
-			m_state = WAIT_SECTOR;
-			break;
-
-		case 'I': // drive select + home
-			m_state = WAIT_DRIVE;
-			break;
-
-		case 'U': // write to PMD-32 RAM
-		case 'C': // read from PMD-32 RAM
-		case 'J': // execute code in PMD-32 RAM
-			m_state = WAIT_ADDR_H;
-			break;
-
-		// PMD-32-SD extensions are not emulated here
-		case 'G': case 'H': case 'P': case 'K': case 'L': case 'M': case 'N':
-		case PRESENTATION:
-		default:
-			m_state = WAIT_PRESENT;
-			break;
-		}
-		m_crc = m_command;
-		break;
-
-	case WAIT_SECTOR:
-		m_sector = data;
-		m_drvnum = m_sector >> 6;
-		if (m_drvnum > 0 && m_drvnum < 3)
-			m_drvnum ^= 3;
-		m_sector &= 0x3f;
-		m_crc ^= data;
-		m_state = WAIT_TRACK;
-		break;
-
-	case WAIT_TRACK:
-		m_track = data;
-		m_crc ^= data;
-		if (m_command == 'T' || m_command == 'W' || m_command == 'S')
-		{
-			m_point = 0;
-			m_byte_counter = (m_command == 'S') ? (PHYSICAL_SECTOR_SIZE + 1) : SECTOR_SIZE;
-			m_state = WAIT_DATA;
-		}
-		else
-			m_state = WAIT_CRC;
-		break;
-
-	case WAIT_DRIVE:
-		m_drvnum = data;
-		m_crc ^= data;
-		m_state = WAIT_CRC;
-		break;
-
-	case WAIT_DATA:
-		if (m_point < int(sizeof(m_buffer)))
-			m_buffer[m_point++] = data;
-		m_crc ^= data;
-		if (--m_byte_counter == 0)
-			m_state = WAIT_CRC;
-		break;
-
-	case WAIT_ADDR_H:
-		m_address = data << 8;
-		m_crc ^= data;
-		m_state = WAIT_ADDR_L;
-		break;
-
-	case WAIT_ADDR_L:
-		m_address |= data;
-		m_crc ^= data;
-		m_state = (m_command == 'J') ? WAIT_CRC : WAIT_LEN_H;
-		break;
-
-	case WAIT_LEN_H:
-		m_length = data << 8;
-		m_crc ^= data;
-		m_state = WAIT_LEN_L;
-		break;
-
-	case WAIT_LEN_L:
-		m_length |= data;
-		m_crc ^= data;
-		if (m_command == 'C')
-			m_state = WAIT_CRC;
-		else
-		{
-			m_byte_counter = m_length;
-			m_state = WAIT_DATA_MEM;
-		}
-		break;
-
-	case WAIT_DATA_MEM:
-		if (m_address >= 0 && m_address < int(INTERNAL_RAM_SIZE))
-			m_memory[m_address] = data;
-		m_address++;
-		m_crc ^= data;
-		if (--m_byte_counter == 0)
-			m_state = WAIT_CRC;
-		break;
-
-	case WAIT_CRC:
-		m_state = (data == m_crc) ? SEND_ACK : SEND_NAK;
-		LOG("CRC %02X %s\n", data, (data == m_crc) ? "OK -> ACK" : "BAD -> NAK");
-		break;
-	}
-
-	// acknowledge the host's byte (mode-2 /ACKa), clearing /OBFa so it can continue
-	m_ppi->pc6_w(0);
-	m_ppi->pc6_w(1);
-}
-
-
-//-------------------------------------------------
-//  outgoing byte pump
-//-------------------------------------------------
-
-TIMER_CALLBACK_MEMBER(pmd32_device::service)
-{
-	if (m_ibf)              // host has not consumed the previous byte yet
-		return;
-
-	state_check();
-	if (!m_no_send)
-		strobe_to_host(m_to_send);
-}
-
-
-void pmd32_device::state_check()
-{
-	m_no_send = false;
-
-	switch (m_state)
-	{
-	case WAIT_PRESENT:
-		m_to_send = PRESENTATION;
-		break;
-
-	case SEND_DATA:
-		m_to_send = m_buffer[m_point++];
-		m_crc ^= m_to_send;
-		if (--m_byte_counter == 0)
-			m_state = SEND_CRC;
-		break;
-
-	case SEND_DATA_MEM:
-		m_to_send = (m_address >= 0 && m_address < int(INTERNAL_RAM_SIZE)) ? m_memory[m_address] : 0;
-		m_address++;
-		m_crc ^= m_to_send;
-		if (--m_byte_counter == 0)
-			m_state = SEND_CRC;
-		break;
-
-	case SEND_CRC:
-		m_to_send = m_crc;
-		m_state = WAIT_COMMAND;
-		break;
-
-	case SEND_ACK:
-		m_to_send = ACK;
-		m_state = SEND_RESULT;
-		if (m_command == 'C') // read from PMD-32 RAM: ACK is followed by the data
-		{
-			m_byte_counter = m_length;
-			m_crc = ACK;
-			m_state = SEND_DATA_MEM;
-		}
-		break;
-
-	case SEND_RESULT:
-		send_result_command();
-		break;
-
-	case SEND_NAK:
-		m_to_send = NAK;
-		m_state = WAIT_COMMAND;
-		break;
-
-	default:
-		m_no_send = true;
-		break;
-	}
-}
-
-
-void pmd32_device::send_result_command()
-{
-	switch (m_command)
-	{
-	case 'B': // boot reads drive 0 / track 0 / sector 0
-		LOG("BOOT\n");
-		m_drvnum = 0;
-		m_track = 0;
-		m_sector = 0;
-		[[fallthrough]];
-	case 'Q':
-	case 'R':
-		if (prepare_sector())
-		{
-			m_point = 0;
-			m_byte_counter = SECTOR_SIZE;
-			m_crc = 0;
-			m_state = SEND_DATA;
-			m_to_send = RESULT_OK;
-		}
-		else
-		{
-			m_state = WAIT_COMMAND;
-			m_to_send = RESULT_RE;
-		}
-		break;
-
-	case 'T':
-	case 'W':
-	case 'S':
-	case 'F':
-		if (m_wp)
-			m_to_send = RESULT_WP;
-		else if (write_sector())
-			m_to_send = RESULT_OK;
-		else
-			m_to_send = RESULT_WE;
-		m_state = WAIT_COMMAND;
-		break;
-
-	case 'I': // drive select
-	case '*': // fast mode
-	case '@': // slow mode
-	case 'U': // write to PMD-32 RAM
-	case 'J': // execute code in PMD-32 RAM (not actually executed here)
-		m_to_send = RESULT_OK;
-		m_state = WAIT_COMMAND;
-		break;
-
-	default:
-		m_to_send = RESULT_NF;
-		m_state = WAIT_COMMAND;
-		break;
-	}
-}
-
-
-//-------------------------------------------------
-//  disk access (single mounted image)
-//-------------------------------------------------
-
-bool pmd32_device::prepare_sector()
-{
-	if (!m_disk.empty() && m_sector < m_sectors && (m_tracks == 0 || m_track < m_tracks))
-	{
-		uint32_t const seek = (uint32_t(m_track) * m_sectors + m_sector) * SECTOR_SIZE;
-		if (seek + SECTOR_SIZE <= m_disk.size())
-		{
-			std::memcpy(m_buffer, &m_disk[seek], SECTOR_SIZE);
-			LOG("read drive %u track %u sector %u -> OK\n", m_drvnum, m_track, m_sector);
-			return true;
-		}
-	}
-	LOG("read drive %u track %u sector %u -> FAIL (no disc or out of range)\n", m_drvnum, m_track, m_sector);
-	return false;
-}
-
-
-bool pmd32_device::write_sector()
-{
-	// archival images are mounted read-only for now (the unit reports write-protected)
-	return false;
-}
-
-
-std::pair<std::error_condition, std::string> pmd32_device::call_load()
-{
-	uint32_t const size = length();
-	m_disk.resize(size);
-	if (size)
-	{
-		fseek(0, SEEK_SET);
-		if (fread(&m_disk[0], size) != size)
-			return std::make_pair(image_error::UNSPECIFIED, "Error reading PMD-32 disk image");
-	}
-
-	// infer the 8" CP/M geometry: 128-byte logical sectors, 26 sectors/track
-	m_sectors = 26;
-	m_tracks = (size % (26 * SECTOR_SIZE) == 0) ? uint8_t(size / (26 * SECTOR_SIZE)) : 0;
-
-	return std::make_pair(std::error_condition(), std::string());
-}
-
-
-void pmd32_device::call_unload()
-{
-	m_disk.clear();
-	m_tracks = 0;
-	m_sectors = 0;
+	save_item(NAME(m_host_byte));
+	save_item(NAME(m_drive));
 }

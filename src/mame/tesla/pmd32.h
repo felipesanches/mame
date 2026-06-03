@@ -1,20 +1,31 @@
-// license:GPL-3.0-or-later
-// copyright-holders:Roman Bórik, Martin Bórik, Felipe Corrêa da Silva Sanches
+// license:BSD-3-Clause
+// copyright-holders:Felipe Corrêa da Silva Sanches
 /*******************************************************************************
 
-    PMD-32 floppy disk unit (high-level emulation)
+    PMD-32 floppy disk unit (low-level emulation)
 
     The PMD-32 is the external "intelligent" floppy disk unit for the Tesla
-    PMD-85 family and the Consul 2717.  It connects through an Intel 8255 PPI
-    running in mode 2 (bidirectional, strobed) and speaks a byte-stream command
-    protocol.  This device reproduces that protocol rather than emulating the
-    unit's own 8080, whose firmware is not dumped; the host side (the Consul's
-    disk EPROM) drives the GPIO 8255 at I/O ports 4Ch-4Fh.
+    PMD-85 family and the Consul 2717.  It is a self-contained 8080A machine:
 
-    The protocol model is a port of the Pmd32 class from GPMD85Emulator
-    (https://github.com/mborik/GPMD85Emulator) by Roman Bórik and Martin Bórik,
-    which is licensed GPL-3.0-or-later; this file is therefore also
-    GPL-3.0-or-later.
+        MHB 8080A CPU
+        2 KB ROM (control program) at 0x0000
+        1 KB RAM at 0x1800 (stack at 0x1C00)
+        FDC 8272A          at I/O 0x00-0x01
+        PIO 8255           at I/O 0x20-0x23  (port A = parallel link to the host)
+        DMA 8257           at I/O 0x40-0x48  (channel 0 feeds the FDC)
+        drive/motor latch  at I/O 0xE0       (bits: DS1 DS0 MO1 MO0 ENA . . .)
+        two 5.25" drives
+
+    It communicates with the host (PMD-85 / Consul 2717) over the 8255 port-A
+    bidirectional parallel channel, master-slave, with a presentation-byte
+    handshake and char+CRC command protocol.
+
+    WIP: the inter-chip (DMA/FDC) and host-link handshakes are a first cut and
+    not yet verified on a host build.
+
+    NOTE: the firmware ROM here is a RECONSTRUCTION assembled from RM-TEAM's
+    commented disassembly, NOT a verified silicon dump -- it is flagged
+    BAD_DUMP. See src/mame/tesla/pmd32.cpp ROM definition.
 
 *******************************************************************************/
 
@@ -23,95 +34,53 @@
 
 #pragma once
 
+#include "cpu/i8085/i8085.h"
 #include "machine/i8255.h"
-#include "softlist_dev.h"
+#include "machine/upd765.h"
+#include "machine/i8257.h"
+#include "imagedev/floppy.h"
 
 
-class pmd32_device : public device_t, public device_image_interface
+class pmd32_device : public device_t
 {
 public:
 	pmd32_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 
-	// the GPIO 8255 this unit is wired to (so it can drive the mode-2 strobe/ack)
-	template <typename T> void set_ppi(T &&tag) { m_ppi.set_tag(std::forward<T>(tag)); }
+	// parallel link to the host's 8255 port A (wire these up in the host machine config)
+	auto out_data_cb() { return m_out_data_cb.bind(); }  // drive -> host : port-A output byte
+	auto out_ctrl_cb() { return m_out_ctrl_cb.bind(); }  // drive -> host : port-C handshake byte
 
-	// hook these up to the 8255's port-A and port-C callbacks
-	uint8_t data_r();             // -> ppi in_pa_callback  (byte the unit presents)
-	void    data_w(uint8_t data); // <- ppi out_pa_callback (byte the host wrote)
-	void    pc_w(uint8_t data);   // <- ppi out_pc_callback (mode-2 handshake status)
-
-	// device_image_interface
-	virtual bool is_readable()       const noexcept override { return true; }
-	virtual bool is_writeable()      const noexcept override { return false; }
-	virtual bool is_creatable()      const noexcept override { return false; }
-	virtual bool is_reset_on_load()  const noexcept override { return false; }
-	virtual const char *image_interface()       const noexcept override { return "c2717_flop"; }
-	virtual const char *file_extensions()       const noexcept override { return "img,p32,dz8"; }
-	virtual const char *image_type_name()       const noexcept override { return "floppydisk"; }
-	virtual const char *image_brief_type_name() const noexcept override { return "flop"; }
+	void host_data_w(uint8_t data);                      // host -> drive : a byte (latched + strobed in)
+	void host_ack_w(int state) { m_ppi->pc6_w(state); }  // host acknowledges the drive's output (/ACKa)
 
 protected:
 	virtual void device_start() override ATTR_COLD;
-	virtual void device_reset() override ATTR_COLD;
-
-	virtual std::pair<std::error_condition, std::string> call_load() override;
-	virtual void call_unload() override;
-	virtual const software_list_loader &get_software_list_loader() const override { return image_software_list_loader::instance(); }
+	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
+	virtual const tiny_rom_entry *device_rom_region() const override ATTR_COLD;
 
 private:
-	// protocol states (from GPMD85Emulator Pmd32.h)
-	enum : uint8_t
-	{
-		IDLE_STATE = 0, WAIT_PRESENT, WAIT_COMMAND, WAIT_CRC, WAIT_SECTOR,
-		WAIT_TRACK, WAIT_DRIVE, WAIT_DATA, SEND_DATA, SEND_CRC, SEND_ACK,
-		SEND_RESULT, SEND_NAK, WAIT_ADDR_H, WAIT_ADDR_L, WAIT_LEN_H, WAIT_LEN_L,
-		WAIT_DATA_MEM, SEND_DATA_MEM, WAIT_WP
-	};
+	void mem_map(address_map &map) ATTR_COLD;
+	void io_map(address_map &map) ATTR_COLD;
 
-	enum : uint8_t { PRESENTATION = 0xaa, ACK = 0x33, NAK = 0x99 };
+	void drive_w(uint8_t data);                 // 0xE0 drive/motor select latch
+	uint8_t host_byte_r() { return m_host_byte; }            // drive 8255 port-A input
+	void ppi_pa_w(uint8_t data) { m_out_data_cb(data); }     // drive 8255 port-A output -> host
+	void ppi_pc_w(uint8_t data) { m_out_ctrl_cb(data); }     // drive 8255 port-C -> host
+	uint8_t dma_mem_r(offs_t offset);
+	void dma_mem_w(offs_t offset, uint8_t data);
+	void hrq_w(int state);
+	static void floppy_formats(format_registration &fr);
 
-	enum : uint8_t
-	{
-		RESULT_OK = 0, RESULT_WP = 1, RESULT_FE = 2, RESULT_RE = 3,
-		RESULT_WE = 4, RESULT_BD = 5, RESULT_NF = 6
-	};
-
-	static constexpr unsigned SECTOR_SIZE = 128;
-	static constexpr unsigned PHYSICAL_SECTOR_SIZE = 4 * SECTOR_SIZE;
-	static constexpr unsigned INTERNAL_RAM_SIZE = 8 * SECTOR_SIZE;
-	static constexpr unsigned MAX_SECTORS_PER_TRACK = 64;
-
-	TIMER_CALLBACK_MEMBER(service);
-	void state_check();            // == Disk32ServiceStateCheck
-	void send_result_command();    // == Disk32ServiceSendResultCommand
-	bool prepare_sector();
-	bool write_sector();
-	void strobe_to_host(uint8_t data);
-
+	required_device<i8080_cpu_device> m_cpu;
 	required_device<i8255_device> m_ppi;
-	emu_timer *m_timer;
+	required_device<i8272a_device> m_fdc;
+	required_device<i8257_device> m_dma;
+	required_device_array<floppy_connector, 2> m_floppy;
 
-	// single mounted image (drive A); geometry inferred from its size
-	std::vector<uint8_t> m_disk;
-	uint8_t m_tracks;       // total tracks
-	uint8_t m_sectors;      // logical 128-byte sectors per track
-
-	// protocol state
-	uint8_t m_state;
-	uint8_t m_command;
-	uint8_t m_crc;
-	uint8_t m_drvnum, m_track, m_sector;
-	int     m_address, m_length;
-	uint8_t m_wp;
-	int     m_byte_counter;
-	uint8_t m_to_send;
-	bool    m_no_send;
-	bool    m_ibf;          // cached host-side input-buffer-full (from pc_w)
-	bool    m_seen_mode2;   // one-shot: the 8255 was observed running in mode 2
-
-	uint8_t m_buffer[MAX_SECTORS_PER_TRACK * SECTOR_SIZE];
-	uint8_t m_memory[INTERNAL_RAM_SIZE];
-	int     m_point;        // index into m_buffer
+	devcb_write8 m_out_data_cb;
+	devcb_write8 m_out_ctrl_cb;
+	uint8_t m_host_byte;
+	uint8_t m_drive;
 };
 
 DECLARE_DEVICE_TYPE(PMD32, pmd32_device)

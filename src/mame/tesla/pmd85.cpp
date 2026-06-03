@@ -797,15 +797,12 @@ void pmd85_state::c2717pmd(machine_config &config)
 {
 	c2717(config);
 
-	// The PMD-32 disk unit hangs off the GPIO 8255 (ppi1, I/O ports 4Ch-4Fh),
-	// which the disk EPROM drives in mode 2 (bidirectional, strobed).
+	// The PMD-32 disk unit (its own 8080A + 8272A FDC + 8257 DMA + drives) runs
+	// its control program here.  WIP: the Consul's disk EPROM reaches the unit
+	// through a memory window at I/O 0x48/0x49 rather than the plain 8255 mode-2
+	// link, and that host interface is still being reverse-engineered, so the
+	// host<->unit bridge is not wired yet (the system stays MACHINE_NOT_WORKING).
 	PMD32(config, m_pmd32, 0);
-	m_pmd32->set_ppi(m_ppi1);
-	m_ppi1->in_pa_callback().set(m_pmd32, FUNC(pmd32_device::data_r));
-	m_ppi1->out_pa_callback().set(m_pmd32, FUNC(pmd32_device::data_w));
-	m_ppi1->out_pc_callback().set(m_pmd32, FUNC(pmd32_device::pc_w));
-
-	SOFTWARE_LIST(config, "flop_list").set_original("c2717_flop");
 }
 
 
