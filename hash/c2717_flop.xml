@@ -1,0 +1,72 @@
+<?xml version="1.0"?>
+<!DOCTYPE softwarelist SYSTEM "softwarelist.dtd">
+<!--
+license:CC0-1.0
+
+Consul 2717 floppy disks - 8" single-sided, CP/M format (26 x 128-byte
+sectors per track, 77-78 tracks), read by the PMD-32 disk unit.
+
+PRELIMINARY: these are freshly dumped Czechoslovak school courseware discs
+from a single school's collection. The titles below are provisional,
+derived from each disc's CP/M directory; the numbers in brackets (9301...)
+are the physical collection labels. Discs supplied only as HxC flux/HFE
+(and double-sided discs with no drive to read them) are not yet included.
+-->
+<softwarelist name="c2717_flop" description="Consul 2717 floppy disks">
+
+	<software name="zlomky">
+		<description>Zlomky, scitani (fractions and addition, math lessons) [9301]</description>
+		<year>198?</year>
+		<publisher>&lt;unknown&gt;</publisher>
+		<part name="flop1" interface="c2717_flop">
+			<dataarea name="flop" size="256256">
+				<rom name="9301.img" size="256256" crc="49ce3586" sha1="17f60ec8f3f4cef16cfb66758aa1309077840b5a"/>
+			</dataarea>
+		</part>
+	</software>
+
+	<software name="biologia">
+		<description>Biologie (respiratory, circulatory and digestive systems, zoology) [9302]</description>
+		<year>198?</year>
+		<publisher>&lt;unknown&gt;</publisher>
+		<part name="flop1" interface="c2717_flop">
+			<dataarea name="flop" size="259584">
+				<rom name="9302.img" size="259584" crc="2dbc6515" sha1="fae2890f57b3be5bb0073d97845fa3e77e04b545"/>
+			</dataarea>
+		</part>
+	</software>
+
+	<software name="fyzika">
+		<description>Fyzika a matematika (electricity, volume, mass, length, divisors) [9303]</description>
+		<year>198?</year>
+		<publisher>&lt;unknown&gt;</publisher>
+		<part name="flop1" interface="c2717_flop">
+			<dataarea name="flop" size="259584">
+				<rom name="9303.img" size="259584" crc="535e6c11" sha1="abd4cd79c705d0c5c13784b2e3b7dcdd28d82162"/>
+			</dataarea>
+		</part>
+	</software>
+
+	<software name="doprava">
+		<description>Dopravni vychova (traffic education) [9306]</description>
+		<year>198?</year>
+		<publisher>&lt;unknown&gt;</publisher>
+		<part name="flop1" interface="c2717_flop">
+			<dataarea name="flop" size="259584">
+				<rom name="9306.img" size="259584" crc="6da88372" sha1="744cbb8c4b6cc583b2dc144aa69b070630e052aa"/>
+			</dataarea>
+		</part>
+	</software>
+
+	<software name="geometrie">
+		<description>Geometrie (geometry) [9307]</description>
+		<year>198?</year>
+		<publisher>&lt;unknown&gt;</publisher>
+		<part name="flop1" interface="c2717_flop">
+			<dataarea name="flop" size="259584">
+				<rom name="9307.img" size="259584" crc="4f2e5aa8" sha1="a9245bf1a5812dc58356142619df0cd1f129a93a"/>
+			</dataarea>
+		</part>
+	</software>
+
+</softwarelist>

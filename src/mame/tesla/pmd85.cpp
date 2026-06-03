@@ -224,6 +224,7 @@ Some software items will crash MAME, for example "bdash".
 
 #include "emu.h"
 #include "pmd85.h"
+#include "pmd32.h"
 #include "cpu/i8085/i8085.h"
 #include "screen.h"
 #include "softlist_dev.h"
@@ -792,6 +793,21 @@ void pmd85_state::c2717(machine_config &config)
 	m_maincpu->set_addrmap(AS_PROGRAM, &pmd85_state::c2717_mem);
 }
 
+void pmd85_state::c2717pmd(machine_config &config)
+{
+	c2717(config);
+
+	// The PMD-32 disk unit hangs off the GPIO 8255 (ppi1, I/O ports 4Ch-4Fh),
+	// which the disk EPROM drives in mode 2 (bidirectional, strobed).
+	PMD32(config, m_pmd32, 0);
+	m_pmd32->set_ppi(m_ppi1);
+	m_ppi1->in_pa_callback().set(m_pmd32, FUNC(pmd32_device::data_r));
+	m_ppi1->out_pa_callback().set(m_pmd32, FUNC(pmd32_device::data_w));
+	m_ppi1->out_pc_callback().set(m_pmd32, FUNC(pmd32_device::pc_w));
+
+	SOFTWARE_LIST(config, "flop_list").set_original("c2717_flop");
+}
+
 
 ROM_START(pmd851)
 	ROM_REGION(0x1000,"maincpu",0)
@@ -877,4 +893,4 @@ COMP( 1988, pmd853,   pmd851, 0,      pmd853,  pmd85, pmd85_state, init_pmd853, 
 COMP( 1986, alfa,     pmd851, 0,      alfa,    alfa,  pmd85_state, init_alfa,    "Didaktik Skalica", "Didaktik Alfa",             MACHINE_SUPPORTS_SAVE )
 COMP( 1985, mato,     pmd851, 0,      mato,    mato,  pmd85_state, init_mato,    "Statny",           "Mato",                      MACHINE_SUPPORTS_SAVE )
 COMP( 1989, c2717,    pmd851, 0,      c2717,   pmd85, pmd85_state, init_c2717,   "Zbrojovka Brno",   "Consul 2717",               MACHINE_SUPPORTS_SAVE )
-COMP( 1989, c2717pmd, pmd851, 0,      c2717,   pmd85, pmd85_state, init_c2717,   "Zbrojovka Brno",   "Consul 2717 (with PMD-32)", MACHINE_NOT_WORKING | MACHINE_SUPPORTS_SAVE )
+COMP( 1989, c2717pmd, pmd851, 0,      c2717pmd,pmd85, pmd85_state, init_c2717,   "Zbrojovka Brno",   "Consul 2717 (with PMD-32)", MACHINE_NOT_WORKING | MACHINE_SUPPORTS_SAVE )
