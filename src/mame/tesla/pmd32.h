@@ -55,6 +55,7 @@ public:
 
 protected:
 	virtual void device_start() override ATTR_COLD;
+	virtual void device_reset() override ATTR_COLD;
 	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
 	virtual const tiny_rom_entry *device_rom_region() const override ATTR_COLD;
 
@@ -64,8 +65,8 @@ private:
 
 	void drive_w(uint8_t data);                 // 0xE0 drive/motor select latch
 	uint8_t host_byte_r() { return m_host_byte; }            // drive 8255 port-A input
-	void ppi_pa_w(uint8_t data) { m_out_data_cb(data); }     // drive 8255 port-A output -> host
-	void ppi_pc_w(uint8_t data) { m_out_ctrl_cb(data); }     // drive 8255 port-C -> host
+	void ppi_pa_w(uint8_t data);                             // drive 8255 port-A output -> host
+	void ppi_pc_w(uint8_t data);                             // drive 8255 port-C -> host
 	uint8_t dma_mem_r(offs_t offset);
 	void dma_mem_w(offs_t offset, uint8_t data);
 	void hrq_w(int state);
@@ -81,6 +82,7 @@ private:
 	devcb_write8 m_out_ctrl_cb;
 	uint8_t m_host_byte;
 	uint8_t m_drive;
+	bool m_seen_out;       // one-shot bring-up marker: firmware reached port-A output
 };
 
 DECLARE_DEVICE_TYPE(PMD32, pmd32_device)
