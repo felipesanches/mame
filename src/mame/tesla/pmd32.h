@@ -107,6 +107,7 @@ private:
 	uint8_t m_to_send;
 	bool    m_no_send;
 	bool    m_ibf;          // cached host-side input-buffer-full (from pc_w)
+	bool    m_seen_mode2;   // one-shot: the 8255 was observed running in mode 2
 
 	uint8_t m_buffer[MAX_SECTORS_PER_TRACK * SECTOR_SIZE];
 	uint8_t m_memory[INTERNAL_RAM_SIZE];

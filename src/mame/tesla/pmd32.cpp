@@ -24,6 +24,13 @@
 #include "emu.h"
 #include "pmd32.h"
 
+#define LOG_PROTO (1U << 1)   // per-byte protocol firehose
+
+#define VERBOSE (LOG_GENERAL)
+#include "logmacro.h"
+
+#define LOGPROTO(...) LOGMASKED(LOG_PROTO, __VA_ARGS__)
+
 
 DEFINE_DEVICE_TYPE(PMD32, pmd32_device, "pmd32", "PMD-32 floppy disk unit")
 
@@ -48,6 +55,7 @@ pmd32_device::pmd32_device(const machine_config &mconfig, const char *tag, devic
 	, m_to_send(PRESENTATION)
 	, m_no_send(true)
 	, m_ibf(false)
+	, m_seen_mode2(false)
 	, m_point(0)
 {
 }
@@ -75,6 +83,7 @@ void pmd32_device::device_start()
 	save_item(NAME(m_to_send));
 	save_item(NAME(m_no_send));
 	save_item(NAME(m_ibf));
+	save_item(NAME(m_seen_mode2));
 	save_item(NAME(m_point));
 	save_item(NAME(m_buffer));
 	save_item(NAME(m_memory));
@@ -91,6 +100,9 @@ void pmd32_device::device_reset()
 	m_to_send = PRESENTATION;
 	m_no_send = true;
 	m_ibf = false;
+	m_seen_mode2 = false;
+
+	LOG("reset; offering presentation, awaiting the host\n");
 
 	// run the unit's byte-pump at ~100 us/byte, matching the original model
 	m_timer->adjust(attotime::from_usec(100), 0, attotime::from_usec(100));
@@ -120,21 +132,34 @@ void pmd32_device::strobe_to_host(uint8_t data)
 	m_to_send = data;
 	m_ppi->pc4_w(0);   // strobe low: 8255 latches data_r() into input, raises IBF (+INTRa)
 	m_ppi->pc4_w(1);
+
+	LOGPROTO("tx %02X (state %u)\n", data, m_state);
+	if (m_ibf && !m_seen_mode2)
+	{
+		m_seen_mode2 = true;
+		LOG("8255 mode 2 active; first byte strobed to the host\n");
+	}
 }
 
 
 void pmd32_device::data_w(uint8_t data)
 {
 	// host wrote a byte to port A (mode-2 output); run the receive state machine
+	LOGPROTO("rx %02X (state %u)\n", data, m_state);
+
 	switch (m_state)
 	{
 	case WAIT_PRESENT:
 		if (data == PRESENTATION)
+		{
 			m_state = WAIT_COMMAND;
+			LOG("host answered presentation; entering command phase\n");
+		}
 		break;
 
 	case WAIT_COMMAND:
 		m_command = data;
+		LOG("command '%c' (%02X)\n", (data >= 0x20 && data < 0x7f) ? char(data) : '?', data);
 		switch (data)
 		{
 		case 'B': // boot
@@ -248,6 +273,7 @@ void pmd32_device::data_w(uint8_t data)
 
 	case WAIT_CRC:
 		m_state = (data == m_crc) ? SEND_ACK : SEND_NAK;
+		LOG("CRC %02X %s\n", data, (data == m_crc) ? "OK -> ACK" : "BAD -> NAK");
 		break;
 	}
 
@@ -334,6 +360,7 @@ void pmd32_device::send_result_command()
 	switch (m_command)
 	{
 	case 'B': // boot reads drive 0 / track 0 / sector 0
+		LOG("BOOT\n");
 		m_drvnum = 0;
 		m_track = 0;
 		m_sector = 0;
@@ -397,9 +424,11 @@ bool pmd32_device::prepare_sector()
 		if (seek + SECTOR_SIZE <= m_disk.size())
 		{
 			std::memcpy(m_buffer, &m_disk[seek], SECTOR_SIZE);
+			LOG("read drive %u track %u sector %u -> OK\n", m_drvnum, m_track, m_sector);
 			return true;
 		}
 	}
+	LOG("read drive %u track %u sector %u -> FAIL (no disc or out of range)\n", m_drvnum, m_track, m_sector);
 	return false;
 }
 
