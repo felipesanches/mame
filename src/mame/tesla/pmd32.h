@@ -64,6 +64,8 @@ private:
 	void io_map(address_map &map) ATTR_COLD;
 
 	void drive_w(uint8_t data);                 // 0xE0 drive/motor select latch
+	uint8_t fdc_fifo_r();                       // bring-up: logged FDC data-register read
+	void fdc_fifo_w(uint8_t data);              // bring-up: logged FDC command/data write
 	uint8_t host_byte_r() { return m_host_byte; }            // drive 8255 port-A input
 	void ppi_pa_w(uint8_t data);                             // drive 8255 port-A output -> host
 	void ppi_pc_w(uint8_t data);                             // drive 8255 port-C -> host
@@ -84,6 +86,7 @@ private:
 	uint8_t m_drive;
 	uint16_t m_out_count;  // bring-up: count of logged unit->host bytes (capped)
 	uint16_t m_in_count;   // bring-up: count of logged host->unit bytes (capped)
+	uint16_t m_fdc_log;    // bring-up: count of logged FDC fifo accesses (capped)
 };
 
 DECLARE_DEVICE_TYPE(PMD32, pmd32_device)

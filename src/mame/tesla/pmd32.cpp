@@ -40,6 +40,7 @@ pmd32_device::pmd32_device(const machine_config &mconfig, const char *tag, devic
 	, m_drive(0)
 	, m_out_count(0)
 	, m_in_count(0)
+	, m_fdc_log(0)
 {
 }
 
@@ -80,7 +81,7 @@ void pmd32_device::io_map(address_map &map)
 {
 	map.global_mask(0xff);
 	map(0x00, 0x00).r(m_fdc, FUNC(i8272a_device::msr_r));                                  // FDC status
-	map(0x01, 0x01).rw(m_fdc, FUNC(i8272a_device::fifo_r), FUNC(i8272a_device::fifo_w));   // FDC data
+	map(0x01, 0x01).rw(FUNC(pmd32_device::fdc_fifo_r), FUNC(pmd32_device::fdc_fifo_w));    // FDC data (logged)
 	map(0x20, 0x23).rw(m_ppi, FUNC(i8255_device::read), FUNC(i8255_device::write));        // host link
 	map(0x40, 0x48).rw(m_dma, FUNC(i8257_device::read), FUNC(i8257_device::write));        // DMA
 	map(0xe0, 0xe0).w(FUNC(pmd32_device::drive_w));                                         // drive/motor latch
@@ -203,10 +204,32 @@ void pmd32_device::host_strobe()
 	m_ppi->pc4_w(1);
 }
 
+uint8_t pmd32_device::fdc_fifo_r()
+{
+	uint8_t const v = m_fdc->fifo_r();
+	if (m_fdc_log < 200)
+	{
+		LOG("unit FDC -> %02X\n", v);
+		m_fdc_log++;
+	}
+	return v;
+}
+
+void pmd32_device::fdc_fifo_w(uint8_t data)
+{
+	// the firmware's command bytes (e.g. 06=READ DATA, 0F=SEEK, 07=RECALIBRATE)
+	if (m_fdc_log < 200)
+	{
+		LOG("unit FDC <- %02X\n", data);
+		m_fdc_log++;
+	}
+	m_fdc->fifo_w(data);
+}
+
 void pmd32_device::drive_w(uint8_t data)
 {
 	// E0: DS1 DS0 MO1 MO0 ENA . . .  -- select drive + spin motor
-	LOGPROTO("drive/motor latch = %02X (drive %u)\n", data, BIT(data, 6));
+	LOG("drive/motor latch = %02X (drive %u)\n", data, BIT(data, 6));
 	m_drive = data;
 	floppy_image_device *fd = m_floppy[BIT(data, 6)]->get_device();
 	if (fd)
@@ -240,11 +263,13 @@ void pmd32_device::device_start()
 	save_item(NAME(m_drive));
 	save_item(NAME(m_out_count));
 	save_item(NAME(m_in_count));
+	save_item(NAME(m_fdc_log));
 }
 
 void pmd32_device::device_reset()
 {
 	m_out_count = 0;
 	m_in_count = 0;
+	m_fdc_log = 0;
 	LOG("PMD-32 unit reset; its 8080 will run the firmware\n");
 }
