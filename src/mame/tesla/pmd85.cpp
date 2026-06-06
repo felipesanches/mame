@@ -858,9 +858,11 @@ void pmd85_state::host_pmd32_pc_w(uint8_t data)
 	bool const consumed = m_host_ibf && !ibf;   // IBFa 1 -> 0 : host read the unit's byte
 	if (ibf != m_host_ibf && m_pmd32_hslog < 80)
 	{
-		// bring-up: PC5=IBFa, PC3=INTRa, PC7=/OBFa, PC4=INTE2, PC6=INTE1
+		// bring-up: PC5=IBFa, PC3=INTRa, PC7=/OBFa, PC4=INTE2, PC6=INTE1.
+		// NB: cast the bools to int -- util::string_format recurses to death on a
+		// bool argument, so never hand logerror() a raw bool.
 		logerror("host PC %02X: IBF %d->%d INTR=%d /OBF=%d INTE2=%d\n",
-			data, m_host_ibf, ibf, BIT(data, 3), BIT(data, 7), BIT(data, 4));
+			data, int(m_host_ibf), int(ibf), BIT(data, 3), BIT(data, 7), BIT(data, 4));
 		m_pmd32_hslog++;
 	}
 	// Update the edge tracker BEFORE the cross-chip ack: pc6_w drives the unit's
