@@ -791,24 +791,29 @@ void pmd85_state::c2717(machine_config &config)
 {
 	pmd851(config);
 	m_maincpu->set_addrmap(AS_PROGRAM, &pmd85_state::c2717_mem);
+
+	// The Consul's built-in 8" disk controller (DS2717): a dumb i8272 board with
+	// no local CPU at I/O ports 0xC8-0xCF, driven directly by the verified system
+	// ROM.  This is the controller the 8" classroom discs were actually read on.
+	// Its i8272 runs in non-DMA (PIO) mode and routes the per-byte data-request
+	// interrupt onto the 8080 INTR line; with the default vector 0xFF that becomes
+	// RST 7 -> the 0x0038 transfer ISR the ROM installs.  No irq-acknowledge
+	// callback is wired on the maincpu, so the bare 0xFF/RST7 default applies.
+	DS2717(config, m_ds2717, 0);
+	m_ds2717->out_int_cb().set_inputline(m_maincpu, I8085_INTR_LINE);
 }
 
 void pmd85_state::c2717pmd(machine_config &config)
 {
-	c2717(config);
-
-	// The Consul's built-in 8" disk controller (DS2717): a dumb i8272 board at
-	// I/O ports 0xF4-0xF7, driven directly by the system ROM. This is the
-	// controller the 8" classroom discs were actually read on. WIP, so the
-	// system stays MACHINE_NOT_WORKING.
-	DS2717(config, m_ds2717, 0);
+	c2717(config);   // inherits the DS2717 board at C8-CF
 
 	// The PMD-32 disk unit (its own 8080A + FDC + drives) serves the actual disc
 	// data: the Consul's disk ROM reads sectors over the GPIO 8255 (ppi1, the
 	// 0x4C-0x4F mode-2 serial link) using the PMD-32 protocol. Bridge ppi1 to the
 	// unit's own 8255 so its firmware answers the presentation handshake and
-	// streams the boot sector.  (The DS2717 i8272 above only supplies the
-	// drive-ready/seek gate; it issues no READ DATA in this ROM.)
+	// streams the boot sector.  (This is a separate disk path from the DS2717
+	// i8272 board inherited above: the two controllers live at different I/O port
+	// ranges -- C8-CF for the DS2717, 4C-4F for the PMD-32 link -- with no clash.)
 	PMD32(config, m_pmd32, 0);
 	// Cross-wire the two mode-2 8255s' handshake lines (see the glue methods):
 	//   unit OUT 20 -> host STBa (pc4);  host IN 4C  -> unit /ACKa (pc6)

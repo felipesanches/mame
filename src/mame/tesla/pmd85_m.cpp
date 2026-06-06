@@ -459,10 +459,12 @@ uint8_t pmd85_state::io_r(offs_t offset)
 		return 0xff;
 	}
 
-	// Consul 2717 DS2717 disk controller (i8272) at I/O 0xF4-0xF7; takes priority
-	// over the loosely-decoded keyboard 8255 mirror at those addresses.
-	if (m_ds2717.found() && (offset & 0xfc) == 0xf4)
-		return m_ds2717->read(offset & 0x03);
+	// Consul 2717 DS2717 disk controller (dumb i8272 board) at I/O 0xC8-0xCF.
+	// C8-CB would otherwise decode to the ROM-module 8255 only when a ROM module
+	// is present, and CC-CF to the empty "external interfaces" case, so grabbing
+	// the whole eight-port block here collides with nothing real.
+	if (m_ds2717.found() && (offset & 0xf8) == 0xc8)
+		return m_ds2717->read(offset & 0x07);
 
 	switch (offset & 0x0c)
 	{
@@ -519,10 +521,10 @@ void pmd85_state::io_w(offs_t offset, uint8_t data)
 		(this->*update_memory)();
 	}
 
-	// Consul 2717 DS2717 disk controller (i8272) at I/O 0xF4-0xF7
-	if (m_ds2717.found() && (offset & 0xfc) == 0xf4)
+	// Consul 2717 DS2717 disk controller (dumb i8272 board) at I/O 0xC8-0xCF
+	if (m_ds2717.found() && (offset & 0xf8) == 0xc8)
 	{
-		m_ds2717->write(offset & 0x03, data);
+		m_ds2717->write(offset & 0x07, data);
 		return;
 	}
 
