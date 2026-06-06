@@ -803,10 +803,46 @@ void pmd85_state::c2717pmd(machine_config &config)
 	// system stays MACHINE_NOT_WORKING.
 	DS2717(config, m_ds2717, 0);
 
-	// The external PMD-32 5.25" disk unit (its own 8080A + 8272A FDC + drives)
-	// also runs its control program here; the host link to it is still WIP. Kept
-	// for separate use with the PMD-85.3 (it is not the 8" classroom controller).
+	// The PMD-32 disk unit (its own 8080A + FDC + drives) serves the actual disc
+	// data: the Consul's disk ROM reads sectors over the GPIO 8255 (ppi1, the
+	// 0x4C-0x4F mode-2 serial link) using the PMD-32 protocol. Bridge ppi1 to the
+	// unit's own 8255 so its firmware answers the presentation handshake and
+	// streams the boot sector.  (The DS2717 i8272 above only supplies the
+	// drive-ready/seek gate; it issues no READ DATA in this ROM.)
 	PMD32(config, m_pmd32, 0);
+	m_pmd32->out_data_cb().set(FUNC(pmd85_state::pmd32_to_host_w));
+	m_ppi1->in_pa_callback().set(FUNC(pmd85_state::pmd32_data_r));
+	m_ppi1->out_pa_callback().set(FUNC(pmd85_state::host_to_pmd32_w));
+	m_ppi1->out_pc_callback().set(FUNC(pmd85_state::host_pmd32_pc_w));
+}
+
+void pmd85_state::pmd32_to_host_w(uint8_t data)
+{
+	// PMD-32 unit put a byte on its port A -> latch it and strobe it into the
+	// host GPIO 8255's input so the Consul's IN 0x4C reads it (and INTRa asserts).
+	m_pmd32_data = data;
+	m_ppi1->pc4_w(0);
+	m_ppi1->pc4_w(1);
+}
+
+void pmd85_state::host_to_pmd32_w(uint8_t data)
+{
+	// Consul wrote a byte (OUT 0x4C) -> hand it to the unit, then acknowledge the
+	// host 8255 (clear /OBFa) so the Consul's send completes.
+	m_pmd32->host_data_w(data);
+	m_ppi1->pc6_w(0);
+	m_ppi1->pc6_w(1);
+}
+
+void pmd85_state::host_pmd32_pc_w(uint8_t data)
+{
+	// Host GPIO 8255 port-C status: when IBFa (bit 5) clears, the Consul has read
+	// the unit's byte, so acknowledge the unit and let it present the next one.
+	if (!BIT(data, 5))
+	{
+		m_pmd32->host_ack_w(0);
+		m_pmd32->host_ack_w(1);
+	}
 }
 
 

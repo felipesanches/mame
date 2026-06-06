@@ -71,6 +71,7 @@ private:
 	bool m_rts = false;
 	uint8_t m_rom_module_present = 0;
 	uint8_t m_ppi_port_outputs[4][3]{};
+	uint8_t m_pmd32_data = 0xff;   // latch: last byte the PMD-32 unit sent the host (GPIO 8255 input)
 	uint8_t m_startup_mem_map = 0;
 	uint8_t m_pmd853_memory_mapping = 0;
 	bool m_previous_level = false;
@@ -81,6 +82,12 @@ private:
 	void (pmd85_state::*update_memory)();
 	uint8_t io_r(offs_t offset);
 	void io_w(offs_t offset, uint8_t data);
+
+	// c2717pmd: bridge the host GPIO 8255 (ppi1) to the PMD-32 unit's serial 8255
+	uint8_t pmd32_data_r() { return m_pmd32_data; }   // host reads the unit's last byte
+	void pmd32_to_host_w(uint8_t data);               // unit -> host: latch + strobe into ppi1
+	void host_to_pmd32_w(uint8_t data);               // host -> unit: deliver + ack ppi1
+	void host_pmd32_pc_w(uint8_t data);               // host port C: ack the unit when it consumes
 	uint8_t mato_io_r(offs_t offset);
 	void mato_io_w(offs_t offset, uint8_t data);
 

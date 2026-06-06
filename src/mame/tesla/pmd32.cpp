@@ -14,6 +14,8 @@
 #include "emu.h"
 #include "pmd32.h"
 
+#include "formats/upd765_dsk.h"
+
 #define LOG_PROTO (1U << 1)   // verbose: drive/motor latch + per-byte
 
 #define VERBOSE (LOG_GENERAL)
@@ -87,14 +89,42 @@ void pmd32_device::io_map(address_map &map)
 //  config
 //-------------------------------------------------
 
+namespace {
+
+// 8" SSSD FM (IBM 3740-style): 77 tracks x 26 sectors x 128 bytes -- the Consul
+// courseware geometry the unit's firmware reads.
+class pmd32_disc_format : public upd765_format
+{
+public:
+	pmd32_disc_format() : upd765_format(formats) { }
+	const char *name() const noexcept override { return "pmd32"; }
+	const char *description() const noexcept override { return "Consul 2717 / PMD-32 8\" disk image"; }
+	const char *extensions() const noexcept override { return "img,dz8,p32"; }
+private:
+	static const format formats[];
+};
+
+const pmd32_disc_format::format pmd32_disc_format::formats[] = {
+	{
+		floppy_image::FF_8, floppy_image::SSSD, floppy_image::FM,
+		2000, 26, 77, 1, 128, {}, 1, {}, 40, 26, 11, 27
+	},
+	{}
+};
+
+const pmd32_disc_format FLOPPY_PMD32_FORMAT;
+
+} // anonymous namespace
+
 void pmd32_device::floppy_formats(format_registration &fr)
 {
+	fr.add(FLOPPY_PMD32_FORMAT);
 	fr.add_mfm_containers();
 }
 
 static void pmd32_floppies(device_slot_interface &device)
 {
-	device.option_add("525dd", FLOPPY_525_DD);
+	device.option_add("8dsdd", FLOPPY_8_DSDD);
 }
 
 void pmd32_device::device_add_mconfig(machine_config &config)
@@ -120,8 +150,8 @@ void pmd32_device::device_add_mconfig(machine_config &config)
 	m_dma->out_iow_cb<0>().set(m_fdc, FUNC(i8272a_device::dma_w));
 	m_dma->out_tc_cb().set(m_fdc, FUNC(i8272a_device::tc_line_w));
 
-	FLOPPY_CONNECTOR(config, "fdc:0", pmd32_floppies, "525dd", pmd32_device::floppy_formats);
-	FLOPPY_CONNECTOR(config, "fdc:1", pmd32_floppies, "525dd", pmd32_device::floppy_formats);
+	FLOPPY_CONNECTOR(config, "fdc:0", pmd32_floppies, "8dsdd", pmd32_device::floppy_formats);
+	FLOPPY_CONNECTOR(config, "fdc:1", pmd32_floppies, "8dsdd", pmd32_device::floppy_formats);
 }
 
 
