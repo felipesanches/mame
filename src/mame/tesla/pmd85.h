@@ -80,7 +80,7 @@ private:
 	bool m_pmd32_in_bridge = false;// re-entrancy guard for the cross-8255 strobe/ack pulses
 	uint8_t m_startup_mem_map = 0;
 	uint8_t m_pmd853_memory_mapping = 0;
-	bool m_c2717_ram_at_8000 = false;   // C2717: motherboard 8255 PC7 banks RAM (1) vs ROM (0) into 0x8000-0xbfff
+	bool m_c2717_ram_at_8000 = false;   // C2717: motherboard 8255 PC6 reads RAM (1) vs ROM (0) at 0x8000-0xbfff
 	bool m_previous_level = false;
 	bool m_clk_level = false;
 	bool m_clk_level_tape = false;

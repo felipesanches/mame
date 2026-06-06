@@ -211,7 +211,7 @@ void pmd85_state::c2717_update_memory()
 		m_bank[1]->set_base(ram);
 		m_bank[2]->set_base(ram + 0x4000);
 
-		// bank3 (read of 0x8000-0xbfff) follows motherboard 8255 PC7: 0 = ROM
+		// bank3 (read of 0x8000-0xbfff) follows motherboard 8255 PC6: 0 = ROM
 		// (the monitor), 1 = RAM (the disk loader's OS image at 0xb500-0xbfff).
 		if (m_c2717_ram_at_8000)
 			m_bank[3]->set_base(ram + 0x8000);
@@ -261,13 +261,20 @@ void pmd85_state::ppi0_portc_w(uint8_t data)
 	//m_leds[PMD85_LED_3] = BIT(data, 2);
 	m_speaker->level_w(BIT(data, 2));
 
-	// Consul 2717: motherboard 8255 PC7 banks the 0x8000-0xbfff window.  The disk
-	// loader sets it (OUT F7 = 0x0F = BSR PC7 SET) to read back the OS sectors it
-	// just wrote to 0xb500, and clears it (0x0E = BSR PC7 RESET) on error to return
-	// the monitor ROM.  Re-map only on a real change so unrelated PC writes are cheap.
+	// Consul 2717: motherboard 8255 PC6 selects what the 0x8000-0xbfff window READS --
+	// 0 = monitor ROM, 1 = the RAM the disk loader's OS image lives in.  Toggled by
+	// OUT F7 BSR commands: 0x0D (BSR PC6 SET) -> RAM, 0x0C (BSR PC6 RESET) -> ROM.
+	// Code running from RAM brackets every call into a ROM service with 0x0C ... CALL
+	// ... 0x0D (the on-disc OS's CONOUT thunk does exactly this), and the boot record's
+	// last act before JMP 0xCB00 is OUT F7=0x0D so the OS reads its loaded CCP at 0xb500
+	// as RAM.  (PC7, set by OUT F7=0x0F before the load, is a separate bit that must NOT
+	// affect the read -- otherwise the boot record's own ROM calls at 0x81B0/0x9015/
+	// 0x9012, made while PC7 is set, would fetch RAM garbage and crash.)  Writes always
+	// land in RAM (bankw "bank5"), so loaded sectors store regardless of the read select.
+	// Re-map only on a real change so unrelated PC writes are cheap.
 	if (m_model == C2717)
 	{
-		bool const ram = BIT(data, 7);
+		bool const ram = BIT(data, 6);
 		if (ram != m_c2717_ram_at_8000)
 		{
 			m_c2717_ram_at_8000 = ram;
