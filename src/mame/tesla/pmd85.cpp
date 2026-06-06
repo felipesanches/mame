@@ -818,6 +818,11 @@ void pmd85_state::c2717pmd(machine_config &config)
 	m_ppi1->in_pa_callback().set(FUNC(pmd85_state::pmd32_data_r));
 	m_ppi1->out_pa_callback().set(FUNC(pmd85_state::host_to_pmd32_w));
 	m_ppi1->out_pc_callback().set(FUNC(pmd85_state::host_pmd32_pc_w));
+
+	// The host and the unit hand-shake byte-by-byte over the mode-2 link; without
+	// tight interleave the Consul races through its ~50 ms connect poll before the
+	// unit's next presentation strobe lands, so they never rendezvous.
+	config.set_perfect_quantum(m_maincpu);
 }
 
 void pmd85_state::pmd32_to_host_w(uint8_t data)
@@ -850,6 +855,13 @@ void pmd85_state::host_pmd32_pc_w(uint8_t data)
 	// /OBFa de-asserts and its send-side INTRa (PC3) rises, releasing the firmware's
 	// "host took my byte" wait so it can present the next one.
 	bool const ibf = BIT(data, 5);
+	if (ibf != m_host_ibf && m_pmd32_hslog < 80)
+	{
+		// bring-up: PC5=IBFa, PC3=INTRa, PC7=/OBFa, PC4=INTE2, PC6=INTE1
+		logerror("host PC %02X: IBF %d->%d INTR=%d /OBF=%d INTE2=%d\n",
+			data, m_host_ibf, ibf, BIT(data, 3), BIT(data, 7), BIT(data, 4));
+		m_pmd32_hslog++;
+	}
 	if (m_host_ibf && !ibf)            // IBFa 1 -> 0 : host consumed the unit's byte
 	{
 		m_pmd32->host_ack_w(0);        // /ACKa low: clears the unit's /OBFa

@@ -74,6 +74,7 @@ private:
 	uint8_t m_pmd32_data = 0xff;   // latch: last byte the PMD-32 unit sent the host (GPIO 8255 input)
 	bool m_host_ibf = false;       // edge tracker: host ppi1 IBFa (PC5), to detect the host's IN 4C read
 	bool m_unit_ibf = false;       // edge tracker: unit ppi IBFa (PC5), to detect the unit's IN 20 read
+	uint16_t m_pmd32_hslog = 0;    // bring-up: capped count of logged handshake-line transitions
 	uint8_t m_startup_mem_map = 0;
 	uint8_t m_pmd853_memory_mapping = 0;
 	bool m_previous_level = false;
