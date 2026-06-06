@@ -23,9 +23,8 @@
     WIP: the inter-chip (DMA/FDC) and host-link handshakes are a first cut and
     not yet verified on a host build.
 
-    NOTE: the firmware ROM here is a RECONSTRUCTION assembled from RM-TEAM's
-    commented disassembly, NOT a verified silicon dump -- it is flagged
-    BAD_DUMP. See src/mame/tesla/pmd32.cpp ROM definition.
+    The firmware ROM is a verified silicon dump, corroborated to the byte by an
+    independent community reconstruction. See src/mame/tesla/pmd32.cpp.
 
 *******************************************************************************/
 

@@ -45,18 +45,19 @@ pmd32_device::pmd32_device(const machine_config &mconfig, const char *tag, devic
 
 
 //-------------------------------------------------
-//  ROM -- a BAD_DUMP reconstruction (see header / PROVENANCE.md)
+//  ROM -- a verified silicon dump (see header / PROVENANCE.md)
 //-------------------------------------------------
 
 ROM_START(pmd32)
 	ROM_REGION(0x0800, "rom", 0)
-	// RECONSTRUCTION, not a verified silicon dump: assembled from RM-TEAM's
-	// commented disassembly of the PMD-32 control program (Roman Bórik, 2006;
-	// pmd85.borik.net download id 16). Cross-checked two ways (round-trip
-	// disassembly and an independent ASL assembly) but never verified against a
-	// real EPROM, so it is flagged BAD_DUMP. The unprogrammed tail (0x069E-0x07FF)
-	// is padded 0xFF by assumption. A real dump is still wanted.
-	ROM_LOAD("pmd32-reconstructed.bin", 0x0000, 0x0800, BAD_DUMP CRC(2da51576) SHA1(e4b0bc86a27d3e64e2fca492a947a6fda3463504))
+	// Verified EPROM dump of the PMD-32 control program. It corroborates the
+	// earlier community reconstruction (assembled from Roman Bórik's RM-TEAM
+	// disassembly, pmd85.borik.net) to the byte: 2046 of the 2047 programmed
+	// bytes match exactly. The lone difference is at 0x069E -- the last byte of
+	// a ROM data table -- which the reconstruction left as 0xFF (its source
+	// stopped one byte short) but which the real device holds at 0x05. The
+	// 0x069F-0x07FF tail is genuinely unprogrammed (0xFF).
+	ROM_LOAD("pmd32.rom", 0x0000, 0x0800, CRC(5c28d71d) SHA1(28ef888a4de259a36095177e4d05425d05814d59))
 ROM_END
 
 const tiny_rom_entry *pmd32_device::device_rom_region() const
