@@ -24,10 +24,15 @@
                  0x2B = idle/armed, 0x2A = running.
         CC  OUT  8253 counter-0 preload, written LSB then MSB on two consecutive
                  OUT CC (the ROM loads 0x007F = 127 = sector_size - 1).
-        CF  OUT  8253 control-word register; value 0x30 = select counter 0,
-                 read/load LSB-then-MSB, Mode 0, binary -- it (re)arms the
-                 per-sector transfer byte counter.
-        CB / CD / CE   not accessed by the driver.
+        CD  OUT  8253 counter-1 preload (second-stage loader only) -> pit8253.
+        CE  IN   8253 counter-2 latched read-back (second-stage loader only).
+        CE  OUT  8253 counter-2 preload (second-stage loader only) -> pit8253.
+        CF  OUT  8253 control-word register.  Counter-0 words (SC=00, e.g. 0x30:
+                 LSB-then-MSB, Mode 0, binary) (re)arm the per-sector byte
+                 counter.  Counter-1/2 words (SC=01/10, e.g. 0x74/0xB4 Mode-2
+                 rate generators and the 0x80 counter-2 latch command) route to
+                 the pit8253 modelling counters 1 and 2.
+        CB             not accessed by the driver.
 
     The board runs the i8272 in DMA mode: the SPECIFY command writes byte2=0x24
     (ND bit = 0), so the i8272 raises DRQ once per execution-phase byte.  With no
@@ -35,6 +40,23 @@
     default interrupt vector 0xFF that becomes RST 7 -> 0x0038, where the ROM
     installs a one-byte transfer handler (IN C9 via dma_r once per interrupt).
     The device forwards DRQ to the host via out_int_cb().
+
+    8253 counters 1 and 2.  Counter 0 is the per-sector byte counter described
+    above (hand-rolled; OUT0 -> i8272 TC + CA bit0).  The system ROM never
+    touches counters 1 or 2 -- but the on-disc second-stage loader does: after a
+    full-track READ it programs counter 1 (CF=0x74, Mode 2, preload 0x2710) and
+    counter 2 (CF=0xB4, Mode 2, preload 0x0000 = 65536) as rate generators, then
+    spins in a poll/timeout loop that repeatedly latches counter 2 (CF=0x80) and
+    reads it back (two IN CE), computing elapsed = (saved_start - live_count) to
+    measure wall time.  Per the schematic both CLK1/CLK2 are buffered taps of the
+    8224-derived divided system clock (the FM data-window timebase, ~250-500 kHz),
+    and OUT1/OUT2 feed the IC5 74LS153 data-separator window mux -- NOT motor or
+    step lines (those are on the 74LS174 CA latch).  For the loader to advance,
+    counter 2 only needs to be a running Mode-2 generator whose latched 16-bit
+    count decreases over time; with it inert the elapsed subtraction stays 0 and
+    the loader spins forever.  A real pit8253 (clk1/clk2 = the divided clock)
+    models counters 1 and 2; CD/CE and the counter-1/2 control words route to it,
+    while counter 0 stays hand-rolled so its OUT0 still pulses the i8272 TC.
 
     The head is positioned ENTIRELY by the i8272's own RECALIBRATE/SEEK commands
     over C9 (verified in the boot trace: RECALIBRATE/SEEK-to-cyl-5/RECALIBRATE
@@ -58,6 +80,7 @@
 #pragma once
 
 #include "machine/upd765.h"
+#include "machine/pit8253.h"
 #include "imagedev/floppy.h"
 
 
@@ -85,6 +108,7 @@ private:
 
 	required_device<i8272a_device> m_fdc;
 	required_device_array<floppy_connector, 2> m_floppy;
+	required_device<pit8253_device> m_pit;   // 8253 counters 1 and 2 (counter 0 is hand-rolled)
 
 	devcb_write_line m_int_cb;
 

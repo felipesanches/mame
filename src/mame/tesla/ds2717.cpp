@@ -41,6 +41,7 @@ ds2717_device::ds2717_device(const machine_config &mconfig, const char *tag, dev
 	: device_t(mconfig, DS2717, tag, owner, clock)
 	, m_fdc(*this, "fdc")
 	, m_floppy(*this, "fdc:%u", 2U)   // drives are at i8272 units 2 (A) and 3 (B)
+	, m_pit(*this, "pit")
 	, m_int_cb(*this)
 	, m_control(0)
 	, m_byte_count(0)
@@ -109,6 +110,20 @@ void ds2717_device::device_add_mconfig(machine_config &config)
 	// connectors are fdc:2 / fdc:3 (= the i8272a's flopi[2] / flopi[3]).
 	FLOPPY_CONNECTOR(config, "fdc:2", ds2717_floppies, "8sssd", floppy_formats);
 	FLOPPY_CONNECTOR(config, "fdc:3", ds2717_floppies, "8sssd", floppy_formats);
+
+	// 8253 PIT (IC10).  Counter 0 is the per-sector byte counter, hand-rolled in
+	// read()/write() because its OUT0 must pulse the i8272 TC and the CA bit0 end
+	// flag at terminal count -- behaviour a Mode-0 pit8253 clocked by the (unknown)
+	// system divisor would not reproduce -- so it is NOT wired here.  Counters 1
+	// and 2 are real Mode-2 rate generators the on-disc loader programs and reads
+	// back; the schematic ties CLK1/CLK2 to the same 8224-derived divided clock
+	// (the ~500 kHz FM data-window timebase = the 8 MHz oscillator / 16).  OUT1/
+	// OUT2 feed the IC5 data-separator window mux, which nothing in the firmware
+	// polls directly, so they are left unbound; the loader only reads back the
+	// latched counter-2 value, which a running counter advances on its own.
+	PIT8253(config, m_pit, 0);
+	m_pit->set_clk<1>(8'000'000 / 16);   // CLK1: divided system clock (FM timebase)
+	m_pit->set_clk<2>(8'000'000 / 16);   // CLK2: same divided tap (parallel pair)
 }
 
 
@@ -250,7 +265,22 @@ uint8_t ds2717_device::read(offs_t offset)
 		return v;
 	}
 
-	default:  // CB, CC, CD, CE, CF -- no read path in the driver
+	case 6:  // CE -- 8253 counter-2 latched read-back (second-stage loader)
+	{
+		// The loader latches counter 2 (CF=0x80) then does two IN CE to read the
+		// 16-bit count LSB-then-MSB, and times elapsed = saved_start - count.  Map
+		// straight onto the pit's counter-2 register (pit offset 2); the running
+		// Mode-2 counter makes the latched value advance so the loader's wait ends.
+		uint8_t const v = m_pit->read(2);
+		if (m_log_count < LOG_CAP)
+		{
+			LOGSEEK("CE read (counter2 latch) -> %02X\n", v);
+			m_log_count++;
+		}
+		return v;
+	}
+
+	default:  // CB, CC, CD, CF -- no read path in the driver
 		if (m_log_count < LOG_CAP)
 		{
 			LOGPROTO("C%X read (unused) -> FF\n", 8 + (offset & 7));
@@ -312,21 +342,41 @@ void ds2717_device::write(offs_t offset, uint8_t data)
 			m_count_phase ? "LSB" : "MSB", data, m_byte_count);
 		break;
 
-	case 7:  // CF -- 8253 control word; 0x30 = ctr0 / LSB-then-MSB / Mode 0 -> (re)arm
-		LOGSEEK("CF write (control word) = %02X\n", data);
-		if (data == 0x30)
+	case 5:  // CD -- 8253 counter-1 preload (second-stage loader) -> pit counter 1
+		LOGSEEK("CD write (counter1) = %02X\n", data);
+		m_pit->write(1, data);
+		break;
+
+	case 6:  // CE -- 8253 counter-2 preload (second-stage loader) -> pit counter 2
+		LOGSEEK("CE write (counter2) = %02X\n", data);
+		m_pit->write(2, data);
+		break;
+
+	case 7:  // CF -- 8253 control word.  SC (bits 7-6) selects the counter.
+	{
+		uint8_t const sc = data >> 6;
+		LOGSEEK("CF write (control word) = %02X (SC=%d)\n", data, sc);
+		if (sc == 0)
 		{
-			// Arm the per-sector byte counter: restart the LSB/MSB load sequence,
-			// clear the terminal-count latch.  The preload itself arrives via the
-			// two OUT CC that follow.  No floppy head movement happens here -- the
+			// Counter 0 = the hand-rolled per-sector byte counter (e.g. 0x30:
+			// LSB-then-MSB, Mode 0, binary).  Arm it: restart the LSB/MSB load
+			// sequence and clear the terminal-count latch.  The preload arrives
+			// via the two OUT CC that follow.  No head movement here -- the
 			// i8272's own RECALIBRATE/SEEK over C9 position the head.
 			m_count_phase = 0;
 			m_count_active = true;
 			m_count_done = false;
 		}
+		else
+		{
+			// Counter 1/2 control words (SC=01/10: the loader's 0x74/0xB4 Mode-2
+			// rate generators and the 0x80 counter-2 latch command) -> pit8253.
+			m_pit->write(3, data);
+		}
 		break;
+	}
 
-	default:  // C8 (MSR is read-only), CB, CD, CE -- no write path in the driver
+	default:  // C8 (MSR is read-only), CB -- no write path in the driver
 		if (m_log_count < LOG_CAP)
 		{
 			LOGPROTO("C%X write (unused) = %02X\n", 8 + (offset & 7), data);
