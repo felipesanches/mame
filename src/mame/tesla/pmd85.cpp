@@ -855,6 +855,7 @@ void pmd85_state::host_pmd32_pc_w(uint8_t data)
 	// /OBFa de-asserts and its send-side INTRa (PC3) rises, releasing the firmware's
 	// "host took my byte" wait so it can present the next one.
 	bool const ibf = BIT(data, 5);
+	bool const consumed = m_host_ibf && !ibf;   // IBFa 1 -> 0 : host read the unit's byte
 	if (ibf != m_host_ibf && m_pmd32_hslog < 80)
 	{
 		// bring-up: PC5=IBFa, PC3=INTRa, PC7=/OBFa, PC4=INTE2, PC6=INTE1
@@ -862,12 +863,16 @@ void pmd85_state::host_pmd32_pc_w(uint8_t data)
 			data, m_host_ibf, ibf, BIT(data, 3), BIT(data, 7), BIT(data, 4));
 		m_pmd32_hslog++;
 	}
-	if (m_host_ibf && !ibf)            // IBFa 1 -> 0 : host consumed the unit's byte
+	// Update the edge tracker BEFORE the cross-chip ack: pc6_w drives the unit's
+	// 8255, whose set_intr unconditionally re-emits its port C, which re-enters
+	// this handler synchronously.  If m_host_ibf were still stale here, that
+	// re-entry would re-detect the same falling edge and recurse without bound.
+	m_host_ibf = ibf;
+	if (consumed)
 	{
 		m_pmd32->host_ack_w(0);        // /ACKa low: clears the unit's /OBFa
 		m_pmd32->host_ack_w(1);        // release
 	}
-	m_host_ibf = ibf;
 }
 
 void pmd85_state::unit_pmd32_pc_w(uint8_t data)
@@ -879,12 +884,13 @@ void pmd85_state::unit_pmd32_pc_w(uint8_t data)
 	// letting the Consul's send helper (0x96DE/0x96E9) complete and send the next
 	// byte (e.g. the 'B' command's CRC).
 	bool const ibf = BIT(data, 5);
-	if (m_unit_ibf && !ibf)            // IBFa 1 -> 0 : unit consumed the host's byte
+	bool const consumed = m_unit_ibf && !ibf;   // IBFa 1 -> 0 : unit read the host's byte
+	m_unit_ibf = ibf;                  // update before the cross-chip ack (re-entrancy safe)
+	if (consumed)
 	{
 		m_ppi1->pc6_w(0);              // /ACKa low: clears the host's /OBFa
 		m_ppi1->pc6_w(1);             // release
 	}
-	m_unit_ibf = ibf;
 }
 
 
