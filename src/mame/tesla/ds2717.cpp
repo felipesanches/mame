@@ -58,7 +58,7 @@ private:
 const ds2717_disc_format::format ds2717_disc_format::formats[] = {
 	{
 		floppy_image::FF_8, floppy_image::SSSD, floppy_image::FM,
-		4000, // 8" FM bit cell (250 kbps)
+		2000, // 8" cell rate (2 us); FM spends 2 cells/bit => 250 kbps
 		26, 77, 1,
 		128, {},
 		1, {},
