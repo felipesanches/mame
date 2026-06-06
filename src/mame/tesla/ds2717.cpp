@@ -22,7 +22,7 @@
 #define LOG_CMD   (1U << 2)   // i8272 command/param bytes written to C9
 #define LOG_SEEK  (1U << 3)   // CC/CF hardware-seek activity
 
-#define VERBOSE (LOG_GENERAL | LOG_CMD | LOG_SEEK)
+#define VERBOSE (LOG_GENERAL | LOG_CMD | LOG_SEEK | LOG_PROTO)
 #include "logmacro.h"
 
 #define LOGPROTO(...) LOGMASKED(LOG_PROTO, __VA_ARGS__)
@@ -246,7 +246,11 @@ void ds2717_device::write(offs_t offset, uint8_t data)
 	switch (offset & 7)
 	{
 	case 1:  // C9 -- i8272 DATA register: command + parameter bytes
-		LOGCMD("C9 write (FDC cmd/param) = %02X\n", data);
+		if (m_log_count < LOG_CAP)
+		{
+			LOGCMD("C9 write (FDC cmd/param) = %02X\n", data);
+			m_log_count++;
+		}
 		m_fdc->fifo_w(data);
 		break;
 
