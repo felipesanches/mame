@@ -55,6 +55,7 @@ private:
 
 	uint8_t m_control;   // 0xF4 latch (drive/motor/step)
 	uint8_t m_f6;        // 0xF6 write latch (control strobe)
+	uint8_t m_f5_track;  // synthesized head-position counter read back on 0xF5
 	int m_intrq;
 	int m_drq;
 };

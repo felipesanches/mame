@@ -27,6 +27,7 @@ ds2717_device::ds2717_device(const machine_config &mconfig, const char *tag, dev
 	, m_floppy(*this, "fdc:%u", 0U)
 	, m_control(0)
 	, m_f6(0)
+	, m_f5_track(0)
 	, m_intrq(0)
 	, m_drq(0)
 {
@@ -66,10 +67,15 @@ uint8_t ds2717_device::read(offs_t offset)
 		LOG("F4 read -> %02X\n", m_control);
 		return m_control;
 
-	case 1:  // 0xF5 -- board status: FDC DRQ/ready + head-position counter (WIP)
+	case 1:  // 0xF5 -- board status (muxed; bit assignments from ROM reverse-engineering)
 	{
-		uint8_t const v = (m_drq ? 0x80 : 0x00);
-		LOG("F5 read -> %02X (drq=%d intrq=%d)\n", v, m_drq, m_intrq);
+		// bit6 (0x40) = active-high "ready" strobe the firmware gates on (IN F5; ANI 40h);
+		// bit5 (0x20) = network/console TX-ready; bits0-6 = head-position counter the seek
+		// routine verifies against the target track; bit7 = write-protect/index (0 = ready).
+		// WIP: asserting ready+TX-ready to break the boot's stuck F5 poll, then refine the
+		// muxed head-position behaviour from the next host trace.
+		uint8_t const v = 0x40 | 0x20 | (m_f5_track & 0x1f);
+		LOG("F5 read -> %02X\n", v);
 		return v;
 	}
 
@@ -118,6 +124,7 @@ void ds2717_device::device_start()
 {
 	save_item(NAME(m_control));
 	save_item(NAME(m_f6));
+	save_item(NAME(m_f5_track));
 	save_item(NAME(m_intrq));
 	save_item(NAME(m_drq));
 }
@@ -126,4 +133,5 @@ void ds2717_device::device_reset()
 {
 	m_control = 0;
 	m_f6 = 0;
+	m_f5_track = 0;
 }
