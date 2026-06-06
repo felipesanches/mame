@@ -116,16 +116,25 @@ void ds2717_device::device_add_mconfig(machine_config &config)
 	// 8253 PIT (IC10).  Counter 0 is the per-sector byte counter, hand-rolled in
 	// read()/write() because its OUT0 must pulse the i8272 TC and the CA bit0 end
 	// flag at terminal count -- behaviour a Mode-0 pit8253 clocked by the (unknown)
-	// system divisor would not reproduce -- so it is NOT wired here.  Counters 1
-	// and 2 are real Mode-2 rate generators the on-disc loader programs and reads
-	// back; the schematic ties CLK1/CLK2 to the same 8224-derived divided clock
-	// (the ~500 kHz FM data-window timebase = the 8 MHz oscillator / 16).  OUT1/
-	// OUT2 feed the IC5 data-separator window mux, which nothing in the firmware
-	// polls directly, so they are left unbound; the loader only reads back the
-	// latched counter-2 value, which a running counter advances on its own.
+	// system divisor would not reproduce -- so it is NOT wired here.
+	//
+	// Counters 1 and 2 are a two-stage cascade that the on-disc CP/M BIOS uses as
+	// its keyboard auto-repeat / debounce timebase (NOT a disk timer): at boot it
+	// programs counter 1 = 10000 (Mode 2 rate generator) and counter 2 = 0 (= 65536,
+	// Mode 2, free-running), then in CONST it latches counter 2 (CF=0x80; IN CE x2)
+	// and times the elapsed down-count against the repeat thresholds 20 (initial
+	// ~98 ms) and 3 (repeat ~15 ms).  Those thresholds only make sense at a ~200 Hz
+	// counter-2 tick, which is exactly counter 1's output: CLK1 is the CPU
+	// instruction-cycle clock (the maincpu's XTAL(18'432'000)/9 = 2'048'000 Hz) and
+	// OUT1 feeds CLK2 (10000-divide -> 204.8 Hz).  Wiring OUT1 -> CLK2 (rather than
+	// giving counter 2 its own free-running tap) keeps the BIOS timebase at the
+	// intended rate; an independent fast clock makes the CONST elapsed-vs-threshold
+	// test pass on every poll, firing the heavy ROM keyboard-rescan/auto-repeat
+	// branch continuously and crawling spurious characters across the framebuffer.
+	// OUT2 stays unbound (the loader only reads back the latched counter-2 value).
 	PIT8253(config, m_pit, 0);
-	m_pit->set_clk<1>(8'000'000 / 16);   // CLK1: divided system clock (FM timebase)
-	m_pit->set_clk<2>(8'000'000 / 16);   // CLK2: same divided tap (parallel pair)
+	m_pit->set_clk<1>(XTAL(18'432'000) / 9);   // CLK1 = CPU instruction-cycle clock (2.048 MHz)
+	m_pit->out_handler<1>().set(m_pit, FUNC(pit8253_device::write_clk2));   // OUT1 -> CLK2 cascade
 }
 
 
