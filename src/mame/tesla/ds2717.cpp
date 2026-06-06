@@ -182,7 +182,46 @@ uint8_t ds2717_device::read(offs_t offset)
 	{
 	case 0:  // C8 -- i8272 MAIN STATUS REGISTER (MSR): bit7=RQM, bit6=DIO
 	{
-		uint8_t const v = m_fdc->msr_r();
+		uint8_t v = m_fdc->msr_r();
+
+		// ROM 0x9581 ("IN C8; XRI 80h; RNZ") is a DUAL-purpose entry the firmware
+		// reaches two ways:
+		//   (a) the power-on FDC-presence gate: the cold-boot path runs it BEFORE
+		//       its first OUT CA (the IN C8 at 0x9581 precedes OUT CA=2B at 0x9592),
+		//       and FALLS THROUGH (RNZ not taken) into the bootstrap only when the
+		//       status is exactly 0x80 -- "a present, idle controller, boot it";
+		//   (b) the on-disc BIOS read finalize: every successful sector read ends
+		//       at 0xCDBE "MVI L,00; RST 2" -> RAM bank thunk -> ROM service 0 =
+		//       JMP 0x9581, which here must RETURN to the BIOS (continuing at
+		//       0xCDC1: status, OUT CA=2B, RET).  It returns only when the status
+		//       is NOT exactly 0x80 -- a bare XRI 80h, no ANI C0 mask (unlike the
+		//       command-send wait at 0x972C), so any low bit suffices.
+		// So the SAME instruction must read 0x80 at pristine power-on yet non-0x80
+		// at every later finalize.  The discriminator on real hardware is not the
+		// instantaneous i8272 MSR (which is a bare idle 0x80 at the finalize too --
+		// the read's result phase has long since been drained by 0xCDBE): the board
+		// C8 status carries a low "controller has been operated" bit, set the first
+		// time the host drives the control latch and reflected in C8 thereafter, so
+		// only the never-touched cold-start state reads a true 0x80.
+		//
+		// Model that: once any OUT CA has happened (m_control != 0 -- it is 0 only
+		// at device_reset, before the power-on presence gate) and the i8272 is
+		// otherwise idle (bare MSR == MSR_RQM), present a low status bit so 0x9581's
+		// RNZ is taken and the read finalises instead of cold-rebooting.  The bit is
+		// invisible to every other C8 reader (all mask ANI C0); only the bare
+		// XRI 80h at 0x9581 sees it.  Use bit 2 (the boot unit's DnB -- the ROM
+		// builds unit bytes as (2|drive) @0x971E, drive A = unit 2).
+		//
+		// CRUCIAL: gate on m_control != 0, NOT on a specific running value: the
+		// finalize is reached with the latch already at its 0x2B idle value (the
+		// BIOS writes CA=2B BEFORE the path that re-enters 0x9581), so an "== 0x2A"
+		// (running) test would miss it and still cold-boot; and a "bit0 == 0" test
+		// would wrongly fire at the m_control==0 power-on presence gate and report
+		// "no controller", never booting.  m_control != 0 excludes only that reset
+		// state.
+		if (v == 0x80 && m_control != 0)
+			v |= (1 << 2);   // board "operated" status; bare 0x9581 gate returns, masked elsewhere
+
 		if (m_log_count < LOG_CAP)
 		{
 			LOGPROTO("C8 read (MSR) -> %02X\n", v);
