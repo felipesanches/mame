@@ -14,8 +14,14 @@
 #include "emu.h"
 #include "ds2717.h"
 
+#include "formats/upd765_dsk.h"
+
+#define LOG_PROTO (1U << 1)   // per-access firehose (F5/F4 polling)
+
 #define VERBOSE (LOG_GENERAL)
 #include "logmacro.h"
+
+#define LOGPROTO(...) LOGMASKED(LOG_PROTO, __VA_ARGS__)
 
 
 DEFINE_DEVICE_TYPE(DS2717, ds2717_device, "ds2717", "Consul 2717 DS2717 disk controller")
@@ -34,9 +40,41 @@ ds2717_device::ds2717_device(const machine_config &mconfig, const char *tag, dev
 }
 
 
+namespace {
+
+// Consul 2717 8" disc: IBM 3740-style single-sided single-density (FM),
+// 77 tracks x 26 sectors x 128 bytes (= 256256 bytes), matching the friend's dumps.
+class ds2717_disc_format : public upd765_format
+{
+public:
+	ds2717_disc_format() : upd765_format(formats) { }
+	const char *name() const noexcept override { return "ds2717"; }
+	const char *description() const noexcept override { return "Consul 2717 8\" disk image"; }
+	const char *extensions() const noexcept override { return "img,dz8,p32"; }
+private:
+	static const format formats[];
+};
+
+const ds2717_disc_format::format ds2717_disc_format::formats[] = {
+	{
+		floppy_image::FF_8, floppy_image::SSSD, floppy_image::FM,
+		4000, // 8" FM bit cell (250 kbps)
+		26, 77, 1,
+		128, {},
+		1, {},
+		40, 26, 11, 27   // IBM 3740 FM gaps
+	},
+	{}
+};
+
+const ds2717_disc_format FLOPPY_DS2717_FORMAT;
+
+} // anonymous namespace
+
 void ds2717_device::floppy_formats(format_registration &fr)
 {
-	fr.add_mfm_containers();
+	fr.add(FLOPPY_DS2717_FORMAT);
+	fr.add_mfm_containers();   // also accept HxC/MFI containers
 }
 
 static void ds2717_floppies(device_slot_interface &device)
@@ -64,7 +102,7 @@ uint8_t ds2717_device::read(offs_t offset)
 	switch (offset & 3)
 	{
 	case 0:  // 0xF4 -- control latch / drive status (bit layout WIP)
-		LOG("F4 read -> %02X\n", m_control);
+		LOGPROTO("F4 read -> %02X\n", m_control);
 		return m_control;
 
 	case 1:  // 0xF5 -- board status (muxed; bit assignments from ROM reverse-engineering)
@@ -75,7 +113,7 @@ uint8_t ds2717_device::read(offs_t offset)
 		// WIP: asserting ready+TX-ready to break the boot's stuck F5 poll, then refine the
 		// muxed head-position behaviour from the next host trace.
 		uint8_t const v = 0x40 | 0x20 | (m_f5_track & 0x1f);
-		LOG("F5 read -> %02X\n", v);
+		LOGPROTO("F5 read -> %02X\n", v);
 		return v;
 	}
 
