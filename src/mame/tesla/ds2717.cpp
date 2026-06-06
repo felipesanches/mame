@@ -118,10 +118,18 @@ uint8_t ds2717_device::read(offs_t offset)
 	}
 
 	case 2:  // 0xF6 -- i8272 main status register
-		return m_fdc->msr_r();
+	{
+		uint8_t const v = m_fdc->msr_r();
+		LOGPROTO("F6 read (MSR) -> %02X\n", v);
+		return v;
+	}
 
 	case 3:  // 0xF7 -- i8272 data register
-		return m_fdc->fifo_r();
+	{
+		uint8_t const v = m_fdc->fifo_r();
+		LOG("F7 read (FDC data) -> %02X\n", v);
+		return v;
+	}
 	}
 	return 0xff;
 }
@@ -147,7 +155,8 @@ void ds2717_device::write(offs_t offset, uint8_t data)
 		m_f6 = data;
 		break;
 
-	case 3:  // 0xF7 -- i8272 data register
+	case 3:  // 0xF7 -- i8272 data register (command + write data)
+		LOG("F7 write (FDC cmd/data) = %02X\n", data);
 		m_fdc->fifo_w(data);
 		break;
 	}
