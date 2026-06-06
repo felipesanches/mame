@@ -201,12 +201,23 @@ void pmd85_state::c2717_update_memory()
 		m_bank[2]->set_base(ram + 0x4000);
 		m_bank[3]->set_base(m_rom);
 		m_bank[4]->set_base(ram + 0xc000);
+		// 0x8000-0xbfff write target: always the underlying RAM, so disk-loaded
+		// sectors land even while the monitor reads ROM through bank3.
+		m_bank[5]->set_base(ram + 0x8000);
 	}
 	else
 	{
 		space.install_write_bank(0x0000, 0x3fff, m_bank[1]);
 		m_bank[1]->set_base(ram);
 		m_bank[2]->set_base(ram + 0x4000);
+
+		// bank3 (read of 0x8000-0xbfff) follows motherboard 8255 PC7: 0 = ROM
+		// (the monitor), 1 = RAM (the disk loader's OS image at 0xb500-0xbfff).
+		if (m_c2717_ram_at_8000)
+			m_bank[3]->set_base(ram + 0x8000);
+		else
+			m_bank[3]->set_base(m_rom);
+		m_bank[5]->set_base(ram + 0x8000);
 	}
 }
 
@@ -249,6 +260,21 @@ void pmd85_state::ppi0_portc_w(uint8_t data)
 	m_leds[PMD85_LED_2] = BIT(data, 3);
 	//m_leds[PMD85_LED_3] = BIT(data, 2);
 	m_speaker->level_w(BIT(data, 2));
+
+	// Consul 2717: motherboard 8255 PC7 banks the 0x8000-0xbfff window.  The disk
+	// loader sets it (OUT F7 = 0x0F = BSR PC7 SET) to read back the OS sectors it
+	// just wrote to 0xb500, and clears it (0x0E = BSR PC7 RESET) on error to return
+	// the monitor ROM.  Re-map only on a real change so unrelated PC writes are cheap.
+	if (m_model == C2717)
+	{
+		bool const ram = BIT(data, 7);
+		if (ram != m_c2717_ram_at_8000)
+		{
+			m_c2717_ram_at_8000 = ram;
+			if (!m_startup_mem_map)
+				c2717_update_memory();
+		}
+	}
 }
 
 /*******************************************************************************
@@ -786,6 +812,7 @@ void pmd85_state::machine_reset()
 
 	/* memory initialization */
 	m_pmd853_memory_mapping = 1;
+	m_c2717_ram_at_8000 = false;   // C2717 powers up reading the monitor ROM at 0x8000-0xbfff
 	m_startup_mem_map = 1;
 	(this->*update_memory)();
 }
@@ -799,6 +826,7 @@ void pmd85_state::machine_start()
 	save_item(NAME(m_ppi_port_outputs));
 	save_item(NAME(m_startup_mem_map));
 	save_item(NAME(m_pmd853_memory_mapping));
+	save_item(NAME(m_c2717_ram_at_8000));
 	save_item(NAME(m_previous_level));
 	save_item(NAME(m_clk_level));
 	save_item(NAME(m_clk_level_tape));

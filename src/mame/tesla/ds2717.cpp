@@ -30,8 +30,10 @@
 #define LOGCMD(...)   LOGMASKED(LOG_CMD,   __VA_ARGS__)
 #define LOGSEEK(...)  LOGMASKED(LOG_SEEK,  __VA_ARGS__)
 
-// cap the bring-up firehose so a stuck poll cannot fill the log
-static constexpr uint32_t LOG_CAP = 4000;
+// cap the bring-up firehose so a stuck poll cannot fill the log -- high enough
+// to capture a full multi-sector transfer (a CP/M boot moves ~6.5 KB) and its TC
+// + result phase, which a 4000-entry cap was truncating mid-stream.
+static constexpr uint32_t LOG_CAP = 20000;
 
 
 DEFINE_DEVICE_TYPE(DS2717, ds2717_device, "ds2717", "Consul 2717 DS2717 disk controller")

@@ -336,7 +336,14 @@ void pmd85_state::c2717_mem(address_map &map)
 {
 	map(0x0000, 0x3fff).bankrw("bank1");
 	map(0x4000, 0x7fff).bankrw("bank2");
-	map(0x8000, 0xbfff).bankr("bank3");
+	// 0x8000-0xbfff is an overlaid ROM/RAM window: the system ROM aliases here for
+	// the monitor, but the disk loader banks RAM in to receive the on-disc OS image
+	// (the CCP/BDOS the boot record reads to 0xb500).  The motherboard 8255 port-C
+	// bit 7 (toggled by the boot record's OUT F7 = BSR PC7 set/reset) selects which
+	// is READ; writes always land in the underlying RAM, so the loaded sectors are
+	// stored regardless of the read select.  bank3 read base flips ROM<->RAM in
+	// c2717_update_memory(); bank5 write base is fixed at ram+0x8000.
+	map(0x8000, 0xbfff).bankr("bank3").bankw("bank5");
 	map(0xc000, 0xffff).bankrw("bank4");
 }
 
