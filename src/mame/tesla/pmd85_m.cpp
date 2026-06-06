@@ -459,26 +459,6 @@ uint8_t pmd85_state::io_r(offs_t offset)
 		return 0xff;
 	}
 
-	// DS2717 disk controller (Consul 2717, c2717pmd only): responsive stub for
-	// bring-up. The DS2717 is a dumb i8272 + 8253 board; this stub answers the
-	// host ROM's detection probe (terminal ID at 0x49, data window at 0x48) so we
-	// can trace how the ROM then drives the real chips (the FDC port shows up via
-	// the "unmapped port" logging once detection passes).
-	if (m_pmd32.found())
-	{
-		if (offset == 0x49)  // terminal-ID jumpers; must read 0xF0..0xFE to pass detection
-		{
-			logerror("DS2717: ID read (49) -> FE\n");
-			return 0xfe;
-		}
-		if (offset == 0x48)  // data window
-		{
-			u16 const win = (m_ppi_port_outputs[1][1] << 8) | m_ppi_port_outputs[1][0];
-			logerror("DS2717: data read (48) [8255 A/B = %04X] -> 00\n", win);
-			return 0x00;
-		}
-	}
-
 	switch (offset & 0x0c)
 	{
 		case 0x04:  /* Motherboard */
@@ -532,13 +512,6 @@ void pmd85_state::io_w(offs_t offset, uint8_t data)
 	{
 		m_startup_mem_map = 0;
 		(this->*update_memory)();
-	}
-
-	// DS2717 disk controller (Consul 2717, c2717pmd only): trace stub writes
-	if (m_pmd32.found() && (offset == 0x48 || offset == 0x49))
-	{
-		logerror("DS2717: write %02X -> port %02X\n", data, offset);
-		return;
 	}
 
 	switch (offset & 0x0c)
