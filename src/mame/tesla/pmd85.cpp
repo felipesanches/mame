@@ -810,7 +810,11 @@ void pmd85_state::c2717pmd(machine_config &config)
 	// streams the boot sector.  (The DS2717 i8272 above only supplies the
 	// drive-ready/seek gate; it issues no READ DATA in this ROM.)
 	PMD32(config, m_pmd32, 0);
-	m_pmd32->out_data_cb().set(FUNC(pmd85_state::pmd32_to_host_w));
+	// Cross-wire the two mode-2 8255s' handshake lines (see the glue methods):
+	//   unit OUT 20 -> host STBa (pc4);  host IN 4C  -> unit /ACKa (pc6)
+	//   host OUT 4C -> unit STBa (pc4);  unit IN 20  -> host /ACKa (pc6)
+	m_pmd32->out_data_cb().set(FUNC(pmd85_state::pmd32_to_host_w));   // unit port-A byte -> host
+	m_pmd32->out_ctrl_cb().set(FUNC(pmd85_state::unit_pmd32_pc_w));   // unit port-C status -> host
 	m_ppi1->in_pa_callback().set(FUNC(pmd85_state::pmd32_data_r));
 	m_ppi1->out_pa_callback().set(FUNC(pmd85_state::host_to_pmd32_w));
 	m_ppi1->out_pc_callback().set(FUNC(pmd85_state::host_pmd32_pc_w));
@@ -818,31 +822,57 @@ void pmd85_state::c2717pmd(machine_config &config)
 
 void pmd85_state::pmd32_to_host_w(uint8_t data)
 {
-	// PMD-32 unit put a byte on its port A -> latch it and strobe it into the
-	// host GPIO 8255's input so the Consul's IN 0x4C reads it (and INTRa asserts).
+	// UNIT -> HOST data.  Fired by the unit's OUT 20 (its 8255 mode-2 out_pa_cb).
+	// Latch the byte and assert the host 8255's /STBa (pc4, active-low): this reads
+	// the latch via in_pa_callback (pmd32_data_r) and raises the host's IBFa.  The
+	// host's connect (0x9700) has already set INTE2, so IBFa makes PC3/INTRa rise
+	// and the Consul's IN 4E & 0x08 poll at 0x96E9 finally sees byte-ready.
 	m_pmd32_data = data;
-	m_ppi1->pc4_w(0);
-	m_ppi1->pc4_w(1);
+	m_ppi1->pc4_w(0);   // active-low strobe: latch + IBFa=1 (+ INTRa if INTE2 set)
+	m_ppi1->pc4_w(1);   // release strobe (no edge action in this model)
 }
 
 void pmd85_state::host_to_pmd32_w(uint8_t data)
 {
-	// Consul wrote a byte (OUT 0x4C) -> hand it to the unit, then acknowledge the
-	// host 8255 (clear /OBFa) so the Consul's send completes.
+	// HOST -> UNIT data.  Fired by the Consul's OUT 4C (host 8255 mode-2 out_pa_cb).
+	// Strobe it into the UNIT's 8255 (host_data_w pulses the unit's /STBa = pc4),
+	// raising the unit's IBFa so its firmware's IN 20 reads it.  We do NOT clear the
+	// host's own /OBFa here: that must be the real round-trip, driven only when the
+	// unit actually consumes the byte (see unit_pmd32_pc_w).
 	m_pmd32->host_data_w(data);
-	m_ppi1->pc6_w(0);
-	m_ppi1->pc6_w(1);
 }
 
 void pmd85_state::host_pmd32_pc_w(uint8_t data)
 {
-	// Host GPIO 8255 port-C status: when IBFa (bit 5) clears, the Consul has read
-	// the unit's byte, so acknowledge the unit and let it present the next one.
-	if (!BIT(data, 5))
+	// HOST 8255 port-C status.  In mode 2, PC5 = IBFa.  IBFa falls 1->0 exactly when
+	// the Consul executes IN 4C and reads the unit's byte.  On that falling edge,
+	// acknowledge the unit: pulse the unit's /ACKa (pc6, active-low) so the unit's
+	// /OBFa de-asserts and its send-side INTRa (PC3) rises, releasing the firmware's
+	// "host took my byte" wait so it can present the next one.
+	bool const ibf = BIT(data, 5);
+	if (m_host_ibf && !ibf)            // IBFa 1 -> 0 : host consumed the unit's byte
 	{
-		m_pmd32->host_ack_w(0);
-		m_pmd32->host_ack_w(1);
+		m_pmd32->host_ack_w(0);        // /ACKa low: clears the unit's /OBFa
+		m_pmd32->host_ack_w(1);        // release
 	}
+	m_host_ibf = ibf;
+}
+
+void pmd85_state::unit_pmd32_pc_w(uint8_t data)
+{
+	// UNIT 8255 port-C status (its out_ctrl_cb).  PC5 = IBFa on the unit side.  IBFa
+	// falls 1->0 exactly when the unit executes IN 20 and reads the host's byte.  On
+	// that falling edge, acknowledge the host: pulse the host 8255's /ACKa (pc6,
+	// active-low) so the host's /OBFa clears and its send-side INTRa (PC3) rises,
+	// letting the Consul's send helper (0x96DE/0x96E9) complete and send the next
+	// byte (e.g. the 'B' command's CRC).
+	bool const ibf = BIT(data, 5);
+	if (m_unit_ibf && !ibf)            // IBFa 1 -> 0 : unit consumed the host's byte
+	{
+		m_ppi1->pc6_w(0);              // /ACKa low: clears the host's /OBFa
+		m_ppi1->pc6_w(1);             // release
+	}
+	m_unit_ibf = ibf;
 }
 
 

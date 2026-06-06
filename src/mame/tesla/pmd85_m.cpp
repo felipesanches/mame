@@ -801,5 +801,8 @@ void pmd85_state::machine_start()
 	save_item(NAME(m_clk_level));
 	save_item(NAME(m_clk_level_tape));
 	save_item(NAME(m_model));
+	save_item(NAME(m_pmd32_data));
+	save_item(NAME(m_host_ibf));
+	save_item(NAME(m_unit_ibf));
 }
 
