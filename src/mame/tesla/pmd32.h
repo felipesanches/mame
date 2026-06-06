@@ -14,7 +14,7 @@
         PIO 8255           at I/O 0x20-0x23  (port A = parallel link to the host)
         DMA 8257           at I/O 0x40-0x48  (channel 0 feeds the FDC)
         drive/motor latch  at I/O 0xE0       (bits: DS1 DS0 MO1 MO0 ENA . . .)
-        two 5.25" drives
+        two 8" double-density drives
 
     It communicates with the host (PMD-85 / Consul 2717) over the 8255 port-A
     bidirectional parallel channel, master-slave, with a presentation-byte

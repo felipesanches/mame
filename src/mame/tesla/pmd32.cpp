@@ -5,9 +5,10 @@
     PMD-32 floppy disk unit (low-level emulation) -- see pmd32.h.
 
     This models the real PMD-32 hardware (8080A + 8255 + 8272A FDC + 8257 DMA +
-    two 5.25" drives) running the unit's own control program.  WIP: the DMA/FDC
-    inter-chip wiring and the host parallel link are a first cut and are not yet
-    verified on a host build.
+    two 8" double-density drives) running the unit's own control program.  The
+    firmware reads its native 8" MFM medium (9 x 512-byte sectors/track, two
+    sides; see pmd32_disc_format).  WIP: the DMA/FDC inter-chip wiring and the
+    host parallel link are a first cut and are not yet verified on a host build.
 
 *******************************************************************************/
 
@@ -94,8 +95,19 @@ void pmd32_device::io_map(address_map &map)
 
 namespace {
 
-// 8" SSSD FM (IBM 3740-style): 77 tracks x 26 sectors x 128 bytes -- the Consul
-// courseware geometry the unit's firmware reads.
+// PMD-32 native format: 8" double-density MFM, 9 x 512-byte sectors/track,
+// 77 tracks, double-sided.  This is what the unit firmware actually reads: its
+// READ DATA command is 0x46 (READ DATA + MFM bit), N=2 (512-byte sectors),
+// EOT=9, sector IDs R=1..9 (pmd32.rom @0x04A9/@0x041D).  The logical->physical
+// map at @0x051A is CYL = track/2, head = track&1, R = (logical_sector/4)+1, so
+// each 512-byte physical sector packs four 128-byte logical sectors, and a track
+// pair (head 0 + head 1) holds 2 x 9 x 512 = 9216 bytes.  An FM/128-byte image
+// here makes the i8272a's MFM N=2 read find no IDAM (ST1 missing-address-mark)
+// and the firmware aborts with ERR=0x99.
+//
+// The i8272a runs at its 250000 default rate with no DSR; the MFM bit doubles
+// the live clock to 500000 (1000ns cells), the correct 8" DD rate, so cell_size
+// must be 1000.
 class pmd32_disc_format : public upd765_format
 {
 public:
@@ -109,8 +121,8 @@ private:
 
 const pmd32_disc_format::format pmd32_disc_format::formats[] = {
 	{
-		floppy_image::FF_8, floppy_image::SSSD, floppy_image::FM,
-		2000, 26, 77, 1, 128, {}, 1, {}, 40, 26, 11, 27
+		floppy_image::FF_8, floppy_image::DSDD, floppy_image::MFM,
+		1000, 9, 77, 2, 512, {}, 1, {}, 80, 50, 22, 84
 	},
 	{}
 };
@@ -228,12 +240,23 @@ void pmd32_device::fdc_fifo_w(uint8_t data)
 
 void pmd32_device::drive_w(uint8_t data)
 {
-	// E0: DS1 DS0 MO1 MO0 ENA . . .  -- select drive + spin motor
-	LOG("drive/motor latch = %02X (drive %u)\n", data, BIT(data, 6));
+	// 0xE0 latch, decoded from firmware routine @0x0551 (writes 0x58 to select +
+	// spin drive A, 0xA8 for drive B):
+	//   bit7 = DS1 (drive B select)   bit6 = DS0 (drive A select)
+	//   bit5 = MO1 (drive B motor)    bit4 = MO0 (drive A motor)
+	//   bit3 = ENA
+	// Drive A is floppy index 0, drive B is floppy index 1 (matching the FDC US
+	// bits the firmware uses: drive A -> US 0, drive B -> US 2; only fdc:0/fdc:1
+	// connectors exist).  Each drive's motor follows its own MO bit (active-low
+	// mon_w).  The previous code used BIT(data,6) as the floppy index, which sent
+	// drive A's commands to floppy 1 and never asserted drive B's motor bit.
+	LOG("drive/motor latch = %02X (selA=%u motA=%u selB=%u motB=%u ena=%u)\n",
+		data, BIT(data, 6), BIT(data, 4), BIT(data, 7), BIT(data, 5), BIT(data, 3));
 	m_drive = data;
-	floppy_image_device *fd = m_floppy[BIT(data, 6)]->get_device();
-	if (fd)
-		fd->mon_w(BIT(data, 4) ? 0 : 1);   // motor on when MO bit set (active-low mon)
+	if (floppy_image_device *fa = m_floppy[0]->get_device())
+		fa->mon_w(BIT(data, 4) ? 0 : 1);   // drive A motor (MO0)
+	if (floppy_image_device *fb = m_floppy[1]->get_device())
+		fb->mon_w(BIT(data, 5) ? 0 : 1);   // drive B motor (MO1)
 }
 
 uint8_t pmd32_device::dma_mem_r(offs_t offset)
