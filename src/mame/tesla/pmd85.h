@@ -18,6 +18,7 @@
 #include "machine/ram.h"
 #include "emupal.h"
 #include "pmd32.h"
+#include "ds2717.h"
 
 
 class pmd85_state : public driver_device
@@ -38,6 +39,7 @@ public:
 		, m_ppi2(*this, "ppi2")
 		, m_ppi3(*this, "ppi3")
 		, m_pmd32(*this, "pmd32")
+		, m_ds2717(*this, "ds2717")
 		, m_bank(*this, "bank%d", 0U)
 		, m_io_dsw0(*this, "DSW0")
 		, m_palette(*this, "palette")
@@ -145,6 +147,7 @@ private:
 	optional_device<i8255_device> m_ppi2;
 	optional_device<i8255_device> m_ppi3;
 	optional_device<pmd32_device> m_pmd32;
+	optional_device<ds2717_device> m_ds2717;
 	optional_memory_bank_array<17> m_bank;
 	optional_ioport m_io_dsw0;
 	required_device<palette_device> m_palette;

@@ -459,6 +459,11 @@ uint8_t pmd85_state::io_r(offs_t offset)
 		return 0xff;
 	}
 
+	// Consul 2717 DS2717 disk controller (i8272) at I/O 0xF4-0xF7; takes priority
+	// over the loosely-decoded keyboard 8255 mirror at those addresses.
+	if (m_ds2717.found() && (offset & 0xfc) == 0xf4)
+		return m_ds2717->read(offset & 0x03);
+
 	switch (offset & 0x0c)
 	{
 		case 0x04:  /* Motherboard */
@@ -512,6 +517,13 @@ void pmd85_state::io_w(offs_t offset, uint8_t data)
 	{
 		m_startup_mem_map = 0;
 		(this->*update_memory)();
+	}
+
+	// Consul 2717 DS2717 disk controller (i8272) at I/O 0xF4-0xF7
+	if (m_ds2717.found() && (offset & 0xfc) == 0xf4)
+	{
+		m_ds2717->write(offset & 0x03, data);
+		return;
 	}
 
 	switch (offset & 0x0c)

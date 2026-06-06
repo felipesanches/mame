@@ -797,11 +797,15 @@ void pmd85_state::c2717pmd(machine_config &config)
 {
 	c2717(config);
 
-	// The PMD-32 disk unit (its own 8080A + 8272A FDC + 8257 DMA + drives) runs
-	// its control program here.  WIP: the Consul's disk EPROM reaches the unit
-	// through a memory window at I/O 0x48/0x49 rather than the plain 8255 mode-2
-	// link, and that host interface is still being reverse-engineered, so the
-	// host<->unit bridge is not wired yet (the system stays MACHINE_NOT_WORKING).
+	// The Consul's built-in 8" disk controller (DS2717): a dumb i8272 board at
+	// I/O ports 0xF4-0xF7, driven directly by the system ROM. This is the
+	// controller the 8" classroom discs were actually read on. WIP, so the
+	// system stays MACHINE_NOT_WORKING.
+	DS2717(config, m_ds2717, 0);
+
+	// The external PMD-32 5.25" disk unit (its own 8080A + 8272A FDC + drives)
+	// also runs its control program here; the host link to it is still WIP. Kept
+	// for separate use with the PMD-85.3 (it is not the 8" classroom controller).
 	PMD32(config, m_pmd32, 0);
 }
 
