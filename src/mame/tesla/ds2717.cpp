@@ -7,9 +7,10 @@
     Low-level emulation of the dumb i8272 board at host I/O ports 0xC8-0xCF,
     driven directly by the verified PLAIN c2717 system ROM.  The C8/C9 pair is
     the i8272's MSR / DATA register; CA is the board control latch + transfer-
-    end flag; CC/CF are the 74LS193 hardware-seek counter and its load strobe.
-    The i8272 runs in non-DMA mode and its per-byte INTRQ is forwarded to the
-    host 8080 INTR (-> RST 7 -> the 0x0038 ISR the ROM installs).
+    end flag; CC/CF are the 8253 PIT counter-0 (the per-sector transfer byte
+    counter) and its control-word register.  The i8272 runs in DMA mode and its
+    per-byte DRQ is forwarded to the host 8080 INTR (-> RST 7 -> the 0x0038 ISR
+    the ROM installs), which reads each byte from C9 via dma_r.
 
 *******************************************************************************/
 
@@ -20,7 +21,7 @@
 
 #define LOG_PROTO (1U << 1)   // per-access firehose (every C8-CF port touch)
 #define LOG_CMD   (1U << 2)   // i8272 command/param bytes written to C9
-#define LOG_SEEK  (1U << 3)   // CC/CF hardware-seek activity
+#define LOG_SEEK  (1U << 3)   // CC/CF 8253 transfer-byte-counter activity
 
 #define VERBOSE (LOG_GENERAL | LOG_CMD | LOG_SEEK | LOG_PROTO)
 #include "logmacro.h"
@@ -42,10 +43,13 @@ ds2717_device::ds2717_device(const machine_config &mconfig, const char *tag, dev
 	, m_floppy(*this, "fdc:%u", 2U)   // drives are at i8272 units 2 (A) and 3 (B)
 	, m_int_cb(*this)
 	, m_control(0)
-	, m_seek_addr(0)
-	, m_seek_phase(0)
+	, m_byte_count(0)
+	, m_count_phase(0)
+	, m_count_active(false)
+	, m_count_done(false)
 	, m_intrq(0)
 	, m_drq(0)
+	, m_ca_last(0)
 	, m_log_count(0)
 {
 }
@@ -116,8 +120,10 @@ void ds2717_device::fdc_intrq_w(int state)
 {
 	// End-of-command / result-phase interrupt.  The ROM's SPECIFY selects DMA mode
 	// (ND=0), so INTRQ fires only at command completion -- NOT per data byte -- and
-	// the board does NOT route it to the CPU (the result phase is polled via the MSR
-	// at C8).  It feeds the CA bit0 transfer-END flag the read ISR waits on.
+	// the board does NOT route it to the CPU.  It contributes the SEEK/RECALIBRATE-
+	// completion term of the CA bit0 end-flag OR (those waits move no data and so
+	// cannot use the byte counter).  It self-clears when the ROM reads out the i8272
+	// result phase (the 7 fifo_r in helper 0x96FA).
 	m_intrq = state;
 	if (m_log_count < LOG_CAP)
 	{
@@ -131,7 +137,8 @@ void ds2717_device::fdc_drq_w(int state)
 	// DMA mode (ND=0): the i8272 raises DRQ once per execution-phase byte.  The board
 	// has no DMA controller -- it wires DRQ to the 8080 INTR line, so each byte fires
 	// the RST 7 ISR (at RAM 0x0038), which reads the byte from C9 via dma_r.  The
-	// 8080's own EI/DI (IM_IE) gates delivery.
+	// 8080's own EI/DI (IM_IE) gates delivery.  DRQ also gates the per-byte 8253
+	// counter-0 decrement in read() case 1.
 	m_drq = state;
 	if (m_log_count < LOG_CAP)
 	{
@@ -139,48 +146,6 @@ void ds2717_device::fdc_drq_w(int state)
 		m_log_count++;
 	}
 	m_int_cb(state);
-}
-
-
-//-------------------------------------------------
-//  CC/CF 74LS193 hardware seek
-//-------------------------------------------------
-
-void ds2717_device::do_hardware_seek()
-{
-	// CF=0x30 latches the CC track-address image into the 74LS193 counters, which
-	// then step the head to that physical track.  The ROM issues no i8272 SEEK in
-	// the boot path, so move the floppy head ourselves; the subsequent i8272 READ
-	// DATA then matches the sector headers' C field at that physical cylinder.
-	int const target = m_seek_addr & 0x7f;   // 0..76 valid; only the low track bits matter
-
-	// The 74LS193 step line is shared; drive-select (held in the CA latch upper
-	// bits) gates which spindle actually moves.  Move whichever drives are
-	// present to the target -- the unselected one is harmless for a read.
-	for (int i = 0; i < 2; i++)
-	{
-		floppy_image_device *fd = m_floppy[i]->get_device();
-		if (!fd)
-			continue;
-
-		int cur = fd->get_cyl();
-		if (cur == target)
-			continue;
-
-		fd->dir_w(cur > target ? 1 : 0);   // 1 = step toward track 0
-		while (cur != target)
-		{
-			// the floppy steps on the high->low edge of the STEP line, so raise
-			// it then drop it to clock one track per pulse
-			fd->stp_w(1);
-			fd->stp_w(0);
-			int const moved = fd->get_cyl();
-			if (moved == cur)   // hit an end stop
-				break;
-			cur = moved;
-		}
-		LOGSEEK("HW seek drive %d -> track %d (now %d)\n", i, target, fd->get_cyl());
-	}
 }
 
 
@@ -210,27 +175,77 @@ uint8_t ds2717_device::read(offs_t offset)
 		// i8272 never sets internal_drq, so fifo_r() would return 0xFF mid-read
 		// (upd765 fifo_r PHASE_EXEC needs internal_drq).  Result-phase bytes (DRQ
 		// low, polled via the MSR) are read normally through fifo_r().
-		uint8_t const v = m_drq ? m_fdc->dma_r() : m_fdc->fifo_r();
-		if (m_log_count < LOG_CAP)
+		if (m_drq)
 		{
-			LOGPROTO("C9 read (FDC %s) -> %02X\n", m_drq ? "data" : "result", v);
-			m_log_count++;
+			uint8_t const v = m_fdc->dma_r();   // deliver byte N to the CPU buffer FIRST
+
+			// Each byte clocks the 8253 counter-0 once.  Preload 127, decrement per
+			// byte: byte 1 -> 127->126 ... byte 127 -> 1->0; on the 128th byte the
+			// count is already 0 -> borrow -> terminal count.  The board's OUT0 then
+			// pulses the i8272 TC (no DMA controller does it) to end the single-sector
+			// execution phase, and latches the CA bit0 transfer-END flag.
+			if (m_count_active && !m_count_done)
+			{
+				if (m_byte_count == 0)
+				{
+					m_count_done = true;
+					m_fdc->tc_w(1);   // edge-triggered: pulse high then low
+					m_fdc->tc_w(0);
+					if (m_log_count < LOG_CAP)
+					{
+						LOGSEEK("byte-counter terminal count -> TC pulse\n");
+						m_log_count++;
+					}
+				}
+				else
+				{
+					m_byte_count--;
+				}
+			}
+
+			if (m_log_count < LOG_CAP)
+			{
+				LOGPROTO("C9 read (FDC data) -> %02X\n", v);
+				m_log_count++;
+			}
+			return v;
 		}
-		return v;
+		else
+		{
+			uint8_t const v = m_fdc->fifo_r();
+			if (m_log_count < LOG_CAP)
+			{
+				LOGPROTO("C9 read (FDC result) -> %02X\n", v);
+				m_log_count++;
+			}
+			return v;
+		}
 	}
 
-	case 2:  // CA -- board status; bit0 = transfer-END / TC flag
+	case 2:  // CA -- board status; bit0 = transfer-END flag
 	{
-		// The ROM polls "IN CA; RRC; RC": bit0 set => the sector transfer has
-		// finished.  The transfer is over when the i8272 leaves the execution phase
-		// and raises INTRQ (command complete / result phase ready) after the last
-		// data byte, so the end flag is INTRQ itself.  (During the transfer INTRQ is
-		// low and bit0 stays 0, keeping the ISR's wait loop spinning.)
-		uint8_t const v = m_intrq ? 0x01 : 0x00;
-		if (m_log_count < LOG_CAP)
+		// The ROM polls "IN CA; RRC; RC": bit0 set => the wait is over.  The SAME
+		// 0x003E poll loop ends both data transfers AND seek/recalibrate waits, so
+		// bit0 must satisfy both:
+		//   - data read: the 8253 counter-0 reaches terminal count after the 128th
+		//     byte (m_count_done) -- this is the board's OUT0 transfer-END net.
+		//   - SEEK/RECALIBRATE: no data moves, so m_count_done never sets; those
+		//     waits end on the i8272 end-of-command INTRQ (m_intrq).
+		// Hence bit0 = (byte-counter done) OR (i8272 INTRQ).  In DMA mode INTRQ
+		// fires only at command_end (never per byte), so it cannot prematurely
+		// satisfy a mid-transfer poll.
+		uint8_t const v = (m_count_done || m_intrq) ? 0x01 : 0x00;
+
+		// The poll spins thousands of times per wait; log only the 0->1/1->0 edge so
+		// the bring-up trace shows the transition that ends each wait, not the storm.
+		if (v != m_ca_last)
 		{
-			LOGPROTO("CA read (end-flag) -> %02X\n", v);
-			m_log_count++;
+			if (m_log_count < LOG_CAP)
+			{
+				LOGPROTO("CA read (end-flag) %d->%d\n", m_ca_last, v);
+				m_log_count++;
+			}
+			m_ca_last = v;
 		}
 		return v;
 	}
@@ -279,27 +294,35 @@ void ds2717_device::write(offs_t offset, uint8_t data)
 		break;
 	}
 
-	case 4:  // CC -- 74LS193 hardware-seek track address: low byte then high byte
-		if (m_seek_phase == 0)
+	case 4:  // CC -- 8253 counter-0 preload, written LSB then MSB (RL=11 from CF=0x30)
+		// The ROM does two OUT CC per sector: LSB=0x7F then MSB=0x00, yielding the
+		// 16-bit preload 0x007F = 127 = (sector_size - 1).  Keep both writes so the
+		// trailing 0x00 MSB does not clobber the 0x7F low byte.
+		if (m_count_phase == 0)
 		{
-			m_seek_addr = (m_seek_addr & 0xff00) | data;
-			m_seek_phase = 1;
+			m_byte_count = (m_byte_count & 0xff00) | data;
+			m_count_phase = 1;
 		}
 		else
 		{
-			m_seek_addr = (m_seek_addr & 0x00ff) | (uint16_t(data) << 8);
-			m_seek_phase = 0;
+			m_byte_count = (m_byte_count & 0x00ff) | (uint16_t(data) << 8);
+			m_count_phase = 0;
 		}
-		LOGSEEK("CC write (seek addr %s) = %02X -> addr=%04X\n",
-			m_seek_phase ? "lo" : "hi", data, m_seek_addr);
+		LOGSEEK("CC write (counter %s) = %02X -> preload=%04X\n",
+			m_count_phase ? "LSB" : "MSB", data, m_byte_count);
 		break;
 
-	case 7:  // CF -- address-load strobe; 0x30 latches CC into the 74LS193 and seeks
-		LOGSEEK("CF write (strobe) = %02X\n", data);
+	case 7:  // CF -- 8253 control word; 0x30 = ctr0 / LSB-then-MSB / Mode 0 -> (re)arm
+		LOGSEEK("CF write (control word) = %02X\n", data);
 		if (data == 0x30)
 		{
-			m_seek_phase = 0;   // the strobe restarts the lo/hi byte sequence
-			do_hardware_seek();
+			// Arm the per-sector byte counter: restart the LSB/MSB load sequence,
+			// clear the terminal-count latch.  The preload itself arrives via the
+			// two OUT CC that follow.  No floppy head movement happens here -- the
+			// i8272's own RECALIBRATE/SEEK over C9 position the head.
+			m_count_phase = 0;
+			m_count_active = true;
+			m_count_done = false;
 		}
 		break;
 
@@ -321,20 +344,26 @@ void ds2717_device::write(offs_t offset, uint8_t data)
 void ds2717_device::device_start()
 {
 	save_item(NAME(m_control));
-	save_item(NAME(m_seek_addr));
-	save_item(NAME(m_seek_phase));
+	save_item(NAME(m_byte_count));
+	save_item(NAME(m_count_phase));
+	save_item(NAME(m_count_active));
+	save_item(NAME(m_count_done));
 	save_item(NAME(m_intrq));
 	save_item(NAME(m_drq));
+	save_item(NAME(m_ca_last));
 	save_item(NAME(m_log_count));
 }
 
 void ds2717_device::device_reset()
 {
 	m_control = 0;
-	m_seek_addr = 0;
-	m_seek_phase = 0;
+	m_byte_count = 0;
+	m_count_phase = 0;
+	m_count_active = false;
+	m_count_done = false;
 	m_intrq = 0;
 	m_drq = 0;
+	m_ca_last = 0;
 	m_log_count = 0;
 
 	// i8272a has has_dor=false, so upd765_family_device::device_reset() leaves
