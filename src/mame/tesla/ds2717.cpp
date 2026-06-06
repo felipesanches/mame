@@ -166,11 +166,8 @@ void ds2717_device::fdc_drq_w(int state)
 	// 8080's own EI/DI (IM_IE) gates delivery.  DRQ also gates the per-byte 8253
 	// counter-0 decrement in read() case 1.
 	m_drq = state;
-	if (m_log_count < LOG_CAP)
-	{
-		LOGPROTO("DRQ -> %d (host INT)\n", state);
-		m_log_count++;
-	}
+	// DRQ toggles once per data byte (~6.5 KB/boot) -- not logged, it would flood
+	// the cap; the C9 command writes, TC pulses and result phase are what matter.
 	m_int_cb(state);
 }
 
@@ -229,11 +226,9 @@ uint8_t ds2717_device::read(offs_t offset)
 				}
 			}
 
-			if (m_log_count < LOG_CAP)
-			{
-				LOGPROTO("C9 read (FDC data) -> %02X\n", v);
-				m_log_count++;
-			}
+			// per-byte data is NOT logged: ~6.5 KB/boot would blow the cap and hide
+			// the TC pulse + result phase that tell us how each read ended.  The TC
+			// pulse (LOGSEEK above) marks a transfer reaching its byte count.
 			return v;
 		}
 		else
