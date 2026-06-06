@@ -868,10 +868,12 @@ void pmd85_state::host_pmd32_pc_w(uint8_t data)
 	// this handler synchronously.  If m_host_ibf were still stale here, that
 	// re-entry would re-detect the same falling edge and recurse without bound.
 	m_host_ibf = ibf;
-	if (consumed)
+	if (consumed && !m_pmd32_in_bridge)
 	{
-		m_pmd32->host_ack_w(0);        // /ACKa low: clears the unit's /OBFa
-		m_pmd32->host_ack_w(1);        // release
+		m_pmd32_in_bridge = true;      // hard guard: an ack re-emits the other 8255's
+		m_pmd32->host_ack_w(0);        // port C and re-enters this handler synchronously
+		m_pmd32->host_ack_w(1);        // /ACKa low->high: clears the unit's /OBFa
+		m_pmd32_in_bridge = false;
 	}
 }
 
@@ -886,10 +888,12 @@ void pmd85_state::unit_pmd32_pc_w(uint8_t data)
 	bool const ibf = BIT(data, 5);
 	bool const consumed = m_unit_ibf && !ibf;   // IBFa 1 -> 0 : unit read the host's byte
 	m_unit_ibf = ibf;                  // update before the cross-chip ack (re-entrancy safe)
-	if (consumed)
+	if (consumed && !m_pmd32_in_bridge)
 	{
+		m_pmd32_in_bridge = true;
 		m_ppi1->pc6_w(0);              // /ACKa low: clears the host's /OBFa
-		m_ppi1->pc6_w(1);             // release
+		m_ppi1->pc6_w(1);              // release
+		m_pmd32_in_bridge = false;
 	}
 }
 
