@@ -39,7 +39,7 @@ DEFINE_DEVICE_TYPE(DS2717, ds2717_device, "ds2717", "Consul 2717 DS2717 disk con
 ds2717_device::ds2717_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: device_t(mconfig, DS2717, tag, owner, clock)
 	, m_fdc(*this, "fdc")
-	, m_floppy(*this, "fdc:%u", 0U)
+	, m_floppy(*this, "fdc:%u", 2U)   // drives are at i8272 units 2 (A) and 3 (B)
 	, m_int_cb(*this)
 	, m_control(0)
 	, m_seek_addr(0)
@@ -99,8 +99,12 @@ void ds2717_device::device_add_mconfig(machine_config &config)
 	m_fdc->intrq_wr_callback().set(FUNC(ds2717_device::fdc_intrq_w));
 	m_fdc->drq_wr_callback().set(FUNC(ds2717_device::fdc_drq_w));
 
-	FLOPPY_CONNECTOR(config, "fdc:0", ds2717_floppies, "8sssd", floppy_formats);
-	FLOPPY_CONNECTOR(config, "fdc:1", ds2717_floppies, "8sssd", floppy_formats);
+	// The board wires its two drives to the i8272's unit-select lines 2 and 3, not
+	// 0/1: the ROM builds the command unit byte as (2 | drive) -- drive A = unit 2
+	// (@0x971E: XRA A; STC; RAL; RLC -> 2; ORA [CFB4]), drive B = unit 3.  So the
+	// connectors are fdc:2 / fdc:3 (= the i8272a's flopi[2] / flopi[3]).
+	FLOPPY_CONNECTOR(config, "fdc:2", ds2717_floppies, "8sssd", floppy_formats);
+	FLOPPY_CONNECTOR(config, "fdc:3", ds2717_floppies, "8sssd", floppy_formats);
 }
 
 
