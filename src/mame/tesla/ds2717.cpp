@@ -306,13 +306,54 @@ void ds2717_device::write(offs_t offset, uint8_t data)
 	switch (offset & 7)
 	{
 	case 1:  // C9 -- i8272 DATA register: command + parameter bytes
-		if (m_log_count < LOG_CAP)
 		{
-			LOGCMD("C9 write (FDC cmd/param) = %02X\n", data);
-			m_log_count++;
+			// The board's drives are single-sided 8" (SSSD, head 0 only), but the ROM
+			// issues its READ DATA commands as 0x86 = READ DATA + MT (multi-track).  On
+			// a two-sided drive MT lets one command span both heads of a cylinder; on a
+			// single-sided drive it is wrong, and the i8272 honours it literally: when
+			// the read reaches R == EOT it flips to head 1 and, unless the board's TC net
+			// has ALREADY fired, keeps searching head 1 (upd765.cpp:2028-2050).  The hand-
+			// rolled byte counter pulses TC only when the CPU consumes the final byte,
+			// which (because the i8272 FIFO runs up to 16 bytes ahead of the CPU) is too
+			// late: the EOT/MT branch is evaluated as soon as the live engine PUSHES the
+			// last byte, with TC still low.  For any read whose last needed sector is the
+			// EOT sector (the boot's track-1 BIOS read covers R=1..26, EOT=26) the i8272
+			// then diverts to an endless head-1 ID search on the empty side, never
+			// reaching the result phase, so MSR never returns to the 0x80 the ROM's
+			// command-send wait needs and the loader re-runs its boot forever.
+			//
+			// Model the board for what it physically is -- single-sided -- by masking the
+			// MT bit off the READ DATA / READ DELETED DATA opcode before it reaches the
+			// i8272.  Without MT the command always terminates at the head-0 EOT (the
+			// !(MT) guard at upd765.cpp:2036 is taken), going cleanly to the result phase
+			// whether or not TC has fired, so the byte counter alone bounds the transfer
+			// (its only real job on this medium) and every data byte is still delivered.
+			// Gate strictly on the opcode slot: MSR == 0x80 (RQM set, CB clear) means the
+			// i8272 is idle and this write is command[0], so we never touch a parameter
+			// or a data byte; and only opcodes whose low five bits are READ DATA (0x06)
+			// or READ DELETED DATA (0x0C) are rewritten.
+			uint8_t out = data;
+			if ((m_fdc->msr_r() & 0xd0) == 0x80 && BIT(out, 7))
+			{
+				uint8_t const op = out & 0x1f;
+				if (op == 0x06 || op == 0x0c)
+				{
+					out &= 0x7f;   // strip MT: this board is single-sided
+					if (m_log_count < LOG_CAP)
+					{
+						LOGCMD("C9 read opcode %02X -> %02X (MT masked, single-sided)\n", data, out);
+						m_log_count++;
+					}
+				}
+			}
+			if (m_log_count < LOG_CAP)
+			{
+				LOGCMD("C9 write (FDC cmd/param) = %02X\n", out);
+				m_log_count++;
+			}
+			m_fdc->fifo_w(out);
+			break;
 		}
-		m_fdc->fifo_w(data);
-		break;
 
 	case 2:  // CA -- control latch (74LS174): drive-select/motor/config + run gate (bit0)
 	{
