@@ -39,6 +39,7 @@ pmd32_device::pmd32_device(const machine_config &mconfig, const char *tag, devic
 	, m_host_byte(0xff)
 	, m_drive(0)
 	, m_out_count(0)
+	, m_in_count(0)
 {
 }
 
@@ -161,10 +162,14 @@ void pmd32_device::device_add_mconfig(machine_config &config)
 
 void pmd32_device::ppi_pa_w(uint8_t data)
 {
-	// the unit's firmware put a byte on the host link (e.g. the 0xAA presentation)
-	if (m_out_count < 16)
+	// the unit's firmware put a byte on the host link (0xAA presentation, then
+	// ACK/ERR/sector data once the protocol is running)
+	if (m_out_count < 300)
 	{
-		LOG("unit -> host: %02X%s\n", data, (data == 0xaa) ? "  (presentation)" : "");
+		char const *tag = (data == 0xaa) ? "  (presentation)"
+			: (data == 0x33) ? "  (ACK)"
+			: (data == 0x99) ? "  (NAK)" : "";
+		LOG("unit -> host: %02X%s\n", data, tag);
 		m_out_count++;
 	}
 	m_out_data_cb(data);
@@ -177,7 +182,13 @@ void pmd32_device::ppi_pc_w(uint8_t data)
 
 void pmd32_device::host_data_w(uint8_t data)
 {
-	// host wrote a byte: present it on the drive 8255's port-A input and strobe
+	// host wrote a byte (a command letter, parameter or CRC): present it on the
+	// drive 8255's port-A input and strobe it in
+	if (m_in_count < 300)
+	{
+		LOG("host -> unit: %02X%s\n", data, (data == 0x42) ? "  ('B' boot)" : "");
+		m_in_count++;
+	}
 	m_host_byte = data;
 	m_ppi->pc4_w(0);
 	m_ppi->pc4_w(1);
@@ -219,10 +230,12 @@ void pmd32_device::device_start()
 	save_item(NAME(m_host_byte));
 	save_item(NAME(m_drive));
 	save_item(NAME(m_out_count));
+	save_item(NAME(m_in_count));
 }
 
 void pmd32_device::device_reset()
 {
 	m_out_count = 0;
+	m_in_count = 0;
 	LOG("PMD-32 unit reset; its 8080 will run the firmware\n");
 }

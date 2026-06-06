@@ -82,7 +82,8 @@ private:
 	devcb_write8 m_out_ctrl_cb;
 	uint8_t m_host_byte;
 	uint8_t m_drive;
-	uint8_t m_out_count;   // bring-up: count of logged port-A writes (capped)
+	uint16_t m_out_count;  // bring-up: count of logged unit->host bytes (capped)
+	uint16_t m_in_count;   // bring-up: count of logged host->unit bytes (capped)
 };
 
 DECLARE_DEVICE_TYPE(PMD32, pmd32_device)
