@@ -373,4 +373,12 @@ void ds2717_device::device_reset()
 	// main_phase becomes PHASE_CMD and msr_r() returns MSR_RQM (0x80) idle.
 	m_fdc->reset_w(1);
 	m_fdc->reset_w(0);
+
+	// The i8272 has no data-rate register; its read/write clock comes from the
+	// board's data separator (8224 8 MHz -> 74LS193 chain).  For 8" FM that is a
+	// 500 kHz cell rate (2 us cells, matching the format's cell_size=2000); the
+	// FM live PLL runs at cur_rate, so it must be 500000.  Left at the 250000
+	// default the PLL samples at half the cell rate and never locks onto an
+	// address mark (READ DATA fails ST1 = missing-address-mark, no data).
+	m_fdc->set_rate(500000);
 }
