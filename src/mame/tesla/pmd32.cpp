@@ -183,14 +183,22 @@ void pmd32_device::ppi_pc_w(uint8_t data)
 
 void pmd32_device::host_data_w(uint8_t data)
 {
-	// host wrote a byte (a command letter, parameter or CRC): present it on the
-	// drive 8255's port-A input and strobe it in
+	// host put a byte (command letter, parameter or CRC) on the bus: just latch it
+	// as the drive 8255's port-A input value.  It is strobed in only when the host's
+	// /OBFa actually asserts (host_strobe), not on every port-A write callback --
+	// the host 8255 also fires its port-A callback on mode-set, with no real byte.
 	if (m_in_count < 300)
 	{
 		LOG("host -> unit: %02X%s\n", data, (data == 0x42) ? "  ('B' boot)" : "");
 		m_in_count++;
 	}
 	m_host_byte = data;
+}
+
+void pmd32_device::host_strobe()
+{
+	// host /OBFa asserted: pulse the drive 8255's /STBa so it latches m_host_byte
+	// into its port-A input buffer and raises IBFa
 	m_ppi->pc4_w(0);
 	m_ppi->pc4_w(1);
 }

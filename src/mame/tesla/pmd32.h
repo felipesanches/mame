@@ -49,7 +49,8 @@ public:
 	auto out_data_cb() { return m_out_data_cb.bind(); }  // drive -> host : port-A output byte
 	auto out_ctrl_cb() { return m_out_ctrl_cb.bind(); }  // drive -> host : port-C handshake byte
 
-	void host_data_w(uint8_t data);                      // host -> drive : a byte (latched + strobed in)
+	void host_data_w(uint8_t data);                      // host -> drive : latch a byte on port-A input
+	void host_strobe();                                  // host /OBFa asserted : strobe the byte in (/STBa)
 	void host_ack_w(int state) { m_ppi->pc6_w(state); }  // host acknowledges the drive's output (/ACKa)
 
 protected:

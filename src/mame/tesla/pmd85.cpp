@@ -827,76 +827,83 @@ void pmd85_state::c2717pmd(machine_config &config)
 
 void pmd85_state::pmd32_to_host_w(uint8_t data)
 {
-	// UNIT -> HOST data.  Fired by the unit's OUT 20 (its 8255 mode-2 out_pa_cb).
-	// Latch the byte and assert the host 8255's /STBa (pc4, active-low): this reads
-	// the latch via in_pa_callback (pmd32_data_r) and raises the host's IBFa.  The
-	// host's connect (0x9700) has already set INTE2, so IBFa makes PC3/INTRa rise
-	// and the Consul's IN 4E & 0x08 poll at 0x96E9 finally sees byte-ready.
+	// UNIT -> HOST data LATCH.  Fired by the unit's port-A output (out_data_cb).  Only
+	// remember the byte; the host reads it through in_pa_callback (pmd32_data_r).  It is
+	// strobed into the host 8255 when the unit's /OBFa actually asserts (unit_pmd32_pc_w),
+	// not on every port-A callback -- the 8255 also fires that callback on a mode-set,
+	// with no real byte, and strobing those would feed the host stray presentation bytes.
 	m_pmd32_data = data;
-	m_ppi1->pc4_w(0);   // active-low strobe: latch + IBFa=1 (+ INTRa if INTE2 set)
-	m_ppi1->pc4_w(1);   // release strobe (no edge action in this model)
 }
 
 void pmd85_state::host_to_pmd32_w(uint8_t data)
 {
-	// HOST -> UNIT data.  Fired by the Consul's OUT 4C (host 8255 mode-2 out_pa_cb).
-	// Strobe it into the UNIT's 8255 (host_data_w pulses the unit's /STBa = pc4),
-	// raising the unit's IBFa so its firmware's IN 20 reads it.  We do NOT clear the
-	// host's own /OBFa here: that must be the real round-trip, driven only when the
-	// unit actually consumes the byte (see unit_pmd32_pc_w).
+	// HOST -> UNIT data LATCH.  Fired by the Consul's port-A output (OUT 4C).  Latch it
+	// as the unit 8255's port-A input value; it is strobed in when the host's /OBFa
+	// asserts (host_pmd32_pc_w -> host_strobe), filtering the host's mode-set emission.
 	m_pmd32->host_data_w(data);
 }
 
 void pmd85_state::host_pmd32_pc_w(uint8_t data)
 {
-	// HOST 8255 port-C status.  In mode 2, PC5 = IBFa.  IBFa falls 1->0 exactly when
-	// the Consul executes IN 4C and reads the unit's byte.  On that falling edge,
-	// acknowledge the unit: pulse the unit's /ACKa (pc6, active-low) so the unit's
-	// /OBFa de-asserts and its send-side INTRa (PC3) rises, releasing the firmware's
-	// "host took my byte" wait so it can present the next one.
+	// HOST 8255 port C (mode 2): PC7 = /OBFa (1=empty), PC5 = IBFa, PC3 = INTRa.
+	//   /OBFa 1->0 : the Consul did OUT 4C -- it has a byte to send; pulse the unit's
+	//                /STBa so the unit latches it.  (Gating on /OBFa, not on the raw
+	//                port-A write, drops the spurious byte the 8255 emits on a mode-set.)
+	//   IBFa  1->0 : the Consul did IN 4C -- it took the unit's byte; pulse the unit's
+	//                /ACKa so the unit's /OBFa clears and its send-side INTRa rises.
 	bool const ibf = BIT(data, 5);
-	bool const consumed = m_host_ibf && !ibf;   // IBFa 1 -> 0 : host read the unit's byte
-	if (ibf != m_host_ibf && m_pmd32_hslog < 80)
+	bool const obf = BIT(data, 7);
+	bool const host_wrote = m_host_obf && !obf;   // /OBFa 1 -> 0
+	bool const host_read  = m_host_ibf && !ibf;   // IBFa  1 -> 0
+	if ((ibf != m_host_ibf || obf != m_host_obf) && m_pmd32_hslog < 160)
 	{
-		// bring-up: PC5=IBFa, PC3=INTRa, PC7=/OBFa, PC4=INTE2, PC6=INTE1.
-		// NB: cast the bools to int -- util::string_format recurses to death on a
-		// bool argument, so never hand logerror() a raw bool.
-		logerror("host PC %02X: IBF %d->%d INTR=%d /OBF=%d INTE2=%d\n",
-			data, int(m_host_ibf), int(ibf), BIT(data, 3), BIT(data, 7), BIT(data, 4));
+		// bring-up; cast the bools -- util::string_format recurses on a bool argument.
+		logerror("host PC %02X: IBF=%d /OBF=%d INTR=%d INTE2=%d\n",
+			data, int(ibf), int(obf), BIT(data, 3), BIT(data, 4));
 		m_pmd32_hslog++;
 	}
-	// Update the edge tracker BEFORE the cross-chip ack: pc6_w drives the unit's
-	// 8255, whose set_intr unconditionally re-emits its port C, which re-enters
-	// this handler synchronously.  If m_host_ibf were still stale here, that
-	// re-entry would re-detect the same falling edge and recurse without bound.
+	m_host_obf = obf;            // update trackers before any cross-call (re-entrancy safe)
 	m_host_ibf = ibf;
-	if (consumed && !m_pmd32_in_bridge)
+	if (m_pmd32_in_bridge)       // a cross-call re-emits the other 8255's port C and
+		return;                  // re-enters here; never issue a nested strobe/ack
+	m_pmd32_in_bridge = true;
+	if (host_wrote)
+		m_pmd32->host_strobe();
+	if (host_read)
 	{
-		m_pmd32_in_bridge = true;      // hard guard: an ack re-emits the other 8255's
-		m_pmd32->host_ack_w(0);        // port C and re-enters this handler synchronously
-		m_pmd32->host_ack_w(1);        // /ACKa low->high: clears the unit's /OBFa
-		m_pmd32_in_bridge = false;
+		m_pmd32->host_ack_w(0);
+		m_pmd32->host_ack_w(1);
 	}
+	m_pmd32_in_bridge = false;
 }
 
 void pmd85_state::unit_pmd32_pc_w(uint8_t data)
 {
-	// UNIT 8255 port-C status (its out_ctrl_cb).  PC5 = IBFa on the unit side.  IBFa
-	// falls 1->0 exactly when the unit executes IN 20 and reads the host's byte.  On
-	// that falling edge, acknowledge the host: pulse the host 8255's /ACKa (pc6,
-	// active-low) so the host's /OBFa clears and its send-side INTRa (PC3) rises,
-	// letting the Consul's send helper (0x96DE/0x96E9) complete and send the next
-	// byte (e.g. the 'B' command's CRC).
+	// UNIT 8255 port C (mode 2), the mirror of the host handler.
+	//   /OBFa 1->0 : the unit did OUT 20 (a real byte -- 0xAA / ACK / sector data);
+	//                pulse the host's /STBa so it latches m_pmd32_data and raises IBFa.
+	//   IBFa  1->0 : the unit did IN 20 -- it took the host's byte; pulse the host's
+	//                /ACKa so the host's /OBFa clears and its send-side INTRa rises.
 	bool const ibf = BIT(data, 5);
-	bool const consumed = m_unit_ibf && !ibf;   // IBFa 1 -> 0 : unit read the host's byte
-	m_unit_ibf = ibf;                  // update before the cross-chip ack (re-entrancy safe)
-	if (consumed && !m_pmd32_in_bridge)
+	bool const obf = BIT(data, 7);
+	bool const unit_wrote = m_unit_obf && !obf;   // /OBFa 1 -> 0
+	bool const unit_read  = m_unit_ibf && !ibf;   // IBFa  1 -> 0
+	m_unit_obf = obf;
+	m_unit_ibf = ibf;
+	if (m_pmd32_in_bridge)
+		return;
+	m_pmd32_in_bridge = true;
+	if (unit_wrote)
 	{
-		m_pmd32_in_bridge = true;
-		m_ppi1->pc6_w(0);              // /ACKa low: clears the host's /OBFa
-		m_ppi1->pc6_w(1);              // release
-		m_pmd32_in_bridge = false;
+		m_ppi1->pc4_w(0);              // strobe the unit's byte into the host (/STBa)
+		m_ppi1->pc4_w(1);
 	}
+	if (unit_read)
+	{
+		m_ppi1->pc6_w(0);              // acknowledge the host's output (/ACKa)
+		m_ppi1->pc6_w(1);
+	}
+	m_pmd32_in_bridge = false;
 }
 
 

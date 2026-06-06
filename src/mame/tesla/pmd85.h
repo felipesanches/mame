@@ -73,9 +73,11 @@ private:
 	uint8_t m_ppi_port_outputs[4][3]{};
 	uint8_t m_pmd32_data = 0xff;   // latch: last byte the PMD-32 unit sent the host (GPIO 8255 input)
 	bool m_host_ibf = false;       // edge tracker: host ppi1 IBFa (PC5), to detect the host's IN 4C read
+	bool m_host_obf = true;        // edge tracker: host ppi1 /OBFa (PC7, 1=empty), to detect OUT 4C
 	bool m_unit_ibf = false;       // edge tracker: unit ppi IBFa (PC5), to detect the unit's IN 20 read
+	bool m_unit_obf = true;        // edge tracker: unit ppi /OBFa (PC7, 1=empty), to detect OUT 20
 	uint16_t m_pmd32_hslog = 0;    // bring-up: capped count of logged handshake-line transitions
-	bool m_pmd32_in_bridge = false;// re-entrancy guard for the cross-8255 ack pulses
+	bool m_pmd32_in_bridge = false;// re-entrancy guard for the cross-8255 strobe/ack pulses
 	uint8_t m_startup_mem_map = 0;
 	uint8_t m_pmd853_memory_mapping = 0;
 	bool m_previous_level = false;
