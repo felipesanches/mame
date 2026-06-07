@@ -454,6 +454,21 @@ void ds2717_device::write(offs_t offset, uint8_t data)
 		}
 		m_control = data;
 
+		// CA bit0 is the transfer run/idle gate (0x2A run, 0x2B idle).  When the host
+		// writes the idle value AFTER a transfer it disarms the board's DRQ->INTR
+		// path, so force INTR low here.  This is the reliable deassert: the i8272's
+		// per-byte DRQ leaves the host's level-sensitive INTR momentarily high and the
+		// device-side deassert can lag the CPU (MAME queues set_input_line), letting it
+		// take a handful of stray RST 7s after a read whose ISR scribbles the idle
+		// FIFO's 0xFF into live RAM (-> ROM BASIC).  The BIOS always writes 0x2B as the
+		// post-transfer idle value (boot record 0x00D5, BIOS read 0xCDC4); clearing on
+		// it -- well before the CCP re-enables interrupts -- kills the stray level.
+		if (data == 0x2b)
+		{
+			m_drq = 0;
+			m_int_cb(0);
+		}
+
 		// upper bits hold motor-on/drive-select; spin the present drives so the
 		// i8272 sees a ready, indexing disc during the operation.
 		for (int i = 0; i < 2; i++)
@@ -531,7 +546,7 @@ void ds2717_device::write(offs_t offset, uint8_t data)
 
 void ds2717_device::device_start()
 {
-	logerror("DS2717 bring-up build marker: drq-gate-v5\n");
+	logerror("DS2717 bring-up build marker: drq-gate-v6\n");
 	save_item(NAME(m_control));
 	save_item(NAME(m_byte_count));
 	save_item(NAME(m_count_phase));
