@@ -176,10 +176,20 @@ void ds2717_device::fdc_drq_w(int state)
 	// since that happens after the OS has loaded it corrupts the running system and
 	// drops it into ROM BASIC.  So gate on the transfer being live.
 	bool const xfer = m_count_active && !m_count_done;
-	m_drq = state && xfer;
+	bool const newdrq = state && xfer;
+	// Mirror the line onto INTR only on a genuine 0<->1 CHANGE.  The i8272 DRQ is a
+	// level held high while read-ahead bytes remain in its FIFO, and MAME's CPU INTR
+	// input is level-sensitive: re-emitting an unchanged level (or an extra ASSERT
+	// not matched by a CLEAR) leaves the i8080 INTR latched high and it re-takes RST 7
+	// on every EI.  Edge-guarding keeps the per-byte interrupts (every real FIFO
+	// empty<->non-empty still toggles) while never injecting a stale repeat.
 	// DRQ toggles once per data byte (~6.5 KB/boot) -- not logged, it would flood
 	// the cap; the C9 command writes, TC pulses and result phase are what matter.
-	m_int_cb(m_drq);
+	if (newdrq != bool(m_drq))
+	{
+		m_drq = newdrq;
+		m_int_cb(m_drq);
+	}
 }
 
 
@@ -264,13 +274,25 @@ uint8_t ds2717_device::read(offs_t offset)
 					m_count_done = true;
 					m_fdc->tc_w(1);   // edge-triggered: pulse high then low
 					m_fdc->tc_w(0);
-					// Close the transfer window NOW: the i8272 still holds DRQ for
-					// its read-ahead FIFO, but the board no longer forwards it.  This
-					// byte (already fetched above) is the last; drop DRQ/INTR so the
-					// leftover bytes cannot leak as spurious RST 7s (fdc_drq_w is not
-					// called for them -- DRQ stays level-high until drained).
-					m_drq = 0;
-					m_int_cb(0);
+					// A real DMA controller drops DACK at TC; the FDC then deasserts
+					// DRQ.  Our i8272 instead holds DRQ level-high while the bytes it
+					// read AHEAD of the requested length remain in its FIFO (the gap
+					// 0xFF after the last sector), and command_end never clears it.
+					// Left asserted, that level re-takes RST 7 on every later EI and the
+					// ISR scribbles 0xFF through (HL) into the just-loaded OS.  So drain
+					// those abandoned read-ahead bytes here, machine-side (the host would
+					// never have consumed them): each pop that empties the FIFO fires the
+					// chip's own disable_transfer -> drq_cb(false) -> fdc_drq_w, which with
+					// the edge-guard above lowers INTR exactly once.  Bounded by the 16-
+					// byte FIFO; m_count_done is already true so every re-entrant
+					// fdc_drq_w computes a 0 and the loop converges.
+					while (m_fdc->get_drq())
+						(void)m_fdc->dma_r();
+					if (m_drq)   // FIFO already empty: lower the line ourselves
+					{
+						m_drq = 0;
+						m_int_cb(0);
+					}
 					if (m_log_count < LOG_CAP)
 					{
 						LOGSEEK("byte-counter terminal count -> TC pulse\n");
@@ -497,7 +519,7 @@ void ds2717_device::write(offs_t offset, uint8_t data)
 
 void ds2717_device::device_start()
 {
-	logerror("DS2717 bring-up build marker: drq-gate-v3\n");
+	logerror("DS2717 bring-up build marker: drq-gate-v4\n");
 	save_item(NAME(m_control));
 	save_item(NAME(m_byte_count));
 	save_item(NAME(m_count_phase));
