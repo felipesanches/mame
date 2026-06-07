@@ -546,7 +546,7 @@ void ds2717_device::write(offs_t offset, uint8_t data)
 
 void ds2717_device::device_start()
 {
-	logerror("DS2717 bring-up build marker: drq-gate-v6\n");
+	logerror("DS2717 bring-up build marker: drq-gate-v7\n");
 	save_item(NAME(m_control));
 	save_item(NAME(m_byte_count));
 	save_item(NAME(m_count_phase));

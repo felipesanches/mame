@@ -808,6 +808,17 @@ void pmd85_state::c2717(machine_config &config)
 	// callback is wired on the maincpu, so the bare 0xFF/RST7 default applies.
 	DS2717(config, m_ds2717, 0);
 	m_ds2717->out_int_cb().set_inputline(m_maincpu, I8085_INTR_LINE);
+
+	// The i8272 per-byte DRQ is wired straight to the 8080's level-sensitive INTR
+	// (no DMA controller); the byte-counter transfer-end deasserts it.  That is a
+	// tight, cycle-level coupling -- the deassert must reach the CPU before it can
+	// take another RST 7.  With a coarse scheduler quantum the deassert (a queued
+	// set_input_line applied only at the next timeslice boundary) lands too late, and
+	// because the i8272 falls idle at end-of-read the next timeslice runs long: the
+	// level-sensitive INTR then fires several stray RST 7s after the read whose ISR
+	// writes the idle FIFO's 0xFF over the just-loaded OS -> ROM BASIC.  Pin the
+	// quantum to the CPU's instruction clock so DRQ/INTR track it as on the hardware.
+	config.set_maximum_quantum(attotime::from_hz(XTAL(18'432'000) / 9));
 }
 
 void pmd85_state::c2717pmd(machine_config &config)
