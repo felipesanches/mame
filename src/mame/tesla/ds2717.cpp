@@ -76,20 +76,17 @@ private:
 const ds2717_disc_format::format ds2717_disc_format::formats[] = {
 	{
 		floppy_image::FF_8, floppy_image::SSSD, floppy_image::FM,
-		// cell_size + gaps copied verbatim from MAME's mdos_dsk "250.25K 8 inch SSSD"
-		// format, which is this exact geometry (26 x 128 x 77 = 256256).  Earlier
-		// cell_size 2000 with hand-picked gaps fit only ~21 of the 26 sectors of data
-		// per track, so the tail sectors read back as 0x00 and silently truncated the
-		// loaded BIOS at its BDOS-vector setup (0xCC45), crashing the boot.  This is
-		// the proven layout that fits all 26 (current_size 76832 < the 83333-cell budget
-		// 2e8/2400).  device_reset pins the i8272 read rate to the 360 RPM playback rate
-		// of that budget (= 1.2e9/2400 = 500000 Hz) so it locks the AMs and reads every
-		// cell -- see the long note there.
-		2400,
+		// 8" FM: 2 us flux cells -> the i8272 reads at set_rate(500000) (device_reset).
+		// upd765_format budgets a track as total_size = 2e8/cell_size cells, i.e. the
+		// flux always spans 2e8 ns = 200 ms.  A standard 8" drive at 360 RPM (166.67 ms)
+		// can only play 83% of that before the index, dropping ~5 of the 26 sectors per
+		// track (the BIOS tail read back as 0x00 -> crash).  device_reset therefore runs
+		// the drive at 300 RPM (= 200 ms) so the whole budgeted track plays each rev.
+		2000,
 		26, 77, 1,
 		128, {},
 		1, {},
-		32 - 6, 17 - 6, 33 - 6   // gap_4a, gap_1, gap_2 (per mdos_dsk)
+		40, 26, 11   // gap_4a, gap_1, gap_2 (gap_2=11 is what locks the data AMs)
 	},
 	{}
 };
@@ -555,7 +552,7 @@ void ds2717_device::write(offs_t offset, uint8_t data)
 
 void ds2717_device::device_start()
 {
-	logerror("DS2717 bring-up build marker: rate-500k-v11\n");
+	logerror("DS2717 bring-up build marker: rpm-300-v12\n");
 	save_item(NAME(m_control));
 	save_item(NAME(m_byte_count));
 	save_item(NAME(m_count_phase));
@@ -587,16 +584,24 @@ void ds2717_device::device_reset()
 	m_fdc->reset_w(1);
 	m_fdc->reset_w(0);
 
-	// The i8272 has no data-rate register; the FM live PLL runs at cur_rate, which
-	// must equal the disc's REAL-TIME cell rate so it locks onto the address marks
-	// AND reads every cell the floppy presents per revolution.  upd765_format budgets
-	// a track as total_size = 2e8/cell_size cells (a nominal 200 ms), but FLOPPY_8_SSSD
-	// spins at 360 RPM = 166.67 ms, so the whole track plays in one 1/6 s revolution:
-	//   real rate = (2e8 / cell_size) / (1/6 s) = 1.2e9 / cell_size.
-	// For our cell_size = 2400 that is 1.2e9/2400 = 500000 Hz.  (The earlier pairing
-	// cell_size 2000 + set_rate 500000 was 17% slow -- 600 kHz real vs 500 kHz set --
-	// so the chip covered only ~83% of the track and silently dropped ~5 of the 26
-	// sectors per track, truncating the loaded OS.  416667 was wrong too: that is the
-	// flux cell period, not the playback rate.)
-	m_fdc->set_rate(500000);   // 1.2e9 / cell_size(2400) -- the 360 RPM playback rate
+	// The i8272 has no data-rate register; the FM live PLL runs at cur_rate.  8" FM
+	// uses 2 us flux cells (matching the format's cell_size=2000), so set_rate(500000).
+	// Left at the 250000 default the PLL samples at half the cell rate and never locks
+	// onto an address mark (READ DATA fails ST1 = missing-address-mark).
+	m_fdc->set_rate(500000);
+
+	// Run the drive at 300 RPM, not the FLOPPY_8_SSSD default of 360.  upd765_format
+	// lays each track out across total_size = 2e8/cell_size cells -- a 200 ms span,
+	// independent of cell_size.  At 360 RPM (166.67 ms) the index arrives after only
+	// ~83% of that, so the i8272 never reaches the last ~5 of the 26 sectors: they read
+	// back 0x00 and silently truncate the loaded OS (its BDOS-vector setup at 0xCC45 is
+	// in that tail -> the booted CCP's JMP 0x0005 hits a NOP and crashes to ROM BASIC).
+	// At 300 RPM the full 200 ms track plays each revolution.  The disc image is a flat
+	// sector dump with no flux timing, so the playback RPM is a free modelling choice;
+	// 300 is what makes upd765_format's track budget and the i8272's fixed read rate
+	// agree.  (A real DS2717 8" drive spins at 360; the discrepancy is an artifact of
+	// MAME's 200 ms format budget, not the hardware.)
+	for (int i = 0; i < 2; i++)
+		if (floppy_image_device *fd = m_floppy[i]->get_device())
+			fd->set_rpm(300);
 }
