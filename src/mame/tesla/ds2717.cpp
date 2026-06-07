@@ -274,6 +274,14 @@ uint8_t ds2717_device::read(offs_t offset)
 		{
 			uint8_t const v = m_fdc->dma_r();   // deliver byte N to the CPU buffer FIRST
 
+			// BRINGUP: log every 128-byte (sector) boundary -- value + FIFO/MSR state
+			if (m_count_active && (m_byte_count & 0x7f) == 0 && m_log_count < LOG_CAP)
+			{
+				logerror("dma bc=%u v=%02X drq=%d msr=%02X\n",
+					m_byte_count, v, m_fdc->get_drq() ? 1 : 0, m_fdc->msr_r());
+				m_log_count++;
+			}
+
 			// Each byte clocks the 8253 counter-0 once.  Preload 127, decrement per
 			// byte: byte 1 -> 127->126 ... byte 127 -> 1->0; on the 128th byte the
 			// count is already 0 -> borrow -> terminal count.  The board's OUT0 then
@@ -552,7 +560,7 @@ void ds2717_device::write(offs_t offset, uint8_t data)
 
 void ds2717_device::device_start()
 {
-	logerror("DS2717 bring-up build marker: rpm-300-v12\n");
+	logerror("DS2717 bring-up build marker: dma-trace-v13\n");
 	save_item(NAME(m_control));
 	save_item(NAME(m_byte_count));
 	save_item(NAME(m_count_phase));
