@@ -80,15 +80,15 @@ const ds2717_disc_format::format ds2717_disc_format::formats[] = {
 		26, 77, 1,
 		128, {},
 		1, {},
-		// gap_4a, gap_1, gap_2 (gap_3 auto-computed to fill the track) -- copied from
-		// MAME's mdos_dsk "250.25K 8 inch SSSD" format, which is this exact geometry
-		// (26 x 128 x 77 = 256256).  The previous FOUR-value 40,26,11,27 mis-set the
-		// struct's gap_4a/gap_1/gap_2/gap_3 and forced an oversized 27-byte inter-
-		// sector gap_3 x26: the track layout overflowed so only ~21 sectors of data
-		// fit, and the tail sectors read back as 0x00 -- silently truncating the
-		// loaded BIOS right where its BDOS-vector setup (0xCC45) lives, so the CCP's
-		// JMP 0x0005 hit a NOP and the boot crashed into ROM BASIC.
-		26, 11, 27
+		// struct order is gap_4a, gap_1, gap_2, gap_3.  Keep the proven-readable
+		// gap_4a=40 / gap_1=26 / gap_2=11 (gap_2=11 is what lets the i8272 find each
+		// data address mark) but OMIT gap_3 so it defaults to 0 (auto): an explicit
+		// gap_3=27 x26 sectors overflowed the track layout, so only ~21 sectors of
+		// data fit and the tail read back as 0x00 -- truncating the loaded BIOS at
+		// its BDOS-vector setup (0xCC45) and crashing the boot.  (Dropping the FIRST
+		// value instead, to 26,11,27, mis-shifts gap_2 to 27 and the i8272 then finds
+		// no data marks at all -- 0 reads.)
+		40, 26, 11
 	},
 	{}
 };
@@ -554,7 +554,7 @@ void ds2717_device::write(offs_t offset, uint8_t data)
 
 void ds2717_device::device_start()
 {
-	logerror("DS2717 bring-up build marker: fmt-26sec-v8\n");
+	logerror("DS2717 bring-up build marker: fmt-gap3-v9\n");
 	save_item(NAME(m_control));
 	save_item(NAME(m_byte_count));
 	save_item(NAME(m_count_phase));
