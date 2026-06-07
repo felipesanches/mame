@@ -185,6 +185,12 @@ void ds2717_device::fdc_drq_w(int state)
 	// empty<->non-empty still toggles) while never injecting a stale repeat.
 	// DRQ toggles once per data byte (~6.5 KB/boot) -- not logged, it would flood
 	// the cap; the C9 command writes, TC pulses and result phase are what matter.
+	if (m_count_done && m_log_count < LOG_CAP)   // BRINGUP: trace post-TC DRQ activity
+	{
+		logerror("%s fdc_drq_w state=%d active=%d done=%d newdrq=%d (m_drq was %d)\n",
+			machine().describe_context(), state, m_count_active, m_count_done, newdrq, m_drq);
+		m_log_count++;
+	}
 	if (newdrq != bool(m_drq))
 	{
 		m_drq = newdrq;
@@ -286,8 +292,14 @@ uint8_t ds2717_device::read(offs_t offset)
 					// the edge-guard above lowers INTR exactly once.  Bounded by the 16-
 					// byte FIFO; m_count_done is already true so every re-entrant
 					// fdc_drq_w computes a 0 and the loop converges.
+					int drained = 0;
 					while (m_fdc->get_drq())
+					{
 						(void)m_fdc->dma_r();
+						drained++;
+					}
+					logerror("%s TC: drained %d read-ahead bytes, get_drq now=%d m_drq=%d\n",
+						machine().describe_context(), drained, m_fdc->get_drq() ? 1 : 0, m_drq);
 					if (m_drq)   // FIFO already empty: lower the line ourselves
 					{
 						m_drq = 0;
@@ -519,7 +531,7 @@ void ds2717_device::write(offs_t offset, uint8_t data)
 
 void ds2717_device::device_start()
 {
-	logerror("DS2717 bring-up build marker: drq-gate-v4\n");
+	logerror("DS2717 bring-up build marker: drq-gate-v5\n");
 	save_item(NAME(m_control));
 	save_item(NAME(m_byte_count));
 	save_item(NAME(m_count_phase));
