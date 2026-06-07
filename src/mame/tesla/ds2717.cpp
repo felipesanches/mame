@@ -194,7 +194,7 @@ void ds2717_device::fdc_drq_w(int state)
 	if (m_count_done && m_log_count < LOG_CAP)   // BRINGUP: trace post-TC DRQ activity
 	{
 		logerror("%s fdc_drq_w state=%d active=%d done=%d newdrq=%d (m_drq was %d)\n",
-			machine().describe_context(), state, m_count_active, m_count_done, newdrq, m_drq);
+			machine().describe_context(), state, int(m_count_active), int(m_count_done), int(newdrq), m_drq);
 		m_log_count++;
 	}
 	if (newdrq != bool(m_drq))

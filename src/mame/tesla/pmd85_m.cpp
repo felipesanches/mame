@@ -200,7 +200,7 @@ void pmd85_state::c2717_update_memory()
 		m_bank[1]->set_base(m_rom);
 		m_bank[2]->set_base(ram + 0x4000);
 		m_bank[3]->set_base(m_rom);
-		m_bank[4]->set_base(ram + 0xc000);
+		// 0xc000-0xffff is served by the c2717_hi_r/w remap handlers, not a bank.
 		// 0x8000-0xbfff write target: always the underlying RAM, so disk-loaded
 		// sectors land even while the monitor reads ROM through bank3.
 		m_bank[5]->set_base(ram + 0x8000);
@@ -219,6 +219,41 @@ void pmd85_state::c2717_update_memory()
 			m_bank[3]->set_base(m_rom);
 		m_bank[5]->set_base(ram + 0x8000);
 	}
+}
+
+/*******************************************************************************
+
+    Consul 2717 "repagination" of the 0xc000-0xffff window
+    ------------------------------------------------------
+    The video controller scans the physical top 16 KB of RAM linearly, but only
+    48 of every 64 bytes per line are displayed; the other 16 "gap" bytes per
+    line are off-screen.  Motherboard 8255 PC7 enables an address remap (which
+    powers up enabled) that folds every CPU access to 0xc000-0xffff into exactly
+    those gap bytes -- 4 KB of RAM the raster never shows -- so the CP/M system
+    the disk loader stows there is not wiped when the ROM clears the visible
+    bytes.  The bit-swizzle forces the physical address's bits 5-4 to 11 (the
+    gap) and carries the CPU address's (inverted) bits 5-4 up to bits 13-12,
+    matching the real hardware.  With the remap off the window is plain linear
+    RAM (e.g. ROM BASIC's framebuffer).
+
+*******************************************************************************/
+
+uint16_t pmd85_state::c2717_remap_addr(offs_t offset) const
+{
+	uint16_t const addr = 0xc000 + offset;
+	if (!m_c2717_remapped)
+		return addr;
+	return (addr & 0xcfcf) | (((addr & 0x0030) ^ 0x0030) << 8) | 0x0030;
+}
+
+uint8_t pmd85_state::c2717_hi_r(offs_t offset)
+{
+	return m_ram->pointer()[c2717_remap_addr(offset)];
+}
+
+void pmd85_state::c2717_hi_w(offs_t offset, uint8_t data)
+{
+	m_ram->pointer()[c2717_remap_addr(offset)] = data;
 }
 
 /*******************************************************************************
@@ -274,12 +309,34 @@ void pmd85_state::ppi0_portc_w(uint8_t data)
 	// Re-map only on a real change so unrelated PC writes are cheap.
 	if (m_model == C2717)
 	{
+		// PC5 selects the extended 384x256 screen mode (see c2717_screen_update).
+		m_c2717_width384 = BIT(data, 5);
+
 		bool const ram = BIT(data, 6);
 		if (ram != m_c2717_ram_at_8000)
 		{
 			m_c2717_ram_at_8000 = ram;
 			if (!m_startup_mem_map)
 				c2717_update_memory();
+		}
+
+		// PC7 enables the 0xc000-0xffff repagination (see c2717_remap_addr).  The
+		// startup-map gate ignores the i8255's power-on reset callback (which fires
+		// with PC7=0 while still in the startup map) so the machine keeps its
+		// remap-on power-up default until the ROM actually drives PC7.
+		if (!m_startup_mem_map)
+		{
+			bool const remap = BIT(data, 7);
+			if (remap != m_c2717_remapped)
+			{
+				if (m_c2717_paging_log < 64)
+				{
+					logerror("%s: C2717 PC=%02X remap %d->%d ram@8000=%d\n",
+							machine().describe_context(), data, int(m_c2717_remapped), int(remap), int(ram));
+					m_c2717_paging_log++;
+				}
+				m_c2717_remapped = remap;
+			}
 		}
 	}
 }
@@ -793,6 +850,7 @@ void pmd85_state::init_c2717()
 	m_model = C2717;
 	update_memory = &pmd85_state::c2717_update_memory;
 	common_driver_init();
+	logerror("C2717 init: PC7 repagination + PC5 384x256 video model active (build marker pmd85-remap-v2)\n");
 }
 
 void pmd85_state::machine_reset()
@@ -820,6 +878,9 @@ void pmd85_state::machine_reset()
 	/* memory initialization */
 	m_pmd853_memory_mapping = 1;
 	m_c2717_ram_at_8000 = false;   // C2717 powers up reading the monitor ROM at 0x8000-0xbfff
+	m_c2717_remapped = true;       // C2717 powers up with the 0xc000-0xffff repagination enabled
+	m_c2717_width384 = false;      // C2717 powers up in the 288x256 PMD-85 screen mode
+	m_c2717_paging_log = 0;
 	m_startup_mem_map = 1;
 	(this->*update_memory)();
 }
@@ -834,6 +895,8 @@ void pmd85_state::machine_start()
 	save_item(NAME(m_startup_mem_map));
 	save_item(NAME(m_pmd853_memory_mapping));
 	save_item(NAME(m_c2717_ram_at_8000));
+	save_item(NAME(m_c2717_remapped));
+	save_item(NAME(m_c2717_width384));
 	save_item(NAME(m_previous_level));
 	save_item(NAME(m_clk_level));
 	save_item(NAME(m_clk_level_tape));

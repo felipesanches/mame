@@ -260,6 +260,40 @@ uint32_t pmd85_state::screen_update(screen_device &screen, bitmap_ind16 &bitmap,
 	return 0;
 }
 
+// The Consul 2717 adds an extended 384x256 screen (motherboard 8255 PC5): each of
+// the 48 bytes per line yields 8 pixels instead of the PMD-85's 6 (the two top bits
+// double as both pixels and the byte's intensity attribute on real hardware, shown
+// here at the single green level the courseware uses).  PC5 clear falls back to the
+// 288x256 PMD-85 layout.  The raster scans the physical RAM linearly, regardless of
+// the PC7 "repagination" the CPU sees (see c2717_remap_addr).
+uint32_t pmd85_state::c2717_screen_update(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect)
+{
+	bitmap.fill(0, cliprect);
+
+	for (int y = 0; y < 256; y++)
+	{
+		uint8_t const *line = m_ram->pointer() + 0xc000 + 0x40 * y;
+
+		if (m_c2717_width384)
+		{
+			for (int x = 0; x < 48; x++)
+				for (int b = 0; b < 8; b++)
+					bitmap.pix(y, x * 8 + b) = BIT(line[x], b) ? 1 : 0;
+		}
+		else
+		{
+			for (int x = 0; x < 48; x++)
+			{
+				int const pen = BIT(line[x], 7) ? 1 : 2;
+				for (int b = 0; b < 6; b++)
+					bitmap.pix(y, x * 6 + b) = BIT(line[x], b) ? pen : 0;
+			}
+		}
+	}
+
+	return 0;
+}
+
 
 /* I/O ports */
 
@@ -344,7 +378,13 @@ void pmd85_state::c2717_mem(address_map &map)
 	// stored regardless of the read select.  bank3 read base flips ROM<->RAM in
 	// c2717_update_memory(); bank5 write base is fixed at ram+0x8000.
 	map(0x8000, 0xbfff).bankr("bank3").bankw("bank5");
-	map(0xc000, 0xffff).bankrw("bank4");
+	// 0xc000-0xffff is the video/system RAM window.  The motherboard 8255 PC7
+	// "repaginates" it (see c2717_remap_addr): with the remap on, CPU accesses
+	// fold into the 16 non-displayed gap bytes of each 64-byte video line, which
+	// is where the boot loader stows the CP/M system so the ROM's screen-clear of
+	// the visible bytes cannot wipe it.  Handler (not a bank) so each access can
+	// be remapped; the video scans the physical RAM linearly via screen_update.
+	map(0xc000, 0xffff).rw(FUNC(pmd85_state::c2717_hi_r), FUNC(pmd85_state::c2717_hi_w));
 }
 
 /* keyboard input */
@@ -799,13 +839,20 @@ void pmd85_state::c2717(machine_config &config)
 	pmd851(config);
 	m_maincpu->set_addrmap(AS_PROGRAM, &pmd85_state::c2717_mem);
 
+	// The Consul 2717 has an extended 384x256 screen mode (selected by motherboard
+	// 8255 PC5) that the on-disc CP/M uses; widen the screen and decode 8 px/byte.
+	screen_device &screen = *subdevice<screen_device>("screen");
+	screen.set_size(384, 256);
+	screen.set_visarea(0, 384-1, 0, 256-1);
+	screen.set_screen_update(FUNC(pmd85_state::c2717_screen_update));
+
 	// The Consul's built-in 8" disk controller (DS2717): a dumb i8272 board with
 	// no local CPU at I/O ports 0xC8-0xCF, driven directly by the verified system
 	// ROM.  This is the controller the 8" classroom discs were actually read on.
-	// Its i8272 runs in non-DMA (PIO) mode and routes the per-byte data-request
-	// interrupt onto the 8080 INTR line; with the default vector 0xFF that becomes
-	// RST 7 -> the 0x0038 transfer ISR the ROM installs.  No irq-acknowledge
-	// callback is wired on the maincpu, so the bare 0xFF/RST7 default applies.
+	// Its i8272 runs in DMA mode (SPECIFY ND=0), but there is no DMA controller: the
+	// per-byte data-request is wired onto the 8080 INTR line; with the default vector
+	// 0xFF that becomes RST 7 -> the 0x0038 transfer ISR the ROM installs.  No irq-
+	// acknowledge callback is wired on the maincpu, so the bare 0xFF/RST7 default applies.
 	DS2717(config, m_ds2717, 0);
 	m_ds2717->out_int_cb().set_inputline(m_maincpu, I8085_INTR_LINE);
 

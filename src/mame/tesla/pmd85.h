@@ -81,6 +81,9 @@ private:
 	uint8_t m_startup_mem_map = 0;
 	uint8_t m_pmd853_memory_mapping = 0;
 	bool m_c2717_ram_at_8000 = false;   // C2717: motherboard 8255 PC6 reads RAM (1) vs ROM (0) at 0x8000-0xbfff
+	bool m_c2717_remapped = true;       // C2717: motherboard 8255 PC7 "repaginates" 0xc000-0xffff into the hidden video gap RAM (powers up enabled)
+	bool m_c2717_width384 = false;      // C2717: motherboard 8255 PC5 selects the extended 384x256 screen (8 px/byte) vs the 288x256 PMD-85 mode
+	uint16_t m_c2717_paging_log = 0;    // bring-up: capped count of logged C2717 PC7 remap transitions
 	bool m_previous_level = false;
 	bool m_clk_level = false;
 	bool m_clk_level_tape = false;
@@ -101,6 +104,7 @@ private:
 
 	virtual void machine_reset() override ATTR_COLD;
 	uint32_t screen_update(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+	uint32_t c2717_screen_update(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
 	TIMER_CALLBACK_MEMBER(cassette_timer_callback);
 	uint8_t ppi0_porta_r();
 	uint8_t ppi0_portb_r();
@@ -147,6 +151,9 @@ private:
 	void alfa_update_memory();
 	void mato_update_memory();
 	void c2717_update_memory();
+	uint16_t c2717_remap_addr(offs_t offset) const;
+	uint8_t c2717_hi_r(offs_t offset);
+	void c2717_hi_w(offs_t offset, uint8_t data);
 	void common_driver_init();
 
 	required_device<cpu_device> m_maincpu;
