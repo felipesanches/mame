@@ -76,19 +76,18 @@ private:
 const ds2717_disc_format::format ds2717_disc_format::formats[] = {
 	{
 		floppy_image::FF_8, floppy_image::SSSD, floppy_image::FM,
-		2000, // 8" cell rate (2 us); FM spends 2 cells/bit => 250 kbps
+		// cell_size + gaps copied verbatim from MAME's mdos_dsk "250.25K 8 inch SSSD"
+		// format, which is this exact geometry (26 x 128 x 77 = 256256).  Earlier
+		// cell_size 2000 with hand-picked gaps fit only ~21 of the 26 sectors of data
+		// per track, so the tail sectors read back as 0x00 and silently truncated the
+		// loaded BIOS at its BDOS-vector setup (0xCC45), crashing the boot.  This is
+		// the proven layout that fits all 26.  device_reset's i8272 set_rate is pinned
+		// to 1e9/2400 to match this cell_size so the chip can still decode the flux.
+		2400,
 		26, 77, 1,
 		128, {},
 		1, {},
-		// struct order is gap_4a, gap_1, gap_2, gap_3.  Keep the proven-readable
-		// gap_4a=40 / gap_1=26 / gap_2=11 (gap_2=11 is what lets the i8272 find each
-		// data address mark) but OMIT gap_3 so it defaults to 0 (auto): an explicit
-		// gap_3=27 x26 sectors overflowed the track layout, so only ~21 sectors of
-		// data fit and the tail read back as 0x00 -- truncating the loaded BIOS at
-		// its BDOS-vector setup (0xCC45) and crashing the boot.  (Dropping the FIRST
-		// value instead, to 26,11,27, mis-shifts gap_2 to 27 and the i8272 then finds
-		// no data marks at all -- 0 reads.)
-		40, 26, 11
+		32 - 6, 17 - 6, 33 - 6   // gap_4a, gap_1, gap_2 (per mdos_dsk)
 	},
 	{}
 };
@@ -554,7 +553,7 @@ void ds2717_device::write(offs_t offset, uint8_t data)
 
 void ds2717_device::device_start()
 {
-	logerror("DS2717 bring-up build marker: fmt-gap3-v9\n");
+	logerror("DS2717 bring-up build marker: fmt-mdos-v10\n");
 	save_item(NAME(m_control));
 	save_item(NAME(m_byte_count));
 	save_item(NAME(m_count_phase));
@@ -587,10 +586,10 @@ void ds2717_device::device_reset()
 	m_fdc->reset_w(0);
 
 	// The i8272 has no data-rate register; its read/write clock comes from the
-	// board's data separator (8224 8 MHz -> 74LS193 chain).  For 8" FM that is a
-	// 500 kHz cell rate (2 us cells, matching the format's cell_size=2000); the
-	// FM live PLL runs at cur_rate, so it must be 500000.  Left at the 250000
-	// default the PLL samples at half the cell rate and never locks onto an
-	// address mark (READ DATA fails ST1 = missing-address-mark, no data).
-	m_fdc->set_rate(500000);
+	// board's data separator.  The FM live PLL runs at cur_rate, so it must match
+	// the floppy format's cell_size (2400 ns, the proven mdos_dsk 8" SSSD layout that
+	// fits all 26 sectors) -- i.e. 1e9/2400.  Left at the 250000 default the PLL
+	// samples at half the cell rate and never locks onto an address mark (READ DATA
+	// fails ST1 = missing-address-mark).
+	m_fdc->set_rate(416667);   // = 1e9 / 2400 ns, matching the format cell_size
 }
