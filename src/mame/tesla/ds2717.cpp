@@ -81,8 +81,10 @@ const ds2717_disc_format::format ds2717_disc_format::formats[] = {
 		// cell_size 2000 with hand-picked gaps fit only ~21 of the 26 sectors of data
 		// per track, so the tail sectors read back as 0x00 and silently truncated the
 		// loaded BIOS at its BDOS-vector setup (0xCC45), crashing the boot.  This is
-		// the proven layout that fits all 26.  device_reset's i8272 set_rate is pinned
-		// to 1e9/2400 to match this cell_size so the chip can still decode the flux.
+		// the proven layout that fits all 26 (current_size 76832 < the 83333-cell budget
+		// 2e8/2400).  device_reset pins the i8272 read rate to the 360 RPM playback rate
+		// of that budget (= 1.2e9/2400 = 500000 Hz) so it locks the AMs and reads every
+		// cell -- see the long note there.
 		2400,
 		26, 77, 1,
 		128, {},
@@ -553,7 +555,7 @@ void ds2717_device::write(offs_t offset, uint8_t data)
 
 void ds2717_device::device_start()
 {
-	logerror("DS2717 bring-up build marker: fmt-mdos-v10\n");
+	logerror("DS2717 bring-up build marker: rate-500k-v11\n");
 	save_item(NAME(m_control));
 	save_item(NAME(m_byte_count));
 	save_item(NAME(m_count_phase));
@@ -585,11 +587,16 @@ void ds2717_device::device_reset()
 	m_fdc->reset_w(1);
 	m_fdc->reset_w(0);
 
-	// The i8272 has no data-rate register; its read/write clock comes from the
-	// board's data separator.  The FM live PLL runs at cur_rate, so it must match
-	// the floppy format's cell_size (2400 ns, the proven mdos_dsk 8" SSSD layout that
-	// fits all 26 sectors) -- i.e. 1e9/2400.  Left at the 250000 default the PLL
-	// samples at half the cell rate and never locks onto an address mark (READ DATA
-	// fails ST1 = missing-address-mark).
-	m_fdc->set_rate(416667);   // = 1e9 / 2400 ns, matching the format cell_size
+	// The i8272 has no data-rate register; the FM live PLL runs at cur_rate, which
+	// must equal the disc's REAL-TIME cell rate so it locks onto the address marks
+	// AND reads every cell the floppy presents per revolution.  upd765_format budgets
+	// a track as total_size = 2e8/cell_size cells (a nominal 200 ms), but FLOPPY_8_SSSD
+	// spins at 360 RPM = 166.67 ms, so the whole track plays in one 1/6 s revolution:
+	//   real rate = (2e8 / cell_size) / (1/6 s) = 1.2e9 / cell_size.
+	// For our cell_size = 2400 that is 1.2e9/2400 = 500000 Hz.  (The earlier pairing
+	// cell_size 2000 + set_rate 500000 was 17% slow -- 600 kHz real vs 500 kHz set --
+	// so the chip covered only ~83% of the track and silently dropped ~5 of the 26
+	// sectors per track, truncating the loaded OS.  416667 was wrong too: that is the
+	// flux cell period, not the playback rate.)
+	m_fdc->set_rate(500000);   // 1.2e9 / cell_size(2400) -- the 360 RPM playback rate
 }
