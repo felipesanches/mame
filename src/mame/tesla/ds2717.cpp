@@ -165,10 +165,21 @@ void ds2717_device::fdc_drq_w(int state)
 	// the RST 7 ISR (at RAM 0x0038), which reads the byte from C9 via dma_r.  The
 	// 8080's own EI/DI (IM_IE) gates delivery.  DRQ also gates the per-byte 8253
 	// counter-0 decrement in read() case 1.
-	m_drq = state;
+	//
+	// CRUCIAL: the board's 8253 counter-0 byte counter defines the transfer window.
+	// It pulses the i8272 TC at terminal count, and the SAME transfer-end logic gates
+	// the DRQ->INTR path.  After the count is exhausted the i8272 may still hold DRQ
+	// asserted for bytes it read AHEAD into its FIFO past the requested length (the
+	// gap 0xFF after the last sector); a real board, like a DMA controller after its
+	// own TC, simply stops acknowledging DRQ and abandons them.  Forwarding them would
+	// fire spurious RST 7s whose ISR writes the stale 0xFF into live memory (HL), and
+	// since that happens after the OS has loaded it corrupts the running system and
+	// drops it into ROM BASIC.  So gate on the transfer being live.
+	bool const xfer = m_count_active && !m_count_done;
+	m_drq = state && xfer;
 	// DRQ toggles once per data byte (~6.5 KB/boot) -- not logged, it would flood
 	// the cap; the C9 command writes, TC pulses and result phase are what matter.
-	m_int_cb(state);
+	m_int_cb(m_drq);
 }
 
 
@@ -253,6 +264,13 @@ uint8_t ds2717_device::read(offs_t offset)
 					m_count_done = true;
 					m_fdc->tc_w(1);   // edge-triggered: pulse high then low
 					m_fdc->tc_w(0);
+					// Close the transfer window NOW: the i8272 still holds DRQ for
+					// its read-ahead FIFO, but the board no longer forwards it.  This
+					// byte (already fetched above) is the last; drop DRQ/INTR so the
+					// leftover bytes cannot leak as spurious RST 7s (fdc_drq_w is not
+					// called for them -- DRQ stays level-high until drained).
+					m_drq = 0;
+					m_int_cb(0);
 					if (m_log_count < LOG_CAP)
 					{
 						LOGSEEK("byte-counter terminal count -> TC pulse\n");
