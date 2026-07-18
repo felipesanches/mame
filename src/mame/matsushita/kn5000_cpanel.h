@@ -24,9 +24,9 @@ class kn5000_cpanel_device : public device_t
 public:
 	kn5000_cpanel_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 
-	// Button input port setters (called from main driver)
-	template <typename T> void set_cpl_port(unsigned n, T &&tag) { m_cpl_ports[n].set_tag(std::forward<T>(tag)); }
-	template <typename T> void set_cpr_port(unsigned n, T &&tag) { m_cpr_ports[n].set_tag(std::forward<T>(tag)); }
+	// The button scan-matrix ports (CP{L,R}_SEG{col}) are OWNED by this device -- declared in
+	// device_input_ports() and bound by tag in the constructor (see the .cpp), not wired by the
+	// driver. The layout references them as "cpanel:CP{L,R}_SEG{col}".
 
 	// Configuration
 	void set_baudrate(uint16_t br);
@@ -45,6 +45,7 @@ protected:
 	// device_t overrides
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
+	virtual ioport_constructor device_input_ports() const override ATTR_COLD;   // the CP{L,R}_SEG{col} button matrix
 
 	TIMER_CALLBACK_MEMBER(timer_callback);
 	TIMER_CALLBACK_MEMBER(idle_detect_callback);
@@ -109,9 +110,10 @@ private:
 	devcb_write_line m_sclk_out_cb;
 	devcb_write_line m_inta_cb;
 
-	// Input port pointers (set by main driver)
-	optional_ioport_array<11> m_cpl_ports;  // Left panel segments 0-10
-	optional_ioport_array<11> m_cpr_ports;  // Right panel segments 0-10
+	// Button scan-matrix ports -- OWNED by this device (declared in device_input_ports(),
+	// bound by tag in the constructor). Left / right panel PCB, segments 0-10.
+	optional_ioport_array<11> m_cpl_ports;
+	optional_ioport_array<11> m_cpr_ports;
 
 	// LED outputs
 	output_finder<50> m_cpl_leds;  // Left panel LEDs (CPL_0 through CPL_49)
