@@ -75,6 +75,16 @@ void hdsx3_device::card_map(address_map &map)
 	// and copies its data segment from 0x978B3E84, both of which only resolve if the
 	// image is seen at that base. CN106 selects the unit with HDD.CS.
 	map(0x000000, 0x0bffff).rom().region(m_rom, 0);
+
+	// Work RAM. The startup copies its data segment to 0x97910000 and clears BSS at
+	// 0x979126D8, so RAM must exist above the ROM. Scanning the image for constants
+	// past the ROM end bounds it: dense references across 0x97910000..0x979AFFFF
+	// (0x9791 alone accounts for 992 of them), which is the window mapped here.
+	// The HD-AE5000 carries 2 x 256 KB SRAM in the same role.
+	// NOTE: the exact device size is not established -- only the range the firmware
+	// actually touches. A separate cluster at 0x97F8xxxx (63 refs) is more likely
+	// memory-mapped I/O than RAM and is deliberately NOT mapped here.
+	map(0x100000, 0x1affff).ram().share("ram");
 }
 
 ROM_START(hdsx3)
