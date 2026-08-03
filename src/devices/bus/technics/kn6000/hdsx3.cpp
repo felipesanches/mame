@@ -46,11 +46,17 @@ public:
 protected:
 	virtual void device_start() override ATTR_COLD;
 	virtual const tiny_rom_entry *device_rom_region() const override ATTR_COLD;
+	virtual void program_map(address_space_installer &space) override;
+
+private:
+	void card_map(address_map &map) ATTR_COLD;
+	required_memory_region m_rom;
 };
 
 hdsx3_device::hdsx3_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: device_t(mconfig, HDSX3, tag, owner, clock)
 	, device_kn6000_expansion_interface(mconfig, *this)
+	, m_rom(*this, "rom")
 {
 }
 
@@ -58,9 +64,26 @@ void hdsx3_device::device_start()
 {
 }
 
+void hdsx3_device::program_map(address_space_installer &space)
+{
+	space.install_device(0x97800000, 0x978fffff, *this, &hdsx3_device::card_map);
+}
+
+void hdsx3_device::card_map(address_map &map)
+{
+	// The firmware links at 0x97800000 -- its startup code clears BSS at 0x979126D8
+	// and copies its data segment from 0x978B3E84, both of which only resolve if the
+	// image is seen at that base. CN106 selects the unit with HDD.CS.
+	map(0x000000, 0x0bffff).rom().region(m_rom, 0);
+}
+
 ROM_START(hdsx3)
-	ROM_REGION32_LE(0xc0000, "firmware", 0)
-	ROM_LOAD("hd-sx3_v1_1.bin", 0x000000, 0x0c0000, CRC(83b8a6f1) SHA1(88699a7e9584e0c30c175babd1482e5aa586ad3d))
+	ROM_REGION32_LE(0xc0000, "rom", 0)
+	ROM_DEFAULT_BIOS("v1.1")
+
+	// The image identifies itself: "Version: 1.1 (REV3) Date: 07-21-2001".
+	ROM_SYSTEM_BIOS(0, "v1.1", "Version 1.1 (REV3) - July 21st, 2001")
+	ROMX_LOAD("hd-sx3_v1_1.bin", 0x000000, 0x0c0000, CRC(83b8a6f1) SHA1(88699a7e9584e0c30c175babd1482e5aa586ad3d), ROM_BIOS(0))
 ROM_END
 
 const tiny_rom_entry *hdsx3_device::device_rom_region() const
