@@ -8,6 +8,22 @@
     An optional unit, rarely encountered. No example has been available for
     inspection, so nothing here is derived from the hardware itself.
 
+    Technics fitted an expansion connector of this kind across the whole KN
+    line, each generation with its own board, so this is one of a family
+    rather than a one-off:
+
+        SX-KN1000  MEC1000     memory expansion, EPROM and SRAM
+        SX-KN3000  HD-HSO3000
+        SX-KN5000  HD-AE5000   emulated in bus/technics/kn5000/hdae5000.cpp
+        SX-KN6000  HD-SX3      this device
+        SX-KN6500  HD-SX3
+
+    The HD-AE5000 is the closest reference and the only one modelled so far.
+    Its layout matches what is described below: firmware ROM low in the card
+    window, static RAM above it, an ATA interface and a parallel port, and
+    serial audio driven from the host's clocks so the unit can provide its own
+    outputs. Expect the HD-SX3 to follow the same pattern.
+
     What is known comes from three places. The KN6500 service manual shows the
     expansion connector CN106, 70 pins, labelled "TO HDD", carrying HDDCS,
     HDDINT, PP.INT, the audio clocks DACCK/BCK/LRCK, the DO1/DO2 outputs, the
