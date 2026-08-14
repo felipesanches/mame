@@ -248,9 +248,9 @@ uint8_t patinho_io_bus_device::data_r(offs_t offset)
 	device_patinho_io_card_interface *const c = m_card[ch];
 	if (!c)
 	{
-		// Nothing is known about pull-ups on the real backplane; zero is a
-		// modelling choice.  (It is NOT "what the code does today": today the
-		// core returns m_iodev_incoming_byte[], which is never initialised.)
+		// Nothing is known about pull-ups on the real backplane, so zero is a
+		// modelling choice rather than a documented behaviour. Worth revisiting
+		// against the FIN-8 board schematic (plate VI of Fregni 1972).
 		LOGMASKED(LOG_VACANT, "ENTR /%X%X on a vacant channel\n", ch, offset & 0x0f);
 		return 0x00;
 	}
