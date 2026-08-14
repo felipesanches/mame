@@ -47,11 +47,11 @@ protected:
 	void load_tape(const char* name);
 	void load_raw_data(const char* name, unsigned int start_address, unsigned int data_length);
 
-	void decwriter_data_w(uint8_t data);
+	void decwriter_data_w(offs_t command, uint8_t data);
 	void decwriter_kbd_input(u8 data);
 	TIMER_CALLBACK_MEMBER(decwriter_callback);
 
-	void teletype_data_w(uint8_t data);
+	void teletype_data_w(offs_t command, uint8_t data);
 	void teletype_kbd_input(u8 data);
 	TIMER_CALLBACK_MEMBER(teletype_callback);
 
@@ -144,11 +144,15 @@ void patinho_feio_state::update_panel(uint8_t ACC, uint8_t opcode, uint8_t mem_d
 	m_prev_FLAGS = FLAGS;
 }
 
-void patinho_feio_state::decwriter_data_w(uint8_t data)
+void patinho_feio_state::decwriter_data_w(offs_t command, uint8_t data)
 {
-	m_decwriter->write(data);
+	if (command != 0)
+	{
+		logerror("DECwriter: unknown SAI command /%X\n", command);
+		return;
+	}
 
-	m_maincpu->set_iodev_status(0xA, IODEV_BUSY);
+	m_decwriter->write(data);
 
 	if (data == 0x0D){
 		m_decwriter_timer->adjust(attotime::from_hz(1/0.700)); //carriage return takes 700 msecs
@@ -172,11 +176,19 @@ void patinho_feio_state::decwriter_kbd_input(u8 data)
 	m_maincpu->transfer_byte_from_external_device(0xA, ~data);
 }
 
-void patinho_feio_state::teletype_data_w(uint8_t data)
+void patinho_feio_state::teletype_data_w(offs_t command, uint8_t data)
 {
+	if (command != 0)
+	{
+		logerror("Teletype: unknown SAI command /%X\n", command);
+		return;
+	}
+
 	m_tty->write(data);
 
-	m_maincpu->set_iodev_status(0xB, IODEV_READY);
+	/* Busy until the character has been printed -- it was setting READY here,
+	   which let a program's "SAL /B1" wait loop through on its first turn.
+	   The timer is what reports ready, as it already does for the DECwriter. */
 	m_teletype_timer->adjust(attotime::from_hz(10)); //10 characters per second
 	m_teletype_timer->enable(1); //start the timer
 }
