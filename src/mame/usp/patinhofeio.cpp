@@ -55,6 +55,8 @@ protected:
 	void teletype_kbd_input(u8 data);
 	TIMER_CALLBACK_MEMBER(teletype_callback);
 
+	TIMER_CALLBACK_MEMBER(papertape_reader_callback);
+
 	DECLARE_DEVICE_IMAGE_LOAD_MEMBER( tape_load );
 
 	void update_panel(uint8_t ACC, uint8_t opcode, uint8_t mem_data, uint16_t mem_addr, uint16_t PC, uint8_t FLAGS, uint16_t RC, uint8_t mode);
@@ -76,6 +78,8 @@ private:
 	uint8_t* paper_tape_data = nullptr;
 	uint32_t paper_tape_length = 0;
 	uint32_t paper_tape_address = 0;
+	std::vector<uint8_t> m_paper_tape_image; // backing store when not loaded from a softlist
+	emu_timer *m_papertape_timer = nullptr;
 
 	emu_timer *m_decwriter_timer = nullptr;
 	emu_timer *m_teletype_timer = nullptr;
@@ -236,15 +240,59 @@ DEVICE_IMAGE_LOAD_MEMBER( patinho_feio_state::tape_load )
 	{
 		paper_tape_length = image.get_software_region_length("rom");
 		paper_tape_data = image.get_software_region("rom");
-		paper_tape_address = 0;
+	}
+	else
+	{
+		// A roll handed straight to -ptap, rather than picked from a software
+		// list. The image is copied because the loader's buffer does not
+		// outlive this call.
+		m_paper_tape_image.resize(image.length());
+		if (image.fread(m_paper_tape_image.data(), m_paper_tape_image.size()) != m_paper_tape_image.size())
+			return std::make_pair(image_error::UNSPECIFIED, "Error reading punched tape image");
+
+		paper_tape_data = m_paper_tape_image.data();
+		paper_tape_length = m_paper_tape_image.size();
 	}
 
+	paper_tape_address = 0;
 	return std::make_pair(std::error_condition(), std::string());
+}
+
+/* Optical punched tape reader, channel /E.
+
+   Doc 03 (J. J. Neto, 1975), chapter 1, lists the machine's configuration as
+   carrying one "Leitora Otica de Fita de Papel HP-2737-A, 300 caracteres por
+   segundo (maximo)", and doc 01 (July 1977 assembler manual), chapter 12,
+   lists channel /E as "Leitora de Fita de Papel", input only.
+
+   The handshake is the standard one described in that same chapter: the
+   program turns the CONTROL flip-flop on with "FNC /E6" (which also sets
+   STATUS to busy, meaning "tape running"), the reader feeds one frame and
+   reports STATUS ready, and "ENTR /E0" takes the byte and drops CONTROL.
+
+   So the timer only advances the tape while CONTROL is asserted; with the
+   reel stopped it costs nothing but a poll. */
+TIMER_CALLBACK_MEMBER(patinho_feio_state::papertape_reader_callback)
+{
+	if (!m_maincpu->iodev_control(0xE))
+		return; // reel stopped: the program has not asked for a frame
+
+	if (!paper_tape_data || paper_tape_address >= paper_tape_length)
+		return; // no tape mounted, or the end of the roll has gone past the head
+
+	m_maincpu->transfer_byte_from_external_device(0xE, paper_tape_data[paper_tape_address++]);
 }
 
 void patinho_feio_state::machine_start(){
 	m_teletype_timer = timer_alloc(FUNC(patinho_feio_state::teletype_callback), this);
 	m_decwriter_timer = timer_alloc(FUNC(patinho_feio_state::decwriter_callback), this);
+
+	// HP-2737-A: 300 frames per second at most (doc 03, chapter 1)
+	m_papertape_timer = timer_alloc(FUNC(patinho_feio_state::papertape_reader_callback), this);
+	m_papertape_timer->adjust(attotime::from_hz(300), 0, attotime::from_hz(300));
+
+	save_item(NAME(paper_tape_address));
+	save_item(NAME(m_paper_tape_image));
 
 	// Copy some programs directly into RAM.
 	// This is a hack for setting up the computer
