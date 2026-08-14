@@ -773,16 +773,28 @@ void patinho_feio_cpu_device::execute_instruction()
 					}
 					break;
 				case 0x40:
-					/* ENTR = "Input data from I/O device" */
+					/* ENTR = "Input data from I/O device"
+					   Taking the byte out of the device's register ends the
+					   transfer, so CONTROL drops. */
 					ACC = m_iodev_incoming_byte[channel];
-					m_iodev_control[channel] = NO_REQUEST; //TODO: <-- check if this is correct
+					m_iodev_control[channel] = NO_REQUEST;
 					break;
 				case 0x80:
-					/* SAI = "Output data to I/O device" */
+					/* SAI = "Output data to I/O device"
+					   Chapter 12 of the July 1977 manual: "em toda saida: o
+					   dado (8 bits) passa do ACC para o registrador de 8 bits
+					   do dispositivo, e dai para o meio exterior". Handing the
+					   byte over starts the transfer, so CONTROL goes on and
+					   STATUS goes busy, exactly as "FNC /n6" would do.
+					   The command nibble travels as the devcb offset: the
+					   synthesizer executor issues SAI /62, /63 and /64 on one
+					   channel and they are three different operations. */
 					if (m_iodev_write_cb[channel].isunset()){
-						logerror("Warning: There's no device hooked up at I/O address 0x%X", channel);
+						logerror("SAI /%X%X: no device on this channel\n", channel, function);
 					} else {
-						m_iodev_write_cb[channel](ACC);
+						m_iodev_control[channel] = REQUEST;
+						m_iodev_status[channel] = IODEV_BUSY;
+						m_iodev_write_cb[channel](function, ACC);
 					}
 					break;
 			}
