@@ -42,6 +42,24 @@
    executes its operand as an opcode. */
 #define SKIP_NEXT_INSTRUCTION  { INCREMENT_PC_4K; INCREMENT_PC_4K; }
 
+/* Both flags are defined in chapter 2 of the July 1977 assembler manual.
+
+   V ("vai-um", carry): "o vai-um na ultima soma realizada (bit mais
+   significativo)" -- the carry out of bit 7.
+
+   T ("transbordo", overflow): chapter 3 says it is "modificado, por exemplo,
+   cada vez que e realizada uma adicao. Se houver transbordo na adicao, entao
+   e feito T = 1 e isto indica que o resultado (contido no ACC), esta errado."
+   Chapter 2 illustrates it with 60 + 70 = 130, which does not fit in the
+   representable range of a signed byte. That is signed overflow: it happens
+   when both operands share a sign and the result has the opposite one. */
+void patinho_feio_cpu_device::update_addition_flags(uint8_t operand_a, uint8_t operand_b){
+	uint16_t const result = operand_a + operand_b;
+
+	set_flag(V, result > 0xFF);
+	set_flag(T, BIT((operand_a ^ result) & (operand_b ^ result), 7));
+}
+
 void patinho_feio_cpu_device::set_flag(uint8_t flag, bool state){
 	if (state){
 		FLAGS |= flag;
@@ -230,9 +248,9 @@ void patinho_feio_cpu_device::execute_instruction()
 		case 0xD8:
 			//SOMI="Soma Imediato":
 			//     Add an immediate into the accumulator
-			set_flag(V, ((((int16_t) ACC) + ((int16_t) READ_BYTE_PATINHO(PC))) >> 8));
-			set_flag(T, ((((int8_t) (ACC & 0x7F)) + ((int8_t) (READ_BYTE_PATINHO(PC) & 0x7F))) >> 7) == V);
-			ACC += READ_BYTE_PATINHO(PC);
+			value = READ_BYTE_PATINHO(PC);
+			update_addition_flags(ACC, value);
+			ACC += value;
 			INCREMENT_PC_4K;
 			return;
 		case 0xDA:
@@ -585,8 +603,9 @@ void patinho_feio_cpu_device::execute_instruction()
 			//SOM = "Soma": Add a value from a given memory position into the accumulator
 			compute_effective_address((m_opcode & 0x0F) << 8 | READ_BYTE_PATINHO(PC));
 			INCREMENT_PC_4K;
-			ACC += READ_BYTE_PATINHO(m_addr);
-			//TODO: update V and T flags
+			value = READ_BYTE_PATINHO(m_addr);
+			update_addition_flags(ACC, value);
+			ACC += value;
 			return;
 		case 0x70:
 			//SOMX = "Soma indexada": Add a value from a given indexed memory position into the accumulator
@@ -594,8 +613,9 @@ void patinho_feio_cpu_device::execute_instruction()
 			INCREMENT_PC_4K;
 			m_idx = READ_INDEX_REG();
 			compute_effective_address(m_idx + tmp);
-			ACC += READ_BYTE_PATINHO(m_addr);
-			//TODO: update V and T flags
+			value = READ_BYTE_PATINHO(m_addr);
+			update_addition_flags(ACC, value);
+			ACC += value;
 			return;
 		case 0xA0:
 			//PLAN = "Pula se ACC negativo": Jump to a given address if ACC is negative
