@@ -21,6 +21,40 @@
 DEFINE_DEVICE_TYPE(PATINHO_IO_BUS,  patinho_io_bus_device,  "patinho_io_bus",  "Patinho Feio I/O bus")
 DEFINE_DEVICE_TYPE(PATINHO_IO_SLOT, patinho_io_slot_device, "patinho_io_slot", "Patinho Feio I/O slot")
 
+patinho_io_bus_device::patinho_io_bus_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: device_t(mconfig, PATINHO_IO_BUS, tag, owner, clock)
+	, m_int_handler(*this)
+	, m_int_state(false)
+{
+	std::fill(std::begin(m_card), std::end(m_card), nullptr);
+}
+
+patinho_io_slot_device::patinho_io_slot_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: device_t(mconfig, PATINHO_IO_SLOT, tag, owner, clock)
+	, device_single_card_slot_interface<device_patinho_io_card_interface>(mconfig, *this)
+	, m_bus(*this, finder_base::DUMMY_TAG)
+{
+}
+
+void patinho_io_slot_device::device_start()
+{
+}
+
+device_patinho_io_card_interface::device_patinho_io_card_interface(const machine_config &mconfig, device_t &device)
+	: device_interface(device, "patinhoio")
+	, m_data(0)
+	, m_control(false)
+	, m_status(false)
+	, m_irq_request(false)
+	, m_irq_enable(false)
+	, m_irq_set_cond(false)
+{
+}
+
+device_patinho_io_card_interface::~device_patinho_io_card_interface()
+{
+}
+
 void patinho_io_slot_device::device_resolve_objects()
 {
 	assert(m_channel < patinho_io_bus_device::CHANNELS);
