@@ -94,7 +94,6 @@ patinho_feio_cpu_device::patinho_feio_cpu_device(const machine_config &mconfig, 
 	, m_buttons_read_cb(*this, 0)
 	, m_iodev_read_cb(*this, 0)
 	, m_iodev_write_cb(*this)
-	, m_iodev_status_cb(*this, 0) // unused?
 {
 }
 
@@ -143,6 +142,15 @@ void patinho_feio_cpu_device::device_start()
 	save_item(NAME(m_flags));
 	save_item(NAME(m_addr));
 	save_item(NAME(m_opcode));
+	save_item(NAME(m_run));
+	save_item(NAME(m_wait_for_interrupt));
+	save_item(NAME(m_interrupts_enabled));
+	save_item(NAME(m_scheduled_IND_bit_reset));
+	save_item(NAME(m_indirect_addressing));
+	save_item(NAME(m_mode));
+	save_item(NAME(m_iodev_control));
+	save_item(NAME(m_iodev_status));
+	save_item(NAME(m_iodev_incoming_byte));
 
 	// Register state for debugger
 	state_add( PATINHO_FEIO_CI,         "CI",       m_pc         ).mask(0xFFF);
@@ -169,11 +177,20 @@ void patinho_feio_cpu_device::device_reset()
 	m_idx = READ_INDEX_REG();
 	m_flags = 0;
 	m_run = false;
+	m_wait_for_interrupt = false;
+	m_interrupts_enabled = false;
 	m_scheduled_IND_bit_reset = false;
 	m_indirect_addressing = false;
 	m_addr = 0;
 	m_opcode = 0;
 	m_mode = ADDRESSING_MODE;
+
+	/* Every peripheral comes up with its reel stopped, nothing to hand over
+	   and no data pending. Leaving these indeterminate meant a program could
+	   read a byte that no device ever sent. */
+	std::fill(std::begin(m_iodev_control), std::end(m_iodev_control), NO_REQUEST);
+	std::fill(std::begin(m_iodev_status), std::end(m_iodev_status), IODEV_BUSY);
+	std::fill(std::begin(m_iodev_incoming_byte), std::end(m_iodev_incoming_byte), 0);
 	m_update_panel_cb(ACC, m_opcode, READ_BYTE_PATINHO(m_addr), m_addr, PC, FLAGS, RC, m_mode);
 }
 
@@ -548,7 +565,7 @@ void patinho_feio_cpu_device::execute_instruction()
 							ACC = (ACC & (1 << 7)) | ACC >> 1;
 							break;
 						default:
-							printf("Illegal instruction: %02X %02X\n", m_opcode, value);
+							logerror("Illegal instruction: %02X %02X\n", m_opcode, value);
 							return;
 					}
 				}
@@ -717,12 +734,12 @@ void patinho_feio_cpu_device::execute_instruction()
 							if (channel==0xE){
 								//TODO: Implement-me!
 							} else {
-								printf("Function 8 of the /FNC instruction can only be used with "
+								logerror("Function 8 of the /FNC instruction can only be used with "
 										"the papertape reader device at channel /E.\n");
 							}
 							break;
 						default:
-							printf("Invalid function (#%d) specified in /FNC instruction.\n", function);
+							logerror("Invalid function (#%d) specified in /FNC instruction.\n", function);
 					}
 					break;
 				case 0x20:
@@ -763,7 +780,7 @@ void patinho_feio_cpu_device::execute_instruction()
 				case 0x80:
 					/* SAI = "Output data to I/O device" */
 					if (m_iodev_write_cb[channel].isunset()){
-						printf("Warning: There's no device hooked up at I/O address 0x%X", channel);
+						logerror("Warning: There's no device hooked up at I/O address 0x%X", channel);
 					} else {
 						m_iodev_write_cb[channel](ACC);
 					}
@@ -794,7 +811,7 @@ void patinho_feio_cpu_device::execute_instruction()
 			PC = m_addr+2;
 			return;
 	}
-	printf("unimplemented opcode: 0x%02X\n", m_opcode);
+	logerror("unimplemented opcode: 0x%02X\n", m_opcode);
 }
 
 std::unique_ptr<util::disasm_interface> patinho_feio_cpu_device::create_disassembler()
