@@ -31,6 +31,17 @@
 #define ADDRESS_MASK_4K    0xFFF
 #define INCREMENT_PC_4K    (PC = (PC+1) & ADDRESS_MASK_4K)
 
+/* The "instrucoes curtas do grupo 2" (0x90-0x97) skip the *whole* next
+   instruction, which may well be a two-word long instruction. The July 1977
+   assembler manual is explicit about it, both in the chapter opening
+   ("Podem resultar em saltos (CI <- CI + 2)") and in a note on the sample
+   program ("Note que apos ST 0 e SV 1 ha instrucoes longas PLA FTP e PLA ROT
+   que ocupam duas palavras -- estas duas palavras serao saltadas quando a
+   condicao do salto for satisfeita").
+   Skipping a single word lands in the middle of a long instruction and
+   executes its operand as an opcode. */
+#define SKIP_NEXT_INSTRUCTION  { INCREMENT_PC_4K; INCREMENT_PC_4K; }
+
 void patinho_feio_cpu_device::set_flag(uint8_t flag, bool state){
 	if (state){
 		FLAGS |= flag;
@@ -326,14 +337,14 @@ void patinho_feio_cpu_device::execute_instruction()
 			//ST 0 = "Se T=0, Pula"
 			//       If T is zero, skip the next instruction
 			if ((FLAGS & T) == 0)
-				INCREMENT_PC_4K; //skip
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 			return;
 		case 0x91:
 			//STM 0 = "Se T=0, Pula e muda"
 			//        If T is zero, skip the next instruction
 			//        and toggle T.
 			if ((FLAGS & T) == 0){
-				INCREMENT_PC_4K; //skip
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 				FLAGS |= T; //set T=1
 			}
 			return;
@@ -341,14 +352,14 @@ void patinho_feio_cpu_device::execute_instruction()
 			//ST 1 = "Se T=1, Pula"
 			//       If T is one, skip the next instruction
 			if ((FLAGS & T) == T)
-				INCREMENT_PC_4K; //skip
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 			return;
 		case 0x93:
 			//STM 1 = "Se T=1, Pula e muda"
 			//        If T is one, skip the next instruction
 			//        and toggle T.
 			if ((FLAGS & T) == T){
-				INCREMENT_PC_4K; //skip
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 				FLAGS &= ~T; //set T=0
 			}
 			return;
@@ -356,29 +367,29 @@ void patinho_feio_cpu_device::execute_instruction()
 			//SV 0 = "Se V=0, Pula"
 			//       If V is zero, skip the next instruction
 			if ((FLAGS & V) == 0)
-				INCREMENT_PC_4K; //skip
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 			return;
 		case 0x95:
 			//SVM 0 = "Se V=0, Pula e muda"
 			//        If V is zero, skip the next instruction
 			//        and toggle V.
 			if ((FLAGS & V) == 0){
-				INCREMENT_PC_4K; //skip
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 				FLAGS |= V; //set V=1
 			}
 			return;
 		case 0x96:
 			//SV 1 = "Se V=1, Pula"
 			//       If V is one, skip the next instruction
-			if ((FLAGS & V) == 1)
-				INCREMENT_PC_4K; //skip
+			if ((FLAGS & V) == V)
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 			return;
 		case 0x97:
 			//SVM 1 = "Se V=1, Pula e muda"
 			//        If V is one, skip the next instruction
 			//        and toggle V.
-			if ((FLAGS & V) == 1){
-				INCREMENT_PC_4K; //skip
+			if ((FLAGS & V) == V){
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 				FLAGS &= ~V; //set V=0
 			}
 			return;
