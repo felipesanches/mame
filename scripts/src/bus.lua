@@ -4233,6 +4233,8 @@ if (BUSES["PATINHO"]~=null) then
 		MAME_DIR .. "src/devices/bus/patinho/ptreader.h",
 		MAME_DIR .. "src/devices/bus/patinho/tbgen.cpp",
 		MAME_DIR .. "src/devices/bus/patinho/tbgen.h",
+		MAME_DIR .. "src/devices/bus/patinho/duplex.cpp",
+		MAME_DIR .. "src/devices/bus/patinho/duplex.h",
 	}
 end
 ---------------------------------------------------
