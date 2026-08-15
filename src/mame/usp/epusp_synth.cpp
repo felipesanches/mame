@@ -28,29 +28,50 @@ epusp_synth_device::epusp_synth_device(const machine_config &mconfig, const char
 	, m_s1(*this, "S1")
 {
 	std::fill(std::begin(m_timbre), std::end(m_timbre), 0);
-	for (auto &mem : m_mem)
-		std::fill(std::begin(mem), std::end(mem), 0.0);
+	std::fill(std::begin(m_computer_half), std::end(m_computer_half), 0.0);
+	for (auto &s : m_store)
+		std::fill(std::begin(s), std::end(s), 0.0);
 }
 
-/* S1, the nine-position selector of chapter 11.  It is a machine
-   configuration and not a DIP switch because it is a front-panel control the
-   player turned between pieces, not a setting anyone opened the case for.
+/* The mode/selection control of chapter 3: "Chave de 2 posicoes (AUTO --
+   MANUAL) + chave de 8 posicoes (PGRF-M1-M2...M7)", which is the nine-position
+   switch chapter 11 counts.  A machine configuration and not a DIP switch,
+   because it is a front-panel control the player turned between pieces.
 
-   The default is position 8, the computer's own memory: it is the only one a
-   punched tape can fill, so it is the only default under which a tape that
-   programs a timbre can be heard at all. */
+   THE DEFAULT IS "MANUAL: PGRF", AND THE REASON IS AN EXPERIMENT, NOT TASTE.
+
+   On AUTO the computer's LETMB chooses, and running FITA#023 that way CHOPS A
+   SUSTAINED NOTE INTO PIECES: the tape stores an all-zero waveform into M7 at
+   t=168 while the note that began at t=144 is still gated on, then selects M7
+   at t=216 and PGRF again at t=287.  analisar_wav.py sees 8 sounding stretches
+   where the score has 7 notes.
+
+   That is self-consistent -- it is exactly what "LETMB,n selects store n"
+   predicts -- but it cannot be checked against the instrument, and there are
+   two readings left standing:
+
+     (a) the piece really did have that gated texture, or
+     (b) M7 was switched to BLOQUEIA, whose whole purpose per chapter 3 is that
+         "a ultima forma de onda armazenada permanece inalterada,
+         independentemente do modo de operacao e dos comandos do computador" --
+         so GRTMB,7 did nothing and the note kept its timbre.
+
+   Nothing records which memories were available in 1977.  So the default is
+   the position where the operator's switch decides and the tape cannot chop
+   anything, and AUTO is one setting away for anyone who wants to hear the
+   other reading.  LOG_TIMBRE narrates every GRTMB and LETMB either way. */
 static INPUT_PORTS_START(epusp_synth)
 	PORT_START("S1")
-	PORT_CONFNAME(0x0f, 8, "S1 -- selecao de timbre")
-	PORT_CONFSETTING(0, "Externa (chaves do painel)")
-	PORT_CONFSETTING(1, "Memoria 1")
-	PORT_CONFSETTING(2, "Memoria 2")
-	PORT_CONFSETTING(3, "Memoria 3")
-	PORT_CONFSETTING(4, "Memoria 4")
-	PORT_CONFSETTING(5, "Memoria 5")
-	PORT_CONFSETTING(6, "Memoria 6")
-	PORT_CONFSETTING(7, "Memoria 7")
-	PORT_CONFSETTING(8, "Memoria 8 (computador)")
+	PORT_CONFNAME(0x0f, 1, "Selecao de timbre (AUTO/MANUAL + PGRF/M1-M7)")
+	PORT_CONFSETTING(0, "AUTO (o computador escolhe)")
+	PORT_CONFSETTING(1, "MANUAL: PGRF (painel grafico)")
+	PORT_CONFSETTING(2, "MANUAL: M1")
+	PORT_CONFSETTING(3, "MANUAL: M2")
+	PORT_CONFSETTING(4, "MANUAL: M3")
+	PORT_CONFSETTING(5, "MANUAL: M4")
+	PORT_CONFSETTING(6, "MANUAL: M5")
+	PORT_CONFSETTING(7, "MANUAL: M6")
+	PORT_CONFSETTING(8, "MANUAL: M7")
 INPUT_PORTS_END
 
 ioport_constructor epusp_synth_device::device_input_ports() const
@@ -58,16 +79,16 @@ ioport_constructor epusp_synth_device::device_input_ports() const
 	return INPUT_PORTS_NAME(epusp_synth);
 }
 
-/* Which waveform reaches the D/A right now.  nullptr means S1 is on the
-   external position, where the 4 x 16 front-panel switches fed the generator
-   directly -- there is no stored table to return, and nothing survives about
-   what those switches were set to. */
-const double *epusp_synth_device::selected_wave() const
+/* Which store reaches the output right now.  On AUTO the computer's last
+   LETMB decides; on any MANUAL position the switch does, and the computer's
+   LETMB is then simply ignored -- which is what "Em qualquer posicao diferente
+   da AUTO" describes. */
+unsigned epusp_synth_device::selected_store() const
 {
 	unsigned const pos = m_s1->read() & 0x0f;
-	if (pos == S1_EXTERNAL || pos > 8)
-		return nullptr;
-	return m_mem[pos - 1];
+	if (pos == S1_AUTO)
+		return (m_auto_select < STORES) ? m_auto_select : PGRF;
+	return std::min<unsigned>(pos - 1, STORES - 1);
 }
 
 /* Chapter 3 of the synthesiser manual puts the scale between "o do de
@@ -107,26 +128,26 @@ double epusp_synth_device::frequency(uint8_t code)
    Unpacking those back gives 0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7 -- the ramp the
    score asked for.
 
-   The samples are unsigned 0..15, and the D/A converters are unipolar
-   (chapter 1: 0 V for 00000000, +5 V for 11111111).  So the waveform that
-   leaves the converter has a DC component, and what removes it is the
-   coupling into the audio path -- not the data.
+   THESE SIXTEEN ARE HALF A CYCLE.  Chapter 3: the graphic panel is "16 chaves
+   deslizantes de 16 posicoes cada uma no qual se desenha MEIO CICLO de uma
+   forma de onda IMPAR", and the output SAU is a "FUNCAO IMPAR cujo PRIMEIRO
+   SEMI-CICLO e o registrado".  The clock confirms it without needing the
+   prose: frl is "32 VEZES a da forma de onda de saida", and 32 = 16 x 2.
 
-   CENTRE ON THE WAVEFORM'S OWN MEAN, NOT ON 7.5.  The first version subtracted
-   a fixed 7.5, which is right only for a waveform that uses the full range.
-   The timbre the surviving score actually asks for,
-   "TIMBRE,0011223344556677", uses samples 0 to 7 and nothing above, so a fixed
-   centre left every sample negative: a large DC offset with a small ripple on
-   top, which never crosses zero.  The emulation went silent, and
-   analisar_wav.py reported "o WAV esta em silencio" because a signal that
-   never crosses zero has no measurable fundamental.
+   So this returns the first half cycle only, and sound_stream_update() plays
+   it forwards and then negated.  The full period is odd by construction, so
+   its mean is exactly zero.
 
-   Removing the mean is both what a coupling capacitor does and what makes the
-   half-range ramp audible.  A full-range square still comes out as +-1. */
-void epusp_synth_device::unpack(const uint8_t planes[8], double wave[16])
+   An earlier version treated the sixteen as a whole cycle and subtracted their
+   mean to kill a DC offset.  The offset was an artefact of that mistake: a
+   half-range ramp read as a full cycle really does sit off-centre.  Read as a
+   half cycle it does not, and the subtraction is gone.
+
+   Scale: samples are unsigned 0..15 out of a unipolar converter (chapter 1,
+   0 V for 00000000 and +5 V for 11111111), and SAU swings -5 to +5 V, so the
+   sample maps to the positive half and its negation to the other. */
+void epusp_synth_device::unpack(const uint8_t planes[8], double half[16])
 {
-	unsigned bruto[16];
-	double soma = 0.0;
 	for (int k = 0; k < 16; k++)
 	{
 		unsigned sample = 0;
@@ -135,13 +156,8 @@ void epusp_synth_device::unpack(const uint8_t planes[8], double wave[16])
 			unsigned const word = (unsigned(planes[2 * (3 - b)]) << 8) | planes[2 * (3 - b) + 1];
 			sample |= ((word >> (15 - k)) & 1) << b;
 		}
-		bruto[k] = sample;
-		soma += sample;
+		half[k] = double(sample) / 15.0;
 	}
-
-	double const media = soma / 16.0;
-	for (int k = 0; k < 16; k++)
-		wave[k] = (double(bruto[k]) - media) / 7.5;
 }
 
 void epusp_synth_device::device_start()
@@ -152,7 +168,9 @@ void epusp_synth_device::device_start()
 	save_item(NAME(m_gate));
 	save_item(NAME(m_intensity));
 	save_item(NAME(m_timbre));
-	save_item(NAME(m_mem));
+	save_item(NAME(m_computer_half));
+	save_item(NAME(m_store));
+	save_item(NAME(m_auto_select));
 	save_item(NAME(m_phase));
 }
 
@@ -162,23 +180,30 @@ void epusp_synth_device::device_reset()
 	m_gate = false;
 	m_intensity = 0;
 
-	/* A SQUARE WAVE AS THE DEFAULT TIMBRE, and the reason matters.
+	/* A SQUARE AS THE DEFAULT WAVEFORM, in every store, and the reason
+	   matters more now than it did.
 
-	   FITA#015 -- the Bachianinha -- sends no TIMBRE command at all: test C1.4
-	   of verificar.py finds it uses only /0B and /00.  On the real instrument
-	   it would play with whatever was left in the timbre store from the
-	   previous piece, which is not something a fresh emulation can reproduce.
-	   Starting from an all-zero table would make that tape silent, and silence
-	   with no error is the worst failure mode this project has.
+	   Position 0 is PGRF, the GRAPHIC PANEL: sixteen sliding switches the
+	   composer set BY HAND.  FITA#023 selects it with "LETMB,0" for most of
+	   the piece, and that drawing is not on the tape -- the one thing needed
+	   to reproduce the piece exactly is the one thing no tape can carry.
 
-	   So the store comes up holding a square: eight samples high, eight low.
-	   It is a modelling choice, declared, not a reading. */
-	static const uint8_t QUADRADA[8] = { 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00 };
+	   FITA#015, the Bachianinha, sends no TIMBRE command at all (test C1.4 of
+	   verificar.py), so on the real instrument it played with whatever was
+	   left in the stores from the previous session.
+
+	   Both cases would be silent from an all-zero store, and silence with no
+	   error is the worst failure mode this project has.  So every store comes
+	   up holding a square -- the first half cycle all at maximum, whose odd
+	   extension is the square.  It is a modelling choice, declared, not a
+	   reading. */
+	static const uint8_t QUADRADA[8] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 	std::copy(std::begin(QUADRADA), std::end(QUADRADA), std::begin(m_timbre));
-	for (auto &mem : m_mem)
-		std::fill(std::begin(mem), std::end(mem), 0.0);
-	unpack(m_timbre, m_mem[COMPUTER_MEMORY]);
+	unpack(m_timbre, m_computer_half);
+	for (auto &s : m_store)
+		std::copy(std::begin(m_computer_half), std::end(m_computer_half), std::begin(s));
 
+	m_auto_select = PGRF;
 	m_phase = 0.0;
 }
 
@@ -213,30 +238,46 @@ void epusp_synth_device::command_w(uint16_t pair)
 
 	case 1: case 2: case 3: case 4:
 	case 5: case 6: case 7: case 8:
-		/* Armazenamento de timbre.  Sixteen 4-bit samples, transposed into
-		   four bit planes of sixteen bits each; test C1.2 of
-		   scripts/sintetizador/verificar.py pins the transposition down with
+		/* Armazenamento de timbre: the computer's own store.  Sixteen 4-bit
+		   samples transposed into four bit planes of sixteen bits, pinned down
+		   by test C1.2 of scripts/sintetizador/verificar.py --
 		   "TIMBRE,0011223344556677" -> 00 00 00 FF 0F 0F 33 33.
 
-		   These eight bytes ARE the serial fill of memory 8 through en1/en0:
-		   16 samples x 4 bits = 64 bits = 8 bytes, and chapter 11 gives the
-		   computer no other way in.  So they land in COMPUTER_MEMORY and
-		   nowhere else -- the computer cannot touch memories 1 to 7, whose
-		   only loading path is the manual TRANSFERE switches. */
+		   These eight bytes are the serial fill of chapter 11's eighth memory
+		   through en1/en0: 16 samples x 4 bits = 64 bits = 8 bytes.  They do
+		   NOT reach the output on their own; GRTMB has to move them. */
 		m_timbre[cmd - 1] = data;
-		unpack(m_timbre, m_mem[COMPUTER_MEMORY]);
+		unpack(m_timbre, m_computer_half);
+		break;
 
-		/* Worth saying out loud, because it is the single most likely reason
-		   for "the tape programs a timbre and I hear no change": the computer
-		   can only write memory 8, and S1 decides what is heard.  With S1
-		   anywhere else, this load is real and simply inaudible -- which is
-		   how the instrument behaved, not a fault. */
-		if (cmd == 8 && selected_wave() != m_mem[COMPUTER_MEMORY])
+	case 9:
+	{
+		/* GRTMB -- the "TRANSFIRA" of chapter 3.  Copies the computer's store
+		   into memory n.  Position 0 is the graphic panel, which is a set of
+		   physical switches and cannot be written, so a transfer there is
+		   ignored rather than silently accepted. */
+		unsigned const n = data & 0x0F;
+		if (n == PGRF || n >= STORES)
 		{
-			LOGMASKED(LOG_TIMBRE,
-					"timbre carregado na memoria 8, mas S1 esta na posicao %u: nao sera ouvido\n",
-					m_s1->read() & 0x0f);
+			LOGMASKED(LOG_TIMBRE, "GRTMB,%u ignorado: %s\n", n,
+					(n == PGRF) ? "PGRF e painel fisico, nao memoria" : "fora de M1-M7");
 		}
+		else
+		{
+			std::copy(std::begin(m_computer_half), std::end(m_computer_half),
+					std::begin(m_store[n]));
+			LOGMASKED(LOG_TIMBRE, "GRTMB,%u: forma de onda do computador -> M%u\n", n, n);
+		}
+		break;
+	}
+
+	case 10:
+		/* LETMB -- the "LEIA" of chapter 3.  Selects which store reaches the
+		   output.  Only has effect with the front panel on AUTO; chapter 3 is
+		   explicit that in any other position the operator's switch decides. */
+		m_auto_select = data & 0x0F;
+		LOGMASKED(LOG_TIMBRE, "LETMB,%u: seleciona %s\n", m_auto_select,
+				(m_auto_select == PGRF) ? "PGRF" : "memoria");
 		break;
 
 	default:
@@ -258,45 +299,33 @@ void epusp_synth_device::sound_stream_update(sound_stream &stream)
 	if (f <= 0.0 || f >= stream.sample_rate() / 2.0)
 		return;   // above Nyquist there is nothing honest to emit
 
-	/* WHY THIS IS STILL A SQUARE WAVE, WITH selected_wave() SITTING RIGHT
-	   THERE -- and what modelling chapter 11 changed about the answer.
+	/* THE WAVETABLE, AT LAST -- and what changed to make it honest.
 
-	   The unpacking is correct: it reproduces the one case test C1.2 pins
-	   down, and m_mem[COMPUTER_MEMORY] holds the samples the tape asked for.
-	   The eight memories and S1 above are chapter 11's architecture, read off
-	   the manual and the chip list rather than guessed.
+	   The store holds sixteen samples that are HALF a cycle of an odd
+	   waveform, so the period is 32 steps: the sixteen forwards, then the same
+	   sixteen negated.  Chapter 3 states it twice (the panel draws "meio ciclo
+	   de uma forma de onda impar"; SAU is a "funcao impar cujo primeiro
+	   semi-ciclo e o registrado") and the clock proves it a third time -- frl
+	   is "32 vezes a da forma de onda de saida", and 32 = 16 x 2.
 
-	   And the model, now that it is structurally right, STILL PREDICTS
-	   SILENCE.  FITA#020 sends "2,24,TIMBRE,0000000000000000" at t=168 -- an
-	   all-zero table, halfway through the piece.  Commands 1 to 8 are the
-	   serial fill of memory 8; there is no other door for the computer.  With
-	   S1 on 8, memory 8 goes to zero at t=168 and everything after it is
-	   silent.  Yet the score keeps sending notes after t=168, and the
-	   instrument plainly played them.
+	   That is what unblocked this.  Earlier attempts fed the sixteen samples
+	   in as a whole cycle and had to subtract their mean to stop a DC offset
+	   from swamping the signal; a half-range ramp read that way sits
+	   off-centre, went silent, and looked like a missing indirection.  Read as
+	   a half cycle there is no offset to remove, because an odd function has
+	   none.
 
-	   THAT IS THE USEFUL RESULT.  Before chapter 11 the silence could have
-	   been our unpacking, our centring, or a missing indirection -- three
-	   suspects.  Now the architecture is documented and the silence survives,
-	   which rules the architecture out and localises the gap: either
-	   GRTMB (command 9) and LETMB (command 10) do something to the path that
-	   chapter 5's names do not reveal, or the timbre D/A is not the only thing
-	   feeding the output.  The hunt for what S9 and S10 strobe is paused in
-	   notas/timbre_indirecao.md in the PatinhoFeio repository, with the
-	   eliminations recorded so nobody repeats them.
-
-	   So the square stays.  Sounding a table that the documented model says
-	   should be silent would be a guess dressed as a result, and this project
-	   has already paid for diagnoses that pointed at the wrong place.  The
-	   memories are kept, unpacked and save-stated so that the reading, when it
-	   comes, has somewhere to land.
-
-	   A FRACTIONAL PHASE ACCUMULATOR, not an integer half-period counter.
-	   The first version counted down from int(rate / (2*f)), which quantises
+	   A FRACTIONAL PHASE ACCUMULATOR, not an integer step counter.  The first
+	   square-wave version counted down from int(rate / (2*f)), which quantises
 	   the period to whole samples: every note came out up to 1.3% sharp, and
-	   scripts/sintetizador/analisar_wav.py in the PatinhoFeio repository saw
-	   it as a systematic error in the same direction on every note. A machine
-	   built to play music in tune should not be detuned by the emulator's
-	   arithmetic. */
+	   scripts/sintetizador/analisar_wav.py in the PatinhoFeio repository saw a
+	   systematic error in the same direction on every note.  A machine built
+	   to play music in tune should not be detuned by the emulator's
+	   arithmetic.
+
+	   No interpolation: the instrument steps its D/A once per frl edge and
+	   holds, so zero-order hold is what it did. */
+	double const *const half = m_store[selected_store()];
 	double const step = f / stream.sample_rate();
 	double const level = double(m_intensity) / 255.0;
 
@@ -305,6 +334,9 @@ void epusp_synth_device::sound_stream_update(sound_stream &stream)
 		m_phase += step;
 		if (m_phase >= 1.0)
 			m_phase -= 1.0;
-		stream.put(0, i, ((m_phase < 0.5) ? 1.0 : -1.0) * level);
+
+		unsigned const k = unsigned(m_phase * 32.0) & 31;
+		double const s = (k < 16) ? half[k] : -half[k - 16];
+		stream.put(0, i, s * level);
 	}
 }
