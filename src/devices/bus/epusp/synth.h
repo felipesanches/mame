@@ -113,8 +113,8 @@
     writable here, which is what a tape issuing GRTMB evidently assumes.
 
 ***************************************************************************/
-#ifndef MAME_USP_EPUSP_SYNTH_H
-#define MAME_USP_EPUSP_SYNTH_H
+#ifndef MAME_BUS_EPUSP_SYNTH_H
+#define MAME_BUS_EPUSP_SYNTH_H
 
 #pragma once
 
@@ -244,4 +244,4 @@ private:
 
 DECLARE_DEVICE_TYPE(EPUSP_SYNTH, epusp_synth_device)
 
-#endif // MAME_USP_EPUSP_SYNTH_H
+#endif // MAME_BUS_EPUSP_SYNTH_H
