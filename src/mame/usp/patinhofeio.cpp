@@ -6,13 +6,12 @@
 
 #include "emu.h"
 
-#include "epusp_synth.h"
-
 #include "imagedev/cassette.h"
 #include "sound/spkrdev.h"
 #include "speaker.h"
 #include "patinho_terminals.h"
 
+#include "bus/epusp/synth.h"
 #include "bus/patinho/iobus.h"
 #include "bus/patinho/ptreader.h"
 #include "bus/patinho/duplex.h"

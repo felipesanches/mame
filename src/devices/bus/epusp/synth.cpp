@@ -4,12 +4,12 @@
 
     Sound synthesiser of the EPUSP, by Guido Stolfi -- first stage
 
-    See epusp_synth.h for the command set and where it comes from.
+    See synth.h for the command set and where it comes from.
 
 ***************************************************************************/
 
 #include "emu.h"
-#include "epusp_synth.h"
+#include "synth.h"
 
 #include <cmath>
 
