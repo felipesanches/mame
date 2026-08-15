@@ -199,7 +199,13 @@ void menu_file_manager::populate()
 			// check whether we already had some devices with the same owner: if not, output the owner tag!
 			if (&dev != prev_parent)
 			{
-				item_append(string_format(_("[root%1$s]"), dev.tag()), FLAG_UI_HEADING | FLAG_DISABLE, nullptr);
+				// a slot that supplied a display name is announced by it
+				// rather than by its tag
+				device_slot_interface const *slot;
+				if (dev.interface(slot) && (slot->display_name() != slot->slot_name()))
+					item_append(string_format("[%1$s]", slot->display_name()), FLAG_UI_HEADING | FLAG_DISABLE, nullptr);
+				else
+					item_append(string_format(_("[root%1$s]"), dev.tag()), FLAG_UI_HEADING | FLAG_DISABLE, nullptr);
 				prev_parent = &dev;
 			}
 
