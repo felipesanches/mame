@@ -178,7 +178,25 @@ void epusp_synth_device::device_reset()
 {
 	m_pitch = 0;
 	m_gate = false;
-	m_intensity = 0;
+
+	/* INTENSITY COMES UP AT FULL SCALE, and this is not cosmetic.
+
+	   sound_stream_update() returns early when intensity is zero, and TWO of
+	   the four surviving music tapes never send command 12 at all.  FITA#015,
+	   the Bachianinha, uses only /0B and /00 -- pitch and gate -- for all 432
+	   of its notes, and FITA#024 is the same.  Both played in total silence,
+	   with no error anywhere.
+
+	   That is not what the instrument did.  INT is D/A 1, a control voltage
+	   into the gain-controlled amplifier, and a tape that never writes it
+	   simply played at whatever the front-panel attenuators (POTM, chapter 3)
+	   were set to.  Those settings are not on the tape and did not survive.
+
+	   Full scale is the declared choice: it makes an unset gain audible rather
+	   than silent, and the listener's own volume control is the honest place
+	   for a level nobody recorded.  Silence with no error is the worst failure
+	   mode this project has, and it had claimed two tapes. */
+	m_intensity = 0xFF;
 
 	/* A SQUARE AS THE DEFAULT WAVEFORM, in every store, and the reason
 	   matters more now than it did.
