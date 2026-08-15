@@ -6,12 +6,9 @@
 
 #include "emu.h"
 
-#include "imagedev/cassette.h"
-#include "sound/spkrdev.h"
-#include "speaker.h"
 #include "patinho_terminals.h"
 
-#include "bus/epusp/synth.h"
+#include "bus/epusp/epusp.h"
 #include "bus/patinho/iobus.h"
 #include "bus/patinho/ptreader.h"
 #include "bus/patinho/duplex.h"
@@ -30,8 +27,7 @@ public:
 		: driver_device(mconfig, type, tag)
 		, m_maincpu(*this, "maincpu")
 		, m_iobus(*this, "iobus")
-		, m_synth(*this, "synth")
-		, m_tape(*this, "tape")
+		, m_synthport(*this, "synthport")
 		, m_ioslot(*this, "io%x", 1U)
 		, m_mode_button(*this, "MODE_BUTTON%u", 0U)
 		, m_output_acc(*this, "acc%u", 0U)
@@ -63,8 +59,7 @@ protected:
 
 	required_device<patinho_feio_cpu_device> m_maincpu;
 	required_device<patinho_io_bus_device> m_iobus;
-	required_device<epusp_synth_device> m_synth;
-	required_device<cassette_image_device> m_tape;
+	required_device<epusp_synth_port_device> m_synthport;
 	optional_device_array<patinho_io_slot_device, 15> m_ioslot; // channels /1 to /F
 
 private:
@@ -306,45 +301,35 @@ void patinho_feio_state::patinho_feio(machine_config &config)
 	for (unsigned ch = 1; ch < patinho_io_bus_device::CHANNELS; ch++)
 		PATINHO_IO_SLOT(config, m_ioslot[ch - 1], ch, m_iobus, patinho_io_devices, dflt[ch]);
 
-	/* The synthesiser hangs off the coupled duplex boards: chapter 5 of its
-	   manual is a list of (command, data) pairs, and those are exactly what
-	   "MANDA DADOS" sends. It is wired to whatever sits in channel /6, which
-	   is where the executor addresses the pair. */
-	SPEAKER(config, "mono").front_center();
-	EPUSP_SYNTH(config, m_synth).add_route(ALL_OUTPUTS, "mono", 1.0);
-	m_iobus->tx_handler().set(m_synth, FUNC(epusp_synth_device::command_w));
+	/* THE SYNTHESISER IS A SEPARATE INSTRUMENT, ON THE END OF A CABLE.
 
-	/* THE TAPE RECORDER, which is how the pieces were actually made.
+	   It is not part of this computer and never was: chapter 12 lists what
+	   each channel held, and /6 and /7 hold general-purpose 8-bit duplex
+	   boards -- the same board type twice.  What the machine sends is a
+	   (command, data) pair through those boards, which is exactly the command
+	   set of chapter 5 of the synthesiser manual, and what comes back is a
+	   clock.  So the driver configures a CONNECTOR and three wires, and the
+	   instrument on the other end is a user's choice.  See
+	   src/devices/bus/epusp/epusp.h for why it is a port of its own and not a
+	   card of the I/O bus above.
 
-	   Two channels, and they do different jobs: 0 is the audio, 1 is a 1 kHz
-	   tone.  Voice 1 is recorded with the computer's own oscillator running
-	   the music, laying the tone down as it goes; voices 2 and up play that
-	   tape back, take their time base from the recovered tone, and mix
-	   themselves into the audio channel.  That is overdubbing, and it is why
-	   the surviving scores come in "1a. VOZ" and "2a. VOZ" tapes.
+	   Unplug it with -synthport "" and the machine still runs: it becomes a
+	   Patinho Feio with nothing on the duplex boards, which is how it spent
+	   most of its life.  That configuration is also how the loader regression
+	   test runs, precisely because it proves the two are independent. */
+	EPUSP_SYNTH_PORT(config, m_synthport, epusp_synth_devices, "synth");
 
-	   It hangs off the synthesiser and not off an I/O channel because that is
-	   where it hung: chapter 15 of the synthesiser manual, and the executor's
-	   own name for the mode, "AVISA QUE O SINTETIZADOR MANDA". */
-	static cassette_image::Options const tape_opts
-	{
-		2,        // channels: audio and sync
-		16,       // bits per sample
-		44100     // sample frequency
-	};
-	CASSETTE(config, m_tape);
-	m_tape->set_formats(cassette_default_formats);
-	m_tape->set_create_opts(&tape_opts);
-	m_tape->set_default_state(CASSETTE_STOPPED);
-	m_tape->set_interface("patinho_tape");
-	m_synth->set_tape(m_tape);
+	// Out: the (command, data) pair the executor addresses to channel /6.
+	m_iobus->tx_handler().set(m_synthport, FUNC(epusp_synth_port_device::command_w));
 
-	// The recovered 1 kHz reaches the backplane, where whichever card asked
-	// for an external time base picks it up.
-	m_synth->sync_handler().set(m_iobus, FUNC(patinho_io_bus_device::ext_sync_w));
+	// Out: the internal time base, offered to the instrument so it can lay a
+	// sync track onto its tape while the first voice is being recorded.
+	m_iobus->tick_handler().set(m_synthport, FUNC(epusp_synth_port_device::tick_w));
 
-	// And the way back: the internal time base, offered to the tape.
-	m_iobus->tick_handler().set(m_synth, FUNC(epusp_synth_device::tape_tick_w));
+	// In: the time base recovered from that tape on a later pass, reaching the
+	// backplane where whichever card asked for an external one picks it up.
+	// "AVISA QUE O SINTETIZADOR MANDA", in the executor's own words.
+	m_synthport->sync_handler().set(m_iobus, FUNC(patinho_io_bus_device::ext_sync_w));
 
 	config.set_default_layout(layout_patinho);
 
