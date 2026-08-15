@@ -118,19 +118,21 @@
 
 #pragma once
 
+#include "epusp.h"
+
 #include "imagedev/cassette.h"
 
 
 // ======================> epusp_synth_device
 
-class epusp_synth_device : public device_t, public device_sound_interface
+class epusp_synth_device : public device_t, public device_sound_interface, public device_epusp_synth_port_interface
 {
 public:
 	epusp_synth_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 
 	// One transfer from the coupled duplex boards: high byte = command
 	// register (channel /6), low byte = data register (channel /7).
-	void command_w(uint16_t pair);
+	virtual void command_w(uint16_t pair) override;
 
 	// Frequency of a pitch code, in Hz.  Public because the regression test
 	// wants to check it without going through the sound stream.
@@ -154,13 +156,14 @@ public:
 	   first, however the tape drifted.
 
 	   The recorder connects to the SYNTHESISER, not to a computer channel,
-	   which is why it lives here.  "O sintetizador manda" is the manual's own
-	   name for that path. */
-	auto sync_handler() { return m_sync_handler.bind(); }
-	template <typename T> void set_tape(T &&tag) { m_tape.set_tag(std::forward<T>(tag)); }
+	   which is why it lives here -- and, since 2026-08-15, why it is a
+	   SUBDEVICE of this one, built in device_add_mconfig().  It used to be a
+	   device of the Patinho Feio driver that the synthesiser was handed a tag
+	   for, which made a host machine responsible for a piece of the
+	   instrument's own plumbing.  Nothing outside needs to know it is here. */
 
-	// The time base generator's tick, offered for recording onto channel 1.
-	void tape_tick_w(int state);
+	// The host's time base, offered for recording onto channel 1.
+	virtual void tick_w(int state) override;
 
 	// The eight selectable waveform stores: index 0 is PGRF, the graphic
 	// panel, and 1 to 7 are memories M1 to M7.
@@ -185,6 +188,7 @@ public:
 protected:
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
+	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
 	virtual ioport_constructor device_input_ports() const override ATTR_COLD;
 	virtual void sound_stream_update(sound_stream &stream) override;
 
@@ -210,8 +214,7 @@ private:
 
 	sound_stream *m_stream = nullptr;
 	required_ioport m_s1;
-	optional_device<cassette_image_device> m_tape;
-	devcb_write_line m_sync_handler;
+	required_device<cassette_image_device> m_tape;
 
 	emu_timer *m_sync_timer = nullptr;
 	emu_timer *m_sync_off_timer = nullptr;
