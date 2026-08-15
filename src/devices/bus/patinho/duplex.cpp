@@ -130,7 +130,8 @@ void patinho_duplex_device::data_w(uint8_t cmd, uint8_t data)
 		uint16_t const pair = (uint16_t(reg()) << 8) | second;
 
 		LOGMASKED(LOG_TX, "MANDA DADOS: /%02X /%02X\n", reg(), second);
-		m_tx_handler(pair);
+		m_tx_handler(pair);   // for anything wired straight to this card
+		bus().tx_w(pair);     // and for the machine-level cable
 
 		set_status(false);              // busy: "SAL /61" waits on this
 		m_tx_timer->adjust(m_tx_time);
