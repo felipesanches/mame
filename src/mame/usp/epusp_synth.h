@@ -74,15 +74,22 @@ protected:
 	virtual void sound_stream_update(sound_stream &stream) override;
 
 private:
+	// Unpacks the eight bit-plane bytes into sixteen samples centred on zero.
+	static void unpack(const uint8_t planes[8], double wave[16]);
+
 	sound_stream *m_stream = nullptr;
 
 	uint8_t m_pitch = 0;      // the last pitch byte, from command 0 or 11
 	bool m_gate = false;      // command 0 turns it on, command 11 off
 	uint8_t m_intensity = 0;  // D/A 1, command 12
 
-	// Bit planes of the timbre, commands 1 to 8.  Not sounded yet: kept so
-	// that the wavetable stage does not have to revisit the interface.
+	// Bit planes of the timbre, commands 1 to 8, in the order the tapes send
+	// them.  The playable waveform is rebuilt from these by rebuild_wave().
 	uint8_t m_timbre[8];
+
+	// The sixteen 4-bit samples, unpacked from the planes and centred on
+	// zero, ready for the stream.
+	double m_wave[16];
 
 	// Square wave state: a fractional phase in [0,1), so that the period is
 	// not quantised to whole samples. See sound_stream_update().
