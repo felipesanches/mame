@@ -100,6 +100,7 @@ patinho_feio_cpu_device::patinho_feio_cpu_device(const machine_config &mconfig, 
 	, m_icount(0)
 	, m_rc_read_cb(*this, 0)
 	, m_buttons_read_cb(*this, 0)
+	, m_preparacao_cb(*this)
 	, m_io_func_cb(*this)
 	, m_io_data_r_cb(*this, 0)
 	, m_io_data_w_cb(*this)
@@ -149,6 +150,10 @@ void patinho_feio_cpu_device::device_start()
 	save_item(NAME(m_run));
 	save_item(NAME(m_wait_for_interrupt));
 	save_item(NAME(m_interrupts_enabled));
+	save_item(NAME(m_not_in_interrupt));
+	save_item(NAME(m_panel_interrupt));
+	save_item(NAME(m_pul_delay));
+	save_item(NAME(m_int_line));
 	save_item(NAME(m_scheduled_IND_bit_reset));
 	save_item(NAME(m_indirect_addressing));
 	save_item(NAME(m_mode));
@@ -179,7 +184,13 @@ void patinho_feio_cpu_device::device_reset()
 	m_flags = 0;
 	m_run = false;
 	m_wait_for_interrupt = false;
-	m_interrupts_enabled = false;
+	// Page 12.17 and page A.11, on what the PREPARACAO button leaves behind:
+	// "PERMITE/INIBE: ligado (permite)" and "NAO ESTA/ESTA: ligado (nao esta)".
+	// This used to come up inhibited, which no page of the manual asks for.
+	m_interrupts_enabled = true;
+	m_not_in_interrupt = true;
+	m_panel_interrupt = false;
+	m_pul_delay = false;
 	m_scheduled_IND_bit_reset = false;
 	m_indirect_addressing = false;
 	m_addr = 0;
@@ -189,6 +200,85 @@ void patinho_feio_cpu_device::device_reset()
 	m_update_panel_cb(ACC, m_opcode, READ_BYTE_PATINHO(m_addr), m_addr, PC, FLAGS, RC, m_mode);
 }
 
+/* The I/O bus drives this: the OR of the sixteen PEDIDO flip-flops.  There is
+   exactly one line, because chapter 11 gives the machine one interrupt level. */
+void patinho_feio_cpu_device::execute_set_input(int inputnum, int state)
+{
+	if (inputnum == IRQ_LINE)
+		m_int_line = (state != CLEAR_LINE);
+}
+
+/* The acceptance rule, drawn on page 12.16 and listed in words on page 12.14:
+
+       aceito = ( OR(PEDIDO de /0 a /F)  OR  botao do painel )
+                AND  PERMITE/INIBE
+                AND  NAO ESTA/ESTA
+
+   The per-device PERMITE/IMPEDE is deliberately NOT in this expression.  It
+   sits upstream, inside the interface board, gating whether that device's
+   PEDIDO can be set at all -- page A.12 draws it there, with a dashed arrow
+   into the PEDIDO flip-flop, and iobus.cpp implements it there.
+
+   There is no priority encoder to write: the sixteen requests reach one OR
+   gate and lose their identity, and the program is what decides who gets
+   served, by the order in which it tests "SAL /n4" (page 12.12). */
+bool patinho_feio_cpu_device::interrupt_accepted() const
+{
+	return (m_int_line || m_panel_interrupt)
+			&& m_interrupts_enabled && m_not_in_interrupt && !m_pul_delay;
+}
+
+/* ONE INSTRUCTION OF GRACE AFTER PUL -- an inference, flagged as one.
+
+   Chapter 11 is explicit that PUL is "equivalente a PLA 2 + termina
+   interrupcao": it jumps TO /002 and the two bytes sitting there, which are
+   the return address in "PLA <retorno>" layout, are then executed as an
+   instruction.  So the machine really does pass through /002.
+
+   Now put that next to the second interrupt discovery method of page 12.12:
+   treat one device, clear its ESTADO and PEDIDO, "e encerrar a interrupcao com
+   o PUL.  Se houver mais algum equipamento pedindo interrupcao, havera nova
+   interrupcao logo em seguida e outro dispositivo sera tratado."
+
+   A new interrupt immediately after PUL is therefore expected to work.  But if
+   the machine could accept it while the program counter still points at /002,
+   the hardware would write /002 into ERI, and every subsequent return would
+   land on a "PLA /002" pointing at itself.  The machine would hang, and the
+   method the manual recommends as the easier of the two would be unusable.
+
+   So acceptance must be held off for one instruction after PUL -- long enough
+   for the return jump at /002 to execute.  This is the same shape as the
+   6502's RTI/CLI delay, and it is the only model that keeps chapter 11 and
+   page 12.12 both true at once.
+
+   WHAT WOULD SETTLE IT: the control unit itself, in Fregni (1972), doc 02 in
+   this project.  Until someone reads the interrupt sequencing there, this is a
+   reasoned guess and not a transcription.  scripts/sintetizador/teste_interrupcao.lua
+   case F is what fails if the guess is wrong. */
+void patinho_feio_cpu_device::take_interrupt()
+{
+	/* Page 12.9: "havera um desvio para a posicao 4 da memoria, onde deve
+	   haver uma rotina para tratamento da interrupcao".
+
+	   The return address goes to ERI, at /002-/003, in the layout that makes
+	   the two bytes read back as "PLA <return>": the address is 12 bits, so
+	   the high nibble of /002 is zero, and zero is the opcode of PLA.  That is
+	   what makes PUL a plain jump to /002, and it is what lets the ILO routine
+	   of the synthesiser executor add 2 to /003 so that the interrupt returns
+	   one instruction further on. */
+	WRITE_BYTE_PATINHO(0x002, (PC >> 8) & 0x0F);
+	WRITE_BYTE_PATINHO(0x003, PC & 0xFF);
+
+	m_not_in_interrupt = false;   // page 12.17: the CPU clears it on accepting
+	m_panel_interrupt = false;    // page A.11, item 3, for the panel button
+	PC = 0x004;
+
+	// An ESP is over.  PARE is not: it never gets here, because the caller
+	// only asks while running or while waiting.
+	m_run = true;
+	m_wait_for_interrupt = false;
+}
+
 /* execute instructions on this CPU until icount expires */
 void patinho_feio_cpu_device::execute_run() {
 	do {
@@ -196,6 +286,36 @@ void patinho_feio_cpu_device::execute_run() {
 		m_ext = READ_ACC_EXTENSION_REG();
 		m_idx = READ_INDEX_REG();
 		m_update_panel_cb(ACC, READ_BYTE_PATINHO(PC), READ_BYTE_PATINHO(m_addr), m_addr, PC, FLAGS, RC, m_mode);
+
+		/* The panel INTERRUPCAO button is a flip-flop of its own (page A.11),
+		   so it has to be sampled while the processor is running too, not only
+		   in the stopped branch below where the other buttons are read. */
+		if (!m_buttons_read_cb.isunset())
+		{
+			uint16_t const b = m_buttons_read_cb(0);
+
+			/* The panel INTERRUPCAO button is a flip-flop of its own (page
+			   A.11), so it has to be sampled while the processor is running
+			   too, not only in the stopped branch below. */
+			if (b & BUTTON_INTERRUPCAO)
+				m_panel_interrupt = true;
+
+			/* PREPARACAO likewise: it is the reset button, and a reset button
+			   that only works on an already-stopped machine would be of little
+			   use.  It used to be read only in the stopped branch. */
+			if (b & BUTTON_PREPARACAO)
+			{
+				device_reset();
+				m_preparacao_cb(1);
+				m_preparacao_cb(0);
+			}
+		}
+
+		/* ESP waits for an interrupt; PARE does not accept one ("Para a
+		   maquina (nao aceita interrupcao)"), and neither do the panel modes.
+		   Hence the guard rather than a bare interrupt_accepted(). */
+		if ((m_run || m_wait_for_interrupt) && interrupt_accepted())
+			take_interrupt();
 
 		if (!m_run){
 			debugger_wait_hook();
@@ -217,12 +337,19 @@ void patinho_feio_cpu_device::execute_run() {
 				if (buttons & BUTTON_ARMAZENAMENTO) m_mode = DATA_STORE_MODE;
 				if (buttons & BUTTON_CICLO_UNICO) m_mode = CYCLE_STEP_MODE;
 				if (buttons & BUTTON_INSTRUCAO_UNICA) m_mode = INSTRUCTION_STEP_MODE;
-				if (buttons & BUTTON_PREPARACAO) device_reset();
+				// BUTTON_PREPARACAO is handled at the top of the loop, so that
+				// it works whether the machine is running or stopped.
 			}
 			m_icount = 0;   /* if processor is stopped, just burn cycles */
 		} else {
 			debugger_instruction_hook(PC);
+			bool const had_grace = m_pul_delay;
 			execute_instruction();
+			// The grace lasts exactly one instruction. Testing the flag saved
+			// before the instruction ran is what keeps a PUL from clearing the
+			// grace it has just asked for.
+			if (had_grace)
+				m_pul_delay = false;
 			m_icount --;
 		}
 	}
@@ -423,10 +550,22 @@ void patinho_feio_cpu_device::execute_instruction()
 			}
 			return;
 		case 0x98:
-			//PUL="Pula para /002 a limpa estado de interrupcao"
-			//     Jump to address /002 and disables interrupts
+			//PUL="Pula para /002 e limpa estado de interrupcao"
+			//     Ends an interrupt.  /002-/003 is ERI, the return address the
+			//     hardware stored when it accepted the interrupt, laid out so
+			//     that the two bytes read back as "PLA <return>" -- the address
+			//     is 12 bits, so the high nibble of /002 is zero, which is the
+			//     opcode of PLA.  Jumping to /002 therefore executes the
+			//     return.
+			//
+			//     Page 12.17: PUL turns NAO ESTA/ESTA back on.  It does NOT
+			//     touch PERMITE/INIBE, which only PERM and INIB move (page
+			//     A.11).  This used to clear m_interrupts_enabled instead,
+			//     which conflated the two flip-flops and left interrupts
+			//     inhibited after every service routine.
 			PC = 0x002;
-			m_interrupts_enabled = false;
+			m_not_in_interrupt = true;
+			m_pul_delay = true;   // see take_interrupt(), "ONE INSTRUCTION OF GRACE"
 			return;
 		case 0x99:
 			//TRE="Troca conteudos de ACC e EXT"
