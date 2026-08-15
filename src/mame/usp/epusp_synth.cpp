@@ -15,6 +15,7 @@
 
 #define LOG_CMD    (1U << 1)   // every command that arrives
 #define LOG_NOTE   (1U << 2)   // only the notes, with the frequency
+#define LOG_TIMBRE (1U << 3)   // timbre loads, and whether S1 can hear them
 
 #define VERBOSE (0)
 #include "logmacro.h"
@@ -24,8 +25,49 @@ DEFINE_DEVICE_TYPE(EPUSP_SYNTH, epusp_synth_device, "epusp_synth", "EPUSP sound 
 epusp_synth_device::epusp_synth_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: device_t(mconfig, EPUSP_SYNTH, tag, owner, clock)
 	, device_sound_interface(mconfig, *this)
+	, m_s1(*this, "S1")
 {
 	std::fill(std::begin(m_timbre), std::end(m_timbre), 0);
+	for (auto &mem : m_mem)
+		std::fill(std::begin(mem), std::end(mem), 0.0);
+}
+
+/* S1, the nine-position selector of chapter 11.  It is a machine
+   configuration and not a DIP switch because it is a front-panel control the
+   player turned between pieces, not a setting anyone opened the case for.
+
+   The default is position 8, the computer's own memory: it is the only one a
+   punched tape can fill, so it is the only default under which a tape that
+   programs a timbre can be heard at all. */
+static INPUT_PORTS_START(epusp_synth)
+	PORT_START("S1")
+	PORT_CONFNAME(0x0f, 8, "S1 -- selecao de timbre")
+	PORT_CONFSETTING(0, "Externa (chaves do painel)")
+	PORT_CONFSETTING(1, "Memoria 1")
+	PORT_CONFSETTING(2, "Memoria 2")
+	PORT_CONFSETTING(3, "Memoria 3")
+	PORT_CONFSETTING(4, "Memoria 4")
+	PORT_CONFSETTING(5, "Memoria 5")
+	PORT_CONFSETTING(6, "Memoria 6")
+	PORT_CONFSETTING(7, "Memoria 7")
+	PORT_CONFSETTING(8, "Memoria 8 (computador)")
+INPUT_PORTS_END
+
+ioport_constructor epusp_synth_device::device_input_ports() const
+{
+	return INPUT_PORTS_NAME(epusp_synth);
+}
+
+/* Which waveform reaches the D/A right now.  nullptr means S1 is on the
+   external position, where the 4 x 16 front-panel switches fed the generator
+   directly -- there is no stored table to return, and nothing survives about
+   what those switches were set to. */
+const double *epusp_synth_device::selected_wave() const
+{
+	unsigned const pos = m_s1->read() & 0x0f;
+	if (pos == S1_EXTERNAL || pos > 8)
+		return nullptr;
+	return m_mem[pos - 1];
 }
 
 /* Chapter 3 of the synthesiser manual puts the scale between "o do de
@@ -110,7 +152,7 @@ void epusp_synth_device::device_start()
 	save_item(NAME(m_gate));
 	save_item(NAME(m_intensity));
 	save_item(NAME(m_timbre));
-	save_item(NAME(m_wave));
+	save_item(NAME(m_mem));
 	save_item(NAME(m_phase));
 }
 
@@ -133,7 +175,9 @@ void epusp_synth_device::device_reset()
 	   It is a modelling choice, declared, not a reading. */
 	static const uint8_t QUADRADA[8] = { 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00 };
 	std::copy(std::begin(QUADRADA), std::end(QUADRADA), std::begin(m_timbre));
-	unpack(m_timbre, m_wave);
+	for (auto &mem : m_mem)
+		std::fill(std::begin(mem), std::end(mem), 0.0);
+	unpack(m_timbre, m_mem[COMPUTER_MEMORY]);
 
 	m_phase = 0.0;
 }
@@ -172,10 +216,27 @@ void epusp_synth_device::command_w(uint16_t pair)
 		/* Armazenamento de timbre.  Sixteen 4-bit samples, transposed into
 		   four bit planes of sixteen bits each; test C1.2 of
 		   scripts/sintetizador/verificar.py pins the transposition down with
-		   "TIMBRE,0011223344556677" -> 00 00 00 FF 0F 0F 33 33.  Stored, not
-		   yet sounded: the wavetable is the next stage. */
+		   "TIMBRE,0011223344556677" -> 00 00 00 FF 0F 0F 33 33.
+
+		   These eight bytes ARE the serial fill of memory 8 through en1/en0:
+		   16 samples x 4 bits = 64 bits = 8 bytes, and chapter 11 gives the
+		   computer no other way in.  So they land in COMPUTER_MEMORY and
+		   nowhere else -- the computer cannot touch memories 1 to 7, whose
+		   only loading path is the manual TRANSFERE switches. */
 		m_timbre[cmd - 1] = data;
-		unpack(m_timbre, m_wave);
+		unpack(m_timbre, m_mem[COMPUTER_MEMORY]);
+
+		/* Worth saying out loud, because it is the single most likely reason
+		   for "the tape programs a timbre and I hear no change": the computer
+		   can only write memory 8, and S1 decides what is heard.  With S1
+		   anywhere else, this load is real and simply inaudible -- which is
+		   how the instrument behaved, not a fault. */
+		if (cmd == 8 && selected_wave() != m_mem[COMPUTER_MEMORY])
+		{
+			LOGMASKED(LOG_TIMBRE,
+					"timbre carregado na memoria 8, mas S1 esta na posicao %u: nao sera ouvido\n",
+					m_s1->read() & 0x0f);
+		}
 		break;
 
 	default:
@@ -197,26 +258,37 @@ void epusp_synth_device::sound_stream_update(sound_stream &stream)
 	if (f <= 0.0 || f >= stream.sample_rate() / 2.0)
 		return;   // above Nyquist there is nothing honest to emit
 
-	/* WHY THIS IS STILL A SQUARE WAVE, WITH m_wave SITTING RIGHT THERE.
+	/* WHY THIS IS STILL A SQUARE WAVE, WITH selected_wave() SITTING RIGHT
+	   THERE -- and what modelling chapter 11 changed about the answer.
 
-	   The unpacking of the timbre planes is correct -- it reproduces the one
-	   case test C1.2 pins down -- and m_wave holds the sixteen samples the
-	   tape asked for.  Driving the output from it was tried, and it silenced
-	   the piece from the middle onwards.
+	   The unpacking is correct: it reproduces the one case test C1.2 pins
+	   down, and m_mem[COMPUTER_MEMORY] holds the samples the tape asked for.
+	   The eight memories and S1 above are chapter 11's architecture, read off
+	   the manual and the chip list rather than guessed.
 
-	   The reason is in the score itself.  FITA#020 sends
-	   "2,24,TIMBRE,0000000000000000" at t=168: an ALL-ZERO table, halfway
-	   through.  If commands 1-8 wrote straight to the playing waveform that
-	   would ask the instrument to fall silent for the rest of the piece, which
-	   is plainly not what the composer meant.  And the same score uses
-	   "GRTMB,7" (command 9, GRAVA TIMBRE) and "LETMB,0" / "LETMB,7"
-	   (command 10, LE TIMBRE), which chapter 5 lists as separate commands.
+	   And the model, now that it is structurally right, STILL PREDICTS
+	   SILENCE.  FITA#020 sends "2,24,TIMBRE,0000000000000000" at t=168 -- an
+	   all-zero table, halfway through the piece.  Commands 1 to 8 are the
+	   serial fill of memory 8; there is no other door for the computer.  With
+	   S1 on 8, memory 8 goes to zero at t=168 and everything after it is
+	   silent.  Yet the score keeps sending notes after t=168, and the
+	   instrument plainly played them.
 
-	   So 1-8 almost certainly load a STORE, and 9 and 10 move timbres between
-	   that store and the generator -- an indirection this device does not
-	   model.  Until chapter 11 ("gerador de timbres") has been read properly,
-	   sounding m_wave would be a guess dressed as a result.  The store is kept
-	   and unpacked so that the reading, when it happens, has somewhere to land.
+	   THAT IS THE USEFUL RESULT.  Before chapter 11 the silence could have
+	   been our unpacking, our centring, or a missing indirection -- three
+	   suspects.  Now the architecture is documented and the silence survives,
+	   which rules the architecture out and localises the gap: either
+	   GRTMB (command 9) and LETMB (command 10) do something to the path that
+	   chapter 5's names do not reveal, or the timbre D/A is not the only thing
+	   feeding the output.  The hunt for what S9 and S10 strobe is paused in
+	   notas/timbre_indirecao.md in the PatinhoFeio repository, with the
+	   eliminations recorded so nobody repeats them.
+
+	   So the square stays.  Sounding a table that the documented model says
+	   should be silent would be a guess dressed as a result, and this project
+	   has already paid for diagnoses that pointed at the wrong place.  The
+	   memories are kept, unpacked and save-stated so that the reading, when it
+	   comes, has somewhere to land.
 
 	   A FRACTIONAL PHASE ACCUMULATOR, not an integer half-period counter.
 	   The first version counted down from int(rate / (2*f)), which quantises
