@@ -118,6 +118,8 @@
 
 #pragma once
 
+#include "imagedev/cassette.h"
+
 
 // ======================> epusp_synth_device
 
@@ -134,6 +136,32 @@ public:
 	// wants to check it without going through the sound stream.
 	static double frequency(uint8_t code);
 
+	/* THE TAPE RECORDER, and why it hangs off the synthesiser.
+
+	   Overdubbing is how the pieces were made: the first voice is recorded to
+	   an audio tape, and the following voices are played and recorded ON TOP
+	   while the tape runs.  Staying in time is the hard part, and the machine
+	   solves it with a two-channel tape:
+
+	       channel 0   the audio
+	       channel 1   a 1 kHz tone
+
+	   On voice 1 the computer's own oscillator runs the music ("FNC /41",
+	   AVISA QUE A INTERFACE MANDA) and the 1 kHz is laid onto channel 1.  On
+	   voice 2 the tape is played back, its 1 kHz recovered and fed to the time
+	   base generator ("FNC /42", AVISA QUE O SINTETIZADOR MANDA), and the new
+	   voice is mixed into channel 0 -- so the second voice is slaved to the
+	   first, however the tape drifted.
+
+	   The recorder connects to the SYNTHESISER, not to a computer channel,
+	   which is why it lives here.  "O sintetizador manda" is the manual's own
+	   name for that path. */
+	auto sync_handler() { return m_sync_handler.bind(); }
+	template <typename T> void set_tape(T &&tag) { m_tape.set_tag(std::forward<T>(tag)); }
+
+	// The time base generator's tick, offered for recording onto channel 1.
+	void tape_tick_w(int state);
+
 	// The eight selectable waveform stores: index 0 is PGRF, the graphic
 	// panel, and 1 to 7 are memories M1 to M7.
 	static constexpr unsigned STORES = 8;
@@ -141,6 +169,18 @@ public:
 
 	// S1 positions.  Nine of them: AUTO, then PGRF, then M1 to M7.
 	static constexpr unsigned S1_AUTO = 0;
+
+	// Channel 0 is the audio, channel 1 the 1 kHz. Chapter 15: the frame sync
+	// is NOT recorded, "devido a dificuldades com a resposta em frequencia do
+	// gravador", so channel 1 carries ticks and nothing else.
+	static constexpr int AUDIO_CHANNEL = 0;
+	static constexpr int SYNC_CHANNEL = 1;
+
+	// Half of the 1 ms tick every surviving tape uses (TEMPI = 0).
+	static inline attotime const SYNC_HALF = attotime::from_usec(500);
+
+	// How loud each voice goes onto the tape. See mix_tape().
+	static constexpr double RECORD_LEVEL = 0.5;
 
 protected:
 	virtual void device_start() override ATTR_COLD;
@@ -158,8 +198,26 @@ private:
 	// on AUTO and the computer's last LETMB names it.
 	unsigned selected_store() const;
 
+	// Sums the tape into the stream, and writes the sum back when recording.
+	void mix_tape(sound_stream &stream);
+	// Finds the next rising edge of the recovered 1 kHz and schedules it.
+	void schedule_next_sync();
+	TIMER_CALLBACK_MEMBER(sync_edge);
+	TIMER_CALLBACK_MEMBER(sync_off);
+	double tape_position() const;
+	// Playing OR recording: an overdub is both, and is_playing() is false then.
+	bool tape_moving() const;
+
 	sound_stream *m_stream = nullptr;
 	required_ioport m_s1;
+	optional_device<cassette_image_device> m_tape;
+	devcb_write_line m_sync_handler;
+
+	emu_timer *m_sync_timer = nullptr;
+	emu_timer *m_sync_off_timer = nullptr;
+	double m_sync_scan = 0.0;    // where the edge search has got to, in seconds
+	double m_sync_written = 0.0; // channel 1 is written up to here
+	int m_sync_level = 0;        // the level the time base generator last gave
 
 	uint8_t m_pitch = 0;      // the last pitch byte, from command 0 or 11
 	bool m_gate = false;      // command 0 turns it on, command 11 off

@@ -33,6 +33,8 @@ void patinho_tbgen_device::device_start()
 	save_item(NAME(m_sync_pulse));
 	save_item(NAME(m_frame_count));
 	save_item(NAME(m_frame_ticks));
+	save_item(NAME(m_ext_sync));
+	save_item(NAME(m_external));
 }
 
 void patinho_tbgen_device::device_reset()
@@ -41,6 +43,8 @@ void patinho_tbgen_device::device_reset()
 	m_tempi = 0;
 	m_sync_pulse = false;
 	m_frame_count = 0;
+	m_external = false;
+	m_ext_sync = false;
 }
 
 void patinho_tbgen_device::card_reset()
@@ -51,6 +55,8 @@ void patinho_tbgen_device::card_reset()
 	m_tempi = 0;
 	m_sync_pulse = false;
 	m_frame_count = 0;
+	m_external = false;
+	m_ext_sync = false;
 }
 
 /* The period is 10^(TEMPI-3) seconds, so TEMPI = 0 is the 1 kHz of chapter 15
@@ -109,25 +115,23 @@ void patinho_tbgen_device::func_w(uint8_t cmd)
 		// "AVISA QUE A INTERFACE MANDA": the computer's own oscillator drives
 		// the tick.  The bus has already cleared ESTADO for us, which on this
 		// board is what "internal" means.
+		m_external = false;
 		break;
 
 	case 2:
 		/* "AVISA QUE O SINTETIZADOR MANDA": the tick comes from the 1 kHz
-		   track recovered from a tape recorder.  The bus has already set
-		   ESTADO, which here means "external".
+		   track recovered from the tape recorder, played back through the
+		   synthesiser.  The bus has already set ESTADO, which here means
+		   "external".  See ext_sync_w() for what does and does not travel on
+		   the tape, and why the frame pulse stays local.
 
-		   MODELLING DECISION, declared rather than discovered.  There is no
-		   tape recorder in the emulation, so the recovered 1 kHz is
-		   synthesised -- and something has to start it.  Voice 2 of the
-		   executor runs "FNC /42" and NEVER "SAI /40" (FITA#011.txt lines
-		   400-410: the voice is tested with "PLAZ LIZ", and only the voice 1
-		   branch at LIZ reaches "SAI /40").  So if this function does not
-		   start the clock, a voice 2 tape produces no tick at all, and the
-		   failure is total silence with no error message.
-
-		   What would settle it: the TBGEN board schematic, to see whether the
-		   external-source switch also enables the counter.  Until then this is
-		   a choice, and FITA#015 (voice 2) is what exercises it. */
+		   The clock is started here because voice 2 of the executor runs
+		   "FNC /42" and NEVER "SAI /40" -- FITA#011 tests the voice with
+		   "PLAZ LIZ", and only the voice 1 branch at LIZ reaches "SAI /40".
+		   Without this the board would never run at all.  With a tape
+		   mounted, the first recovered tick stands the oscillator down and
+		   the tape takes over. */
+		m_external = true;
 		set_control(true);
 		break;
 
@@ -197,6 +201,46 @@ bool patinho_tbgen_device::skip_cond(uint8_t cmd) const
    shows voice 2 should have none, this is the place to make it conditional on
    the clock source. */
 TIMER_CALLBACK_MEMBER(patinho_tbgen_device::tick)
+{
+	/* The internal oscillator is what gets recorded onto the tape's second
+	   channel while voice 1 plays.  Pulsed on the backplane rather than wired
+	   to the recorder, because this board does not know what is listening. */
+	bus().tick_w(1);
+	bus().tick_w(0);
+	advance();
+}
+
+/* THE RECOVERED 1 kHz, arriving from the tape through the synthesiser.
+
+   Chapter 15 of the synthesiser manual settles what is on the tape: the frame
+   sync "e enviado pelo fio amarelo no pino 3 da INTF. REC.", but the circuit
+   "nao grava o sincronismo de quadro devido a dificuldades com a resposta em
+   frequencia do gravador".  ONLY THE 1 kHz REACHES THE MAGNETIC TAPE.  So this
+   line carries ticks and nothing else, and the frame pulse keeps being counted
+   by this board -- which is exactly what makes the executor's drift correction
+   meaningful.
+
+   THE INTERNAL OSCILLATOR STANDS DOWN once a tape starts supplying ticks, and
+   comes back if the tape stops.  That is a declared convenience, not a reading:
+   a real board would have the source switch and nothing else.  It exists so
+   that a voice 2 tape still plays with no cassette mounted, which is how
+   FITA#015 was rendered and verified before the tape recorder was modelled. */
+void patinho_tbgen_device::ext_sync_w(int state)
+{
+	bool const rising = (state != 0) && !m_ext_sync;
+	m_ext_sync = (state != 0);
+
+	if (!rising || !m_external)
+		return;
+
+	if (!m_ext_ticks)
+		LOGMASKED(LOG_FRAME, "base de tempo assumida pela fita\n");
+	m_tick_timer->reset();   // the tape is the clock now
+	m_ext_ticks++;
+	advance();
+}
+
+void patinho_tbgen_device::advance()
 {
 	/* Page 12.15 generalised: whatever sets PEDIDO does so only if the
 	   PERMITE/IMPEDE flip-flop of the board allows it.  The executor turns it
