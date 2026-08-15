@@ -8,6 +8,7 @@
 
 #include "epusp_synth.h"
 
+#include "imagedev/cassette.h"
 #include "sound/spkrdev.h"
 #include "speaker.h"
 #include "patinho_terminals.h"
@@ -31,6 +32,7 @@ public:
 		, m_maincpu(*this, "maincpu")
 		, m_iobus(*this, "iobus")
 		, m_synth(*this, "synth")
+		, m_tape(*this, "tape")
 		, m_ioslot(*this, "io%x", 1U)
 		, m_mode_button(*this, "MODE_BUTTON%u", 0U)
 		, m_output_acc(*this, "acc%u", 0U)
@@ -63,6 +65,7 @@ protected:
 	required_device<patinho_feio_cpu_device> m_maincpu;
 	required_device<patinho_io_bus_device> m_iobus;
 	required_device<epusp_synth_device> m_synth;
+	required_device<cassette_image_device> m_tape;
 	optional_device_array<patinho_io_slot_device, 15> m_ioslot; // channels /1 to /F
 
 private:
@@ -311,6 +314,38 @@ void patinho_feio_state::patinho_feio(machine_config &config)
 	SPEAKER(config, "mono").front_center();
 	EPUSP_SYNTH(config, m_synth).add_route(ALL_OUTPUTS, "mono", 1.0);
 	m_iobus->tx_handler().set(m_synth, FUNC(epusp_synth_device::command_w));
+
+	/* THE TAPE RECORDER, which is how the pieces were actually made.
+
+	   Two channels, and they do different jobs: 0 is the audio, 1 is a 1 kHz
+	   tone.  Voice 1 is recorded with the computer's own oscillator running
+	   the music, laying the tone down as it goes; voices 2 and up play that
+	   tape back, take their time base from the recovered tone, and mix
+	   themselves into the audio channel.  That is overdubbing, and it is why
+	   the surviving scores come in "1a. VOZ" and "2a. VOZ" tapes.
+
+	   It hangs off the synthesiser and not off an I/O channel because that is
+	   where it hung: chapter 15 of the synthesiser manual, and the executor's
+	   own name for the mode, "AVISA QUE O SINTETIZADOR MANDA". */
+	static cassette_image::Options const tape_opts
+	{
+		2,        // channels: audio and sync
+		16,       // bits per sample
+		44100     // sample frequency
+	};
+	CASSETTE(config, m_tape);
+	m_tape->set_formats(cassette_default_formats);
+	m_tape->set_create_opts(&tape_opts);
+	m_tape->set_default_state(CASSETTE_STOPPED);
+	m_tape->set_interface("patinho_tape");
+	m_synth->set_tape(m_tape);
+
+	// The recovered 1 kHz reaches the backplane, where whichever card asked
+	// for an external time base picks it up.
+	m_synth->sync_handler().set(m_iobus, FUNC(patinho_io_bus_device::ext_sync_w));
+
+	// And the way back: the internal time base, offered to the tape.
+	m_iobus->tick_handler().set(m_synth, FUNC(epusp_synth_device::tape_tick_w));
 
 	config.set_default_layout(layout_patinho);
 
