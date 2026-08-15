@@ -52,6 +52,17 @@ public:
 	auto io_data_r() { return m_io_data_r_cb.bind(); }  // ENTR /nc
 	auto io_data_w() { return m_io_data_w_cb.bind(); }  // SAI  /nc
 	auto io_skip()   { return m_io_skip_cb.bind(); }    // SAL  /nc
+
+	// Pulsed when the PREPARACAO button is pressed, so that the rest of the
+	// machine can clear what the button clears.  Page 12.17 and page A.11 list
+	// the flip-flops it resets, and four of the six live in the interface
+	// boards rather than in the processor.
+	auto preparacao() { return m_preparacao_cb.bind(); }
+
+	// The one interrupt line.  Chapter 11: the machine has a single level,
+	// and page 12.16 shows the sixteen PEDIDO flip-flops reaching it through
+	// one OR gate, with no priority encoder anywhere.
+	static constexpr int IRQ_LINE = 0;
 	template <typename... T> void set_update_panel_cb(T &&... args) { m_update_panel_cb.set(std::forward<T>(args)...); }
 
 
@@ -60,6 +71,7 @@ public:
 protected:
 
 	virtual void execute_run() override;
+	virtual void execute_set_input(int inputnum, int state) override;
 	virtual std::unique_ptr<util::disasm_interface> create_disassembler() override;
 
 	address_space_config m_program_config;
@@ -84,8 +96,35 @@ protected:
 
 	/* processor state flip-flops */
 	bool m_run; /* processor is running */
-	bool m_wait_for_interrupt;
-	bool m_interrupts_enabled;
+	bool m_wait_for_interrupt; /* stopped by ESP rather than by PARE */
+
+	/* The two interrupt flip-flops the manual keeps apart, and which this
+	 * code used to conflate into one.  Page A.11 gives what moves each:
+	 *
+	 *   PERMITE/INIBE   ligado por PERM, desligado por INIB.
+	 *   NAO ESTA/ESTA   desligado pelo Patinho Feio ao aceitar uma
+	 *                   interrupcao, religado por ele ao encerra-la (PUL).
+	 *
+	 * Both are "ligado" after PREPARACAO (page 12.17 and page A.11), so the
+	 * machine comes up with interrupts permitted and not interrupted.
+	 */
+	bool m_interrupts_enabled; /* PERMITE/INIBE, true = permite */
+	bool m_not_in_interrupt;   /* NAO ESTA/ESTA, true = nao esta */
+
+	/* The panel INTERRUPCAO button is latched: page A.11 makes it a flip-flop
+	 * of its own, set by the button and cleared by the Patinho Feio "ao
+	 * aceitar uma interrupcao proveniente do painel". */
+	bool m_panel_interrupt;
+
+	/* One instruction of grace after PUL.  INFERRED, not documented -- see the
+	 * long comment over take_interrupt() in patinho_feio.cpp for the argument
+	 * and for what would settle it. */
+	bool m_pul_delay;
+
+	/* OR of the PEDIDO flip-flops of the sixteen interfaces, as delivered by
+	 * the I/O bus. */
+	bool m_int_line;
+
 	bool m_scheduled_IND_bit_reset;
 	bool m_indirect_addressing;
 
@@ -112,12 +151,15 @@ protected:
 
 private:
 	void execute_instruction();
+	bool interrupt_accepted() const;
+	void take_interrupt();
 	void compute_effective_address(unsigned int addr);
 	void set_flag(uint8_t flag, bool state);
 	void update_addition_flags(uint8_t operand_a, uint8_t operand_b);
 	uint16_t read_panel_keys_register();
 	devcb_read16 m_rc_read_cb;
 	devcb_read16 m_buttons_read_cb;
+	devcb_write_line m_preparacao_cb;
 	devcb_write8 m_io_func_cb;
 	devcb_read8  m_io_data_r_cb;
 	devcb_write8 m_io_data_w_cb;
