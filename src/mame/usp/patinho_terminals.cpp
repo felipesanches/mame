@@ -11,6 +11,16 @@
 #include "emu.h"
 #include "patinho_terminals.h"
 
+/* What the machine actually printed is a question this project asks constantly,
+   and with "-video none" there is no window to read it in.  Turn LOG_CHAR on
+   here and the characters go to the error log, one per line with the address
+   of the instruction that sent them.  10 characters per second is not a
+   flood. */
+#define LOG_CHAR  (1U << 1)
+
+#define VERBOSE (0)
+#include "logmacro.h"
+
 DEFINE_DEVICE_TYPE(PATINHO_DECWRITER, patinho_decwriter_device, "patinho_decwriter", "DECwriter printing terminal")
 DEFINE_DEVICE_TYPE(PATINHO_TTY,       patinho_tty_device,       "patinho_tty",       "Teletype ASR33 printing terminal")
 
@@ -49,6 +59,9 @@ void patinho_terminal_device::data_w(uint8_t cmd, uint8_t data)
 		logerror("unknown SAI command /%X\n", cmd);
 		return;
 	}
+
+	LOGMASKED(LOG_CHAR, "imprime /%02X %s\n", data,
+			(data >= 0x20 && data < 0x7F) ? util::string_format("'%c'", char(data)) : std::string());
 
 	m_teleprinter->write(data);
 
