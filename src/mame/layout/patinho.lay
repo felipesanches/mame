@@ -588,13 +588,23 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		</element>
 	</repeat>
 
-<!-- define background -->
+<!-- =====================================================================
+     THE PANEL ITSELF
 
-	<view name="Default layout">
+     The whole drawing lives in a group so that more than one view can show
+     it without a second copy: the plain front panel, the front panel with
+     the teleprinter beside it, and the synthesiser bench at the end of the
+     file all instantiate this same group.
+
+     The group's own coordinate system is 1280 x 1200, and every item is
+     inside it, which is why the views below need no explicit bounds.
+     ===================================================================== -->
+
+	<group name="painel">
 		<bounds x="0" y="0" width="1280" height="1200" />
 
 		<element ref="panel_background">
-			<bounds x="-33" y="-980" width="1343" height="2218" />
+			<bounds x="0" y="0" width="1280" height="1200" />
 		</element>
 
 		<!-- define orange rectangles -->
@@ -1496,5 +1506,48 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		<element ref="str_liberada"><bounds x="1012" y="615" width="56" height="16"/></element>
 		<element ref="str_protegida"><bounds x="1146" y="615" width="68" height="16"/></element>
 
+	</group>
+
+<!-- =====================================================================
+     VIEWS
+
+     THE ORDER MATTERS, AND SO DOES THE HIDDEN TELEPRINTER.
+
+     MAME does not pick view 0 when the machine has a screen.  It looks for
+     "the first view with this screen and this screen only" and falls back
+     to view 0 only when no view has one (render_target::configured_view,
+     src/emu/render.cpp).  A view with no screen is skipped whatever its
+     index, and the "Screen 0 Standard (4:3)" views are generated for every
+     screen in the machine, so before this file had a screen anywhere the
+     machine always opened on the teleprinter's blank paper.
+
+     That is why "Front Panel" carries the teleprinter screen in a
+     collection that starts hidden: the view then counts as a view with
+     that screen, is the first such view, and wins the automatic choice,
+     while what is on the glass is the panel alone.  The collection is not
+     dead weight either: Video Options -> Front Panel lets you tick the
+     teleprinter back on and read the paper beside the panel.
+
+     "Front Panel Alone" exists for one reason: a view whose screen tag
+     does not resolve is DROPPED (layout_reference_error, caught per view
+     in rendlay.cpp, whose own comment explains the same trap for intlc44).
+     Start the machine with an empty /B slot (./mame patinho -iob "")
+     and every view that names the teleprinter disappears.  Without this
+     one there would be no panel left to look at.
+     ===================================================================== -->
+
+	<view name="Front Panel">
+		<group ref="painel"/>
+
+		<collection name="Teleimpressor" visible="no">
+			<screen tag="iob:tty:terminal:tty_screen">
+				<bounds x="1320" y="400" width="640" height="400"/>
+			</screen>
+		</collection>
 	</view>
+
+	<view name="Front Panel Alone">
+		<group ref="painel"/>
+	</view>
+
 </mamelayout>
