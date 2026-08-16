@@ -4,14 +4,27 @@
 
     Connector for the sound synthesiser of the EPUSP (Guido Stolfi, 1977)
 
-    A generic port, in the shape of bus/rs232 and bus/midi: a host machine
-    instantiates EPUSP_SYNTH_PORT, and whatever card the user plugs into it
-    receives the traffic.  Three wires cross it:
+    A generic port, in the shape of bus/rs232 and bus/midi: a host's INTERFACE
+    BOARD instantiates EPUSP_SYNTH_PORT, and whatever card the user plugs into
+    it receives the traffic.  Three wires cross it:
 
         command_w   host -> instrument, one (command, data) pair per transfer
         tick_w      host -> instrument, the internal time base, offered so the
                     instrument can lay it onto a tape as a sync track
         output_sync instrument -> host, the time base recovered from a tape
+
+    WHERE IT HANGS ON THE PATINHO FEIO, AND WHY THERE
+
+    On the 8-bit duplex board, which is the interface the executor of Guido
+    Stolfi cables the instrument to and the only one of the machine's boards
+    that the 1977 manual describes as having an external cable of its own:
+
+        ./mame patinho -io6:duplex:port synth
+
+    It used to hang on the machine itself, as a "synthport" alongside the I/O
+    bus.  That was a connector the Patinho Feio never had.  Anything that
+    reaches the instrument through a board of the computer must therefore be
+    declared by THAT board; see src/devices/bus/patinho/duplex.h.
 
     WHY THIS IS A PORT OF ITS OWN AND NOT A CARD OF THE PATINHO I/O BUS
 

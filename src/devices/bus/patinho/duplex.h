@@ -32,6 +32,41 @@
     coupling, and it is why this card needs to reach its neighbour -- which is
     what patinho_io_bus_device::card() is for.
 
+    THE CONNECTOR ON THE BOARD, AND WHAT HANGS FROM IT
+
+    This is the one interface of the machine that the 1977 manual describes as
+    having an external cable of its own: the two addresses exist "para
+    possibilitar a ligacao entre o Patinho Feio e outros computadores".  So
+    the board carries a slot, and the synthesiser is one of the things that
+    can be plugged into it -- which is what the executor above is doing.
+
+        ./mame patinho -io6:duplex:port synth      instrument cabled on
+        ./mame patinho                             nothing on the cable
+
+    The slot is EMPTY BY DEFAULT, for two reasons.  The board is general
+    purpose and spent most of its life with nothing on the other end; and
+    channels /6 and /7 hold the same board type, so a default would put a
+    second instrument on the slave board, where nothing would ever reach it.
+
+    WHAT IS NOT DECIDED BY ANY DOCUMENT, and is therefore not asserted here:
+
+    - Whether the pair travels on one cable or on two, one serial line per
+      board.  The only pin list that survives is the one of the HP 21MX
+      interface (chapter 18 of the synthesiser manual: "BITS 0-7" on pin 6,
+      "BITS 8-15" on pin 4, "SAIDA CLOCK" on pin 2), and that is another
+      computer.  Here the whole 16 bit pair leaves through the connector of
+      the board that "MANDA DADOS" was addressed to; the slave board's own
+      connector stays empty.
+    - Which byte is COMMAND and which is DATA.  Chapter 5 of the synthesiser
+      manual has "uma palavra de comando de 8 bits ... e um dado de 8 bits"
+      and never says which travels where.  High byte = this board, low byte =
+      the neighbour, verified only by the notes coming out right:
+      scripts/sintetizador/desacoplamento.sh in the PatinhoFeio repository.
+
+    - The time base lines do NOT come from this board.  They belong to the
+      time base generator of channel /4 and reach the same instrument, so they
+      cross the backplane to get here; see patinho_io_bus_device::tick_w().
+
 ***************************************************************************/
 #ifndef MAME_BUS_PATINHO_DUPLEX_H
 #define MAME_BUS_PATINHO_DUPLEX_H
@@ -39,6 +74,8 @@
 #pragma once
 
 #include "iobus.h"
+
+#include "bus/epusp/epusp.h"
 
 
 // ======================> patinho_duplex_device
@@ -49,12 +86,6 @@ class patinho_duplex_device : public device_t,
 public:
 	patinho_duplex_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 
-	// One transfer, as it leaves the pair of boards: the high byte is the
-	// register of this channel and the low byte the register of the next one.
-	// For the synthesiser those are (command, data) -- chapter 5 of the
-	// synthesiser manual, "Comandos do Computador".
-	auto tx_handler() { return m_tx_handler.bind(); }
-
 	// How long "MANDA DADOS" keeps the interface busy.  NOT a documented
 	// figure: see the comment over data_w() in duplex.cpp.
 	void set_tx_time(attotime t) { m_tx_time = t; }
@@ -62,17 +93,24 @@ public:
 protected:
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
+	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
 
 	// device_patinho_io_card_interface implementation
 	virtual void func_w(uint8_t cmd) override;
 	virtual void data_w(uint8_t cmd, uint8_t data) override;
 	virtual void card_reset() override;
 
+	// The tick of whichever board is generating one, passed down the cable so
+	// that what is plugged in can record it.  It arrives over the backplane
+	// because it starts on another board; see iobus.h.
+	virtual void tick_w(int state) override;
+
 private:
 	TIMER_CALLBACK_MEMBER(tx_done);
 	patinho_duplex_device *partner() const;
+	void ext_sync_in(int state);
 
-	devcb_write16 m_tx_handler;
+	required_device<epusp_synth_port_device> m_port;
 	emu_timer *m_tx_timer = nullptr;
 	attotime m_tx_time;
 
