@@ -323,7 +323,7 @@ src/mame/layout/pg1000.lay and friends, copied as-is as its header says.
 		<text string="P A I N E L   G R Á F I C O   ( P G R F )       M E I O   C I C L O   D E   U M A   F U N Ç Ã O   Í M P A R"><color red="0" green="0" blue="0"/></text>
 	</element>
 	<element name="str_pgrf_nota">
-		<text string="16 CHAVES DESLIZANTES DE 16 POSIÇÕES — NO APARELHO REAL, 4 GRUPOS DE 16 CHAVES (64 AO TODO)"><color red="0.16" green="0.16" blue="0.14"/></text>
+		<text string="16 CHAVES DESLIZANTES DE 16 POSIÇÕES CADA — COMO NO APARELHO (CAP. 3)"><color red="0.16" green="0.16" blue="0.14"/></text>
 	</element>
 	<element name="str_nivel"><text string="NÍVEL"><color red="0" green="0" blue="0"/></text></element>
 	<element name="str_amostra"><text string="AMOSTRA"><color red="0" green="0" blue="0"/></text></element>

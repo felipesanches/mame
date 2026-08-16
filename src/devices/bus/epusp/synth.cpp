@@ -98,20 +98,25 @@ static INPUT_PORTS_START(epusp_synth)
 
 	/* THE GRAPHIC PANEL (PGRF): SIXTEEN SAMPLES, FOUR BITS EACH.
 
-	   The real control, counted by chapter 11's parts list, is "16 chaves de
-	   entrada" PER BIT UNIT, and there are four bit units -- 64 toggle switches
-	   in all, one per bit, laid out as four bit planes of sixteen samples.
-	   What is offered here is SIXTEEN SLIDERS OF SIXTEEN POSITIONS, one per
-	   sample, each position being the four bits of that sample.
+	   SIXTEEN SLIDERS IS WHAT THE INSTRUMENT HAD.  Chapter 3, describing the
+	   panel itself, is unambiguous:
 
-	   That is a usability choice by the project owner, made knowing the real
-	   panel had 64 switches, and it is recorded as a choice and not passed off
-	   as a reading.  The information is the same either way (16 x 4 bits), and
-	   the reason for the swap is the name of the thing: PGRF is the PAINEL
-	   GRAFICO, and chapter 3 describes drawing at it -- "Conjunto de 16 chaves
-	   deslizantes de 16 posicoes cada uma no qual se desenha MEIO CICLO de uma
-	   forma de onda IMPAR".  A row of cursor heights DRAWS the wave; a matrix
-	   of on/off switches spells it out in binary.
+	     "Conjunto de 16 chaves deslizantes de 16 posicoes cada uma no qual se
+	      desenha meio ciclo de uma forma de onda impar."
+
+	   Sixteen SLIDING switches, sixteen positions each, on which one DRAWS.
+	   That is this control, one for one, and it is the panel the player had in
+	   front of them -- not an emulator convenience.
+
+	   Chapter 11 counts the same thing from the other side and can mislead:
+	   "4 grupos de 16 chaves de selecao de timbres", and a parts list of "16
+	   chaves de entrada" per bit unit across four bit units.  That is 64
+	   SIGNALS, not 64 switches -- one sixteen-position slider emits four bits,
+	   and the four bit planes are how those bits reach the four bit units of
+	   the D/A.  Chapter 11 is the circuit chapter and counts inputs; chapter 3
+	   is the panel chapter and counts knobs.  Read alone, chapter 11 gives the
+	   wrong picture of what the operator touched, and this project believed it
+	   for a while before chapter 3 settled it.
 
 	   THESE SIXTEEN ARE HALF A CYCLE.  They feed store 0 and nothing else;
 	   sound_stream_update() plays them forwards and then negated, exactly as it
