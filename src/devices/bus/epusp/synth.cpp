@@ -772,6 +772,71 @@ void epusp_synth_device::device_start()
 	save_item(NAME(m_sync_scan));
 	save_item(NAME(m_sync_written));
 	save_item(NAME(m_sync_level));
+
+	/* THE HOST MIDI PARSER'S THREE BYTES.
+
+	   device_serial_interface already saves the BITS of the byte in flight
+	   (src/emu/diserial.cpp registers the receive register, the bit counts and
+	   the clocks), but nothing saves the BYTES the parser has already
+	   assembled.  Without these three, a state loaded in the middle of a
+	   message comes back with no running status and no pending note number:
+	   the next note played in running status is dropped, and a note-on whose
+	   velocity byte had not yet arrived is either lost or -- worse -- has its
+	   velocity read as a note number, sounding a note nobody played.
+
+	   None of this is state of the emulated instrument; it is state of the
+	   host input path, in exactly the way the PC keyboard's key repeat is not.
+	   It is saved because a save state has to restore the emulator, not just
+	   the museum piece. */
+	save_item(NAME(m_midi_status));
+	save_item(NAME(m_midi_nota));
+	save_item(NAME(m_midi_tem_nota));
+
+	/* WHAT IS DELIBERATELY NOT REGISTERED HERE, and why -- an exemption with no
+	   reason attached is a bug waiting for someone to find it in a year.
+
+	     m_stream            pointer.  sound_stream saves its own sample rate,
+	                         sync time and gains (src/emu/disound.cpp).
+
+	     m_sync_timer,       pointers.  Every timer's period, expiry and enabled
+	     m_sync_off_timer    flag is saved by the scheduler itself
+	                         (emu_timer::register_save(), src/emu/schedule.cpp),
+	                         and both are allocated unconditionally in this
+	                         function with named FUNC()s, which is the condition
+	                         for the saved index to mean the same thing on the
+	                         way back in.  Nothing needs re-arming: mix_tape()
+	                         re-arms m_sync_timer by itself whenever it finds it
+	                         disabled with the tape moving.
+
+	     m_s1,               ioports.  MAME does not put ioports in save states
+	     m_pgrf_amostra,     at all (there is not one save_item in
+	     m_tecl_modo,        src/emu/ioport.cpp), for the same reason the
+	     m_tecl_transp,      Patinho's own front-panel switches are not in it:
+	     m_tecl_porta        they are live input from the host, and their
+	                         settings persist in cfg/patinho.cfg instead.
+
+	                         ONE CONSEQUENCE WORTH KNOWING, because it looks
+	                         like a bug and is not: after a load, the SOUND
+	                         follows the saved m_store[PGRF] -- the hand-drawn
+	                         waveform does come back exactly -- while the
+	                         sixteen sliders on screen still show whatever they
+	                         show now.  If they disagree, the first slider moved
+	                         calls redesenha_pgrf() and the restored drawing is
+	                         replaced by the one on the panel.  Repainting the
+	                         sliders from m_store at load time would be the
+	                         other choice, and it is NOT made here: it would
+	                         throw away the user's current drawing to honour an
+	                         old one, and it would write a physical control that
+	                         chapter 3 says only a hand can move.
+
+	     m_tape              finder.  cassette_image_device saves its own state,
+	                         position included (src/devices/imagedev/cassette.cpp).
+	                         The SAMPLES on the tape are a host file and are not
+	                         in the state: rewind or re-record between save and
+	                         load and the sync timer points at an edge that is
+	                         no longer there.
+
+	     m_port (interface)  topology, resolved at construction. */
 }
 
 /* Where the tape head is, in seconds.  cassette_image_device keeps the
