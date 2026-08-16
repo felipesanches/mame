@@ -37,6 +37,8 @@ public:
 protected:
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
+	virtual void device_pre_save() override ATTR_COLD;
+	virtual void device_post_load() override ATTR_COLD;
 
 	// device_patinho_io_card_interface implementation
 	virtual void control_w(int state) override;
@@ -47,8 +49,31 @@ protected:
 private:
 	TIMER_CALLBACK_MEMBER(step);
 
+	/* NOT SAVED, and each one for a stated reason:
+
+	     m_step_timer  the pointer is topology, allocated unconditionally in
+	                   device_start() with a named FUNC().  The timer's STATE
+	                   (period, expiry, enabled) is saved by the scheduler
+	                   itself -- see emu_timer::register_save() in
+	                   src/emu/schedule.cpp -- so the reel goes back to turning
+	                   at 300 Hz after a load without anyone re-arming it here.
+
+	     m_bus, m_channel (from the card interface)  topology, fixed at
+	                   device_resolve_objects() time and identical either side
+	                   of a load. */
+
 	emu_timer *m_step_timer = nullptr;
 	bool m_skip_feed = false;
+
+	/* WHERE THE READING HEAD IS.  This is the one piece of this device's state
+	   that does not live in a member: it is the host file position inside
+	   device_image_interface, and nothing in MAME's image layer registers it
+	   for save states.  Without the pre_save/post_load pair below, loading a
+	   state taken half-way through a roll would leave the head wherever the
+	   LIVE session had got to, and the absolute loader would then read frames
+	   from the wrong offset -- a checksum failure with no error pointing at the
+	   cause.  Kept as a plain member so that save_item() can see it. */
+	u64 m_read_pos = 0;
 };
 
 DECLARE_DEVICE_TYPE(PATINHO_PTREADER, patinho_ptreader_device)
