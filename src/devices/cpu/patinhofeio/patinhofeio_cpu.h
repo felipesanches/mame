@@ -31,7 +31,14 @@ enum
 #define BUTTON_INTERRUPCAO           (1 << 7)  /* interrupt */
 #define BUTTON_PARTIDA               (1 << 8)  /* startup */
 #define BUTTON_PREPARACAO            (1 << 9)  /* reset */
-#define BUTTON_TIPO_DE_ENDERECAMENTO (1 << 10) /* Addressing mode (0: Fixed / 1: Sequential) */
+/* The ENDERECAMENTO lever, 0: Fixo / 1: Sequencial.  Storing a byte from the
+   panel leaves the address alone in Fixo and advances it in Sequencial, so the
+   safe position -- the one that cannot walk over memory if the operator forgets
+   about it -- is Fixo, and that is the one the bit rests at.  The layout draws
+   the needle accordingly: element "rotary_switch_enderecamento" points it left,
+   at the F I X O legend, for state 0.  No document fixes the electrical value;
+   see the long comment over that element in src/mame/layout/patinho.lay. */
+#define BUTTON_TIPO_DE_ENDERECAMENTO (1 << 10)
 #define BUTTON_PROTECAO_DE_MEMORIA   (1 << 11) /* Memory protection (in the address range 0xF80-0xFFF (1: write-only / 0: read-write) */
 
 class patinho_feio_cpu_device : public cpu_device {
