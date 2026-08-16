@@ -1435,9 +1435,16 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 			<bounds x="364" y="742" width="36" height="36" />
 		</element>
 
-		<element ref="state_lamp">
+		<!-- PARADO: lit whenever the processor is not executing instructions,
+		     which is after PARE, after ESP, and in any of the panel modes.
+		     The driver writes the output; see the call to the panel callback
+		     in patinho_feio.cpp for why all three light the same lamp. -->
+		<element name="parado" ref="state_lamp">
 			<bounds x="579" y="651" width="36" height="36" />
 		</element>
+		<!-- EXTERNO: still a fixed drawing.  Nothing in the manuals we have
+		     says what it shows, and a lamp wired to a guess is worse than a
+		     lamp that is honestly dark. -->
 		<element ref="state_lamp">
 			<bounds x="688" y="651" width="36" height="36" />
 		</element>
