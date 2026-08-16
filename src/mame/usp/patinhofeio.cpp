@@ -249,6 +249,7 @@ INPUT_PORTS_END
 static void patinho_io_devices(device_slot_interface &device)
 {
 	device.option_add("decwriter", PATINHO_DECWRITER); // DECwriter, historically /A
+	                                                   // (not a default: see below)
 	device.option_add("tty",       PATINHO_TTY);       // Teletype ASR33, historically /B
 	device.option_add("ptreader",  PATINHO_PTREADER);  // HP-2737-A, historically /E
 	device.option_add("tbgen",     PATINHO_TBGEN);     // synthesiser time base, /4
@@ -285,15 +286,36 @@ void patinho_feio_state::patinho_feio(machine_config &config)
 	m_maincpu->preparacao().set(FUNC(patinho_feio_state::preparacao_w));
 
 	/* The equipment the machine came with, in the channels chapter 12 gives
-	   them. Any of these can be moved, removed or replaced from the MAME UI
-	   or from the command line: "-ioa tty", "-ioe \"\"", and so on. */
+	   them -- with ONE deliberate omission, /A.  Any of these can be moved,
+	   removed or replaced from the MAME UI or from the command line:
+	   "-ioa decwriter", "-ioe \"\"", and so on.
+
+	   /A COMES UP EMPTY, AND THAT IS NOT WHAT THE MACHINE LOOKED LIKE.
+
+	   Chapter 12 lists BOTH printing terminals: a DECwriter on /A and a
+	   Teletype ASR33 on /B.  The real Patinho Feio had the two of them.  What
+	   follows is a convenience of operation, not a claim about history:
+	   driving the machine with two printing terminals at once is redundant for
+	   anyone who is not reproducing the 1977 installation, and every surviving
+	   program prints on /B.  Guido Stolfi's synthesiser executor is the case we
+	   can check byte by byte -- it addresses channels /1 /3 /4 /5 /6 /7 /9 /B
+	   /D /E /F and never /A, and its ".ERRO" diagnostic goes out of "SAI /B0"
+	   at /0D9, on the Teletype.  Removing the DECwriter changes nothing it
+	   prints; that was measured, not assumed, with
+	   PatinhoFeio/scripts/executor/saida_do_teleimpressor.lua.
+
+	   So whoever wants the machine as it was asks for it, in one word:
+
+	       ./mame patinho -ioa decwriter
+
+	   and the card is still in the slot's option list for the UI to offer. */
 	static char const *const dflt[16] =
 	{
 		nullptr, nullptr, nullptr, nullptr,       // /0 /1 /2 /3
 		"tbgen", nullptr, "duplex", "duplex",     // /4 /5 /6 /7
-		nullptr, nullptr, "decwriter", "tty",     // /8 /9 /A /B
+		nullptr, nullptr, nullptr, "tty",         // /8 /9 /A(*) /B
 		nullptr, nullptr, "ptreader", nullptr     // /C /D /E /F
-	};
+	};                                            // (*) chapter 12: DECwriter
 
 	for (unsigned ch = 1; ch < patinho_io_bus_device::CHANNELS; ch++)
 		PATINHO_IO_SLOT(config, m_ioslot[ch - 1], ch, m_iobus, patinho_io_devices, dflt[ch]);
