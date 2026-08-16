@@ -2227,6 +2227,14 @@ if BUSES["EPUSP"] then
 		MAME_DIR .. "src/devices/bus/epusp/synth.cpp",
 		MAME_DIR .. "src/devices/bus/epusp/synth.h",
 	}
+
+	dependency {
+		{ MAME_DIR .. "src/devices/bus/epusp/synth.cpp", GEN_DIR .. "emu/layout/epusp_synth.lh" },
+	}
+
+	custombuildtask {
+		layoutbuildtask("emu/layout", "epusp_synth"),
+	}
 end
 
 

@@ -13,6 +13,8 @@
 
 #include "speaker.h"
 
+#include "epusp_synth.lh"
+
 #include <bit>
 #include <cmath>
 
@@ -69,8 +71,21 @@ epusp_synth_device::epusp_synth_device(const machine_config &mconfig, const char
    anything, and AUTO is one setting away for anyone who wants to hear the
    other reading.  LOG_TIMBRE narrates every GRTMB and LETMB either way. */
 static INPUT_PORTS_START(epusp_synth)
+	/* PORT_TOGGLE ON A PORT_CONFNAME is what makes the knob on the front panel
+	   turn when it is clicked.  A layout item bound to a field calls
+	   ioport_field::set_value(1) on the press, and frame_update() answers that
+	   with select_next_setting() -- but ONLY for a field flagged as a toggle
+	   (src/emu/ioport.cpp:1270).  Without the flag the knob would draw the
+	   position correctly and refuse to be turned.
+
+	   It costs nothing anywhere else: a toggle field folds its value into the
+	   port's default value and reports no digital bit of its own
+	   (ioport.cpp:1288), so m_s1->read() returns exactly the same thing it did
+	   before, and the Machine Configuration menu still sets it directly.  The
+	   precedent is atari/a2600.cpp, whose TV Type and difficulty switches are
+	   PORT_CONFNAME + PORT_TOGGLE for the same reason. */
 	PORT_START("S1")
-	PORT_CONFNAME(0x0f, 1, "Selecao de timbre (AUTO/MANUAL + PGRF/M1-M7)")
+	PORT_CONFNAME(0x0f, 1, "Selecao de timbre (AUTO/MANUAL + PGRF/M1-M7)") PORT_TOGGLE
 	PORT_CONFSETTING(0, "AUTO (o computador escolhe)")
 	PORT_CONFSETTING(1, "MANUAL: PGRF (painel grafico)")
 	PORT_CONFSETTING(2, "MANUAL: M1")
@@ -100,7 +115,7 @@ static INPUT_PORTS_START(epusp_synth)
 
 	   THESE SIXTEEN ARE HALF A CYCLE.  They feed store 0 and nothing else;
 	   sound_stream_update() plays them forwards and then negated, exactly as it
-	   already did.  Sample 1 is the FIRST of the half cycle, which is the same
+	   already did.  Sample 0 is the FIRST of the half cycle, which is the same
 	   ordering commands 1 to 8 use (sample k is bit 15-k of each plane).
 
 	   THE DEFAULT IS 15 ON EVERY SLIDER, which is the all-maximum half cycle --
@@ -112,27 +127,32 @@ static INPUT_PORTS_START(epusp_synth)
 	   The values are written to cfg/patinho.cfg, so a waveform drawn by hand
 	   survives between sessions -- the one thing the paper tape could not
 	   carry. */
+	/* The samples are numbered 0 to 15, not 1 to 16, because that is what the
+	   front panel prints under each slider and what every index in this file
+	   means -- m_store[s][k], the _n below, and the bit 15-k of a bit plane.
+	   A user reading the panel and a user reading Tab -> Slider Controls have
+	   to be reading the same number. */
 #define PORT_PGRF_AMOSTRA(_n, _rotulo) \
 	PORT_START("AM" #_n) \
-	PORT_ADJUSTER(15, "PGRF: amostra " _rotulo " de 16") PORT_MINMAX(0, 15) \
+	PORT_ADJUSTER(15, "PGRF: amostra " _rotulo " (de 16)") PORT_MINMAX(0, 15) \
 	PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(epusp_synth_device::pgrf_alterado), _n)
 
-	PORT_PGRF_AMOSTRA(0,  " 1")
-	PORT_PGRF_AMOSTRA(1,  " 2")
-	PORT_PGRF_AMOSTRA(2,  " 3")
-	PORT_PGRF_AMOSTRA(3,  " 4")
-	PORT_PGRF_AMOSTRA(4,  " 5")
-	PORT_PGRF_AMOSTRA(5,  " 6")
-	PORT_PGRF_AMOSTRA(6,  " 7")
-	PORT_PGRF_AMOSTRA(7,  " 8")
-	PORT_PGRF_AMOSTRA(8,  " 9")
-	PORT_PGRF_AMOSTRA(9,  "10")
-	PORT_PGRF_AMOSTRA(10, "11")
-	PORT_PGRF_AMOSTRA(11, "12")
-	PORT_PGRF_AMOSTRA(12, "13")
-	PORT_PGRF_AMOSTRA(13, "14")
-	PORT_PGRF_AMOSTRA(14, "15")
-	PORT_PGRF_AMOSTRA(15, "16")
+	PORT_PGRF_AMOSTRA(0,  " 0")
+	PORT_PGRF_AMOSTRA(1,  " 1")
+	PORT_PGRF_AMOSTRA(2,  " 2")
+	PORT_PGRF_AMOSTRA(3,  " 3")
+	PORT_PGRF_AMOSTRA(4,  " 4")
+	PORT_PGRF_AMOSTRA(5,  " 5")
+	PORT_PGRF_AMOSTRA(6,  " 6")
+	PORT_PGRF_AMOSTRA(7,  " 7")
+	PORT_PGRF_AMOSTRA(8,  " 8")
+	PORT_PGRF_AMOSTRA(9,  " 9")
+	PORT_PGRF_AMOSTRA(10, "10")
+	PORT_PGRF_AMOSTRA(11, "11")
+	PORT_PGRF_AMOSTRA(12, "12")
+	PORT_PGRF_AMOSTRA(13, "13")
+	PORT_PGRF_AMOSTRA(14, "14")
+	PORT_PGRF_AMOSTRA(15, "15")
 
 #undef PORT_PGRF_AMOSTRA
 
@@ -180,7 +200,7 @@ static INPUT_PORTS_START(epusp_synth)
 	   tape is the computer playing, and a keyboard that stole the voice by
 	   default would silence all of them. */
 	PORT_START("TECL")
-	PORT_CONFNAME(0x01, 0x01, "Teclado: chave manual-automatico")
+	PORT_CONFNAME(0x01, 0x01, "Teclado: chave manual-automatico") PORT_TOGGLE
 		PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(epusp_synth_device::teclado_alterado), 0)
 	PORT_CONFSETTING(0x00, "MANUAL (as 49 teclas mandam)")
 	PORT_CONFSETTING(0x01, "AUTOMATICO (o computador manda)")
@@ -197,7 +217,7 @@ static INPUT_PORTS_START(epusp_synth)
 	   65.4 Hz, which is what C2 means everywhere else.  Any other position
 	   would print one note on the key and sound another. */
 	PORT_START("TRANSP")
-	PORT_CONFNAME(0x07, 2, "Teclado: transposicao de oitavas")
+	PORT_CONFNAME(0x07, 2, "Teclado: transposicao de oitavas") PORT_TOGGLE
 		PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(epusp_synth_device::teclado_alterado), 0)
 	PORT_CONFSETTING(0, "1 -- do0 (16,35 Hz) a do4 (261,6 Hz)")
 	PORT_CONFSETTING(1, "2 -- do1 (32,7 Hz) a do5 (523,3 Hz)")
@@ -328,6 +348,24 @@ void epusp_synth_device::device_add_mconfig(machine_config &config)
 	m_tape->set_create_opts(&tape_opts);
 	m_tape->set_default_state(CASSETTE_STOPPED);
 	m_tape->set_interface("patinho_tape");
+
+	/* AND ITS OWN FRONT PANEL.
+
+	   src/emu/layout/epusp_synth.lay -- a DEVICE layout, which is why it lives
+	   under src/emu/layout and not src/mame/layout: it belongs to the
+	   instrument, not to the computer, and it must come along whatever machine
+	   the instrument is plugged into.  MAME loads it beside the driver's own
+	   layout and names the view after this device's tag, so with the
+	   instrument on channel /6 it shows up as
+
+	       io6:duplex:port:synth Painel do sintetizador
+
+	   in Tab -> Video Options, and can be asked for straight away with
+	   -view "Painel do sintetizador".
+
+	   The panel draws the PGRF waveform, which is the whole point of it: the
+	   sixteen sliders are the half cycle, and their heights are the drawing. */
+	config.set_default_layout(layout_epusp_synth);
 }
 
 /* Which store reaches the output right now.  On AUTO the computer's last
