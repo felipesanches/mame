@@ -101,9 +101,15 @@ ioport_constructor epusp_synth_device::device_input_ports() const
 
      - the tape recorder's media option ("-cassette") only exists when the
        port is filled, because the image device only exists then.  Asking for
-       "-synthport \"\" -cassette tape.wav" fails with 'unknown option', which
-       is a loud failure and the right one -- there is nothing to put the tape
-       into.
+       a cassette without attaching the instrument -- that is, "-cassette
+       tape.wav" with no "-io6:duplex:port synth" -- fails with 'unknown
+       option', which is a loud failure and the right one: there is nothing to
+       put the tape into.
+
+       (This paragraph said "-synthport \"\"" until 2026-08-16.  That option
+       belonged to the machine-level connector this driver used to have, and
+       which never existed in the real computer; the instrument now hangs off
+       the duplex board it was actually cabled to.  See epusp.h.)
 
    THE RECORDER'S TWO CHANNELS: 0 is the audio, 1 is the 1 kHz sync tone.
    Chapter 15 of the synthesiser manual is explicit that the frame sync is NOT
