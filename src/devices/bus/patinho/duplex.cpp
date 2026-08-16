@@ -55,6 +55,25 @@ void patinho_duplex_device::device_start()
 
 	save_item(NAME(m_serial_mode));
 	save_item(NAME(m_coupled));
+
+	/* NOT REGISTERED, with reasons:
+
+	     the 8 bit register  it is m_data of the card interface, registered for
+	                         every board by interface_post_start() in iobus.cpp
+	                         along with the other four flip-flops.
+
+	     m_tx_timer          pointer; the scheduler saves the timer's period and
+	                         expiry.  Nothing needs re-arming after a load: the
+	                         callback only calls set_status(true), and m_status
+	                         is itself saved, so a state taken mid-transfer comes
+	                         back mid-transfer and finishes on time.
+
+	     m_tx_time           configuration, fixed in the constructor at
+	                         attotime::from_hz(9600) * 8.  set_tx_time() exists
+	                         for a future sweep and is never called, so there is
+	                         no value here a save could disagree with.
+
+	     m_port              finder for the external connector -- topology. */
 }
 
 void patinho_duplex_device::device_reset()

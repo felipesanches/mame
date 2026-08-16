@@ -40,6 +40,25 @@ void patinho_terminal_device::device_add_mconfig(machine_config &config)
 	m_teleprinter->set_keyboard_callback(FUNC(patinho_terminal_device::keyboard_input));
 }
 
+/* NO save_item OF ITS OWN, and every piece of this device's state is accounted
+   for somewhere else:
+
+     the six flip-flops   registered for every board by interface_post_start()
+                          of device_patinho_io_card_interface (iobus.cpp).
+
+     the printed page     generic_terminal_device saves its own character
+                          buffer, cursor position and frame counter
+                          (src/devices/machine/terminal.cpp), so the paper and
+                          the carriage travel with the state.
+
+     m_print_timer        pointer; the scheduler saves the timer.  The
+                          character is handed to the teleprinter BEFORE the
+                          timer is armed, so the timer only governs when the
+                          interface stops being busy -- nothing can be lost by
+                          saving in the middle of it.
+
+     m_char_time          configuration passed to the constructor (10 cps, and
+                          700 ms for a carriage return). */
 void patinho_terminal_device::device_start()
 {
 	m_print_timer = timer_alloc(FUNC(patinho_terminal_device::print_done), this);

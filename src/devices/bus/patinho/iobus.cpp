@@ -36,6 +36,9 @@ patinho_io_slot_device::patinho_io_slot_device(const machine_config &mconfig, co
 {
 }
 
+/* Nothing to register: a slot has no runtime state.  m_bus is a finder and
+   m_channel is set by the machine configuration, so both are the same before
+   and after a load.  The card plugged into it registers its own. */
 void patinho_io_slot_device::device_start()
 {
 }
@@ -88,6 +91,14 @@ void patinho_io_bus_device::device_start()
 	std::fill(std::begin(m_card), std::end(m_card), nullptr);
 	m_int_state = false;
 	save_item(NAME(m_int_state));
+
+	/* m_card[] is not saved: it is filled from the machine configuration by
+	   interface_pre_start() of each card, so it holds the same pointers before
+	   and after a load.  m_int_handler is a callback, likewise rebuilt when the
+	   machine is put together.  m_int_state is the only bit here that a running
+	   program can change, and it is the OR of the cards' PEDIDO lines -- saved
+	   rather than recomputed so that the interrupt line and the flag cannot
+	   come back disagreeing. */
 }
 
 /* Page A.11 and page 12.17: PREPARACAO clears CONTROLE, ESTADO, PEDIDO and
