@@ -1047,7 +1047,20 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 			<param name="mask" start="0x800" rshift="1" />
 
 			<element ref="str_num_~i~"><bounds x="~x_label~" y="780" width="18" height="16"/></element>
-			<element name="rc~n~" ref="switch" inputtag="rc" inputmask="~mask~">
+			<!-- ENTRADA MANUAL DE DADOS: the twelve levers of the key register.
+
+			     inputtag names the I/O PORT the mouse acts on, and this used to
+			     say "rc", which is the name of the OUTPUT the driver writes for
+			     the lamps.  There is no port called that, and a missing port is
+			     silent: root_device().ioport() returns nullptr, has_input() is
+			     then false, and an item with no input and clickthrough left at
+			     its default never enters the interactive list at all, so the
+			     pointer had nothing to hit.  The levers still drew correctly,
+			     because name= makes the state come from the output, which is
+			     why they looked alive and could only be worked from the
+			     keyboard.  The port is SWITCHES, and its masks are the same
+			     ones this repeat walks, from 0x800 down. -->
+			<element name="rc~n~" ref="switch" inputtag="SWITCHES" inputmask="~mask~">
 				<bounds x="~x_switch~" y="830" width="20" height="30"/>
 			</element>
 		</repeat>
