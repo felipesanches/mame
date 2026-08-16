@@ -200,6 +200,53 @@
            wins, and on release the highest key still held takes over.  Declared
            choice, not a reading.
 
+    A HOST MIDI CONTROLLER IS AN INPUT DEVICE OF THE EMULATOR, added 2026-08-16
+
+    Nobody claims the Patinho Feio had a PC keyboard, and yet it is a PC
+    keyboard that presses PARTIDA and forms the twelve bits of the switch
+    register in MAME.  A USB MIDI controller is the same kind of thing: it is
+    how a hand reaches a control the machine ALREADY HAS, in exactly the way
+    the PC keyboard and the mouse already are.  It is NOT a MIDI socket this
+    instrument acquired.
+
+    The emulated instrument still has exactly 49 key contacts and nothing more.
+    What was added is host plumbing that closes and opens those same contacts:
+    the receiver ends in aciona_tecla(), the ONE function a key of the PC
+    keyboard and a click on the layout already end in, so a MIDI note goes
+    through the seven-position octave transposition switch and through the
+    manual-automatico switch just as a finger does.  There is no parallel path
+    and no way for MIDI to do more than a finger can.
+
+    VELOCITY, CHANNEL AND AFTER-TOUCH ARE IGNORED, and not out of historical
+    modesty: chapter 3 gives the keyboard's gate output CHV as 0 V or 5 V, and
+    a contact has nothing to do with any of that information.  A note-on with
+    velocity 1 and one with velocity 127 sound identical, because that is what
+    the instrument does.  The one use made of the velocity byte is the note-on
+    velocity 0 = note-off convention, which is how controllers spell a release.
+
+    THE ONE PLACE THIS IS VISIBLE AND WHY -- the tension, stated rather than
+    hidden.  MAME's only vocabulary for a host MIDI source is bus/midi, whose
+    midi_port_device is a slot.  A plain MIDI_PORT(config, "kbdmidi",
+    midiin_slot, "midiin") -- what esq5505.cpp and the KN5000 both write --
+    would put a MIDI socket in "-listslots patinho" and give the user a
+    "-io6:duplex:port:synth:kbdmidi" option, which would be a lie about the
+    hardware.  option_set() marks the slot FIXED instead, and the three places
+    that enumerate slots for the user all skip fixed ones (clifront.cpp,
+    emuopts.cpp, ui/slotopt.cpp), so no socket is offered and no slot option
+    exists.  The image option "-midiin" survives, because images are
+    enumerated separately, and that is the honest name for the thing: a choice
+    of INPUT SOURCE, on the same shelf as -joystickprovider.
+
+    What is left over, and is not swept under the carpet: the midi_port_device
+    object still exists in the device tree, so "-listdevices" and the debugger
+    show it.  It is named "kbdmidi" and not "mdin" so that nothing suggests a
+    panel socket, and it carries a display name saying what it is.
+
+    NO CONTROLLER, NO CHANGE.  With no MIDI source selected the port never
+    drives rxd, the serial receiver never sees the 1->0 edge it waits for, and
+    not one byte is delivered.  Machine behaviour with -midiin unset is
+    bit-identical to before this was added.
+
     WHAT IS DELIBERATELY ABSENT: the general-purpose potentiometers of chapter
     17 (they have no fixed function, and no analogue block is modelled that they
     could feed) and any display of the resulting waveform.
@@ -214,10 +261,14 @@
 
 #include "imagedev/cassette.h"
 
+// For the host MIDI input path: the byte assembly at 31250 bps 8N1.  It models
+// no hardware of this instrument -- see the note above.
+#include "diserial.h"
+
 
 // ======================> epusp_synth_device
 
-class epusp_synth_device : public device_t, public device_sound_interface, public device_epusp_synth_port_interface
+class epusp_synth_device : public device_t, public device_sound_interface, public device_serial_interface, public device_epusp_synth_port_interface
 {
 public:
 	epusp_synth_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
@@ -277,6 +328,11 @@ public:
 	static constexpr unsigned AMOSTRAS = 16;
 	static constexpr unsigned TECLAS = 49;
 
+	// The 49 keys are named C2 to C6 in the General MIDI naming the port list
+	// uses, so a host controller's note n closes contact n - 36.  Nothing else
+	// about MIDI reaches the instrument; see the header comment.
+	static constexpr uint8_t MIDI_NOTA_BASE = 36;   // C2
+
 	// Channel 0 is the audio, channel 1 the 1 kHz. Chapter 15: the frame sync
 	// is NOT recorded, "devido a dificuldades com a resposta em frequencia do
 	// gravador", so channel 1 carries ticks and nothing else.
@@ -296,7 +352,23 @@ protected:
 	virtual ioport_constructor device_input_ports() const override ATTR_COLD;
 	virtual void sound_stream_update(sound_stream &stream) override;
 
+	// A whole MIDI byte has arrived on the host input path.
+	virtual void rcv_complete() override;
+
 private:
+	/* THE ONE PLACE A KEY CONTACT OPENS OR CLOSES.
+
+	   Every way of playing this instrument ends here: a key of the PC
+	   keyboard, a click on the layout, and a note from a host MIDI
+	   controller.  Idempotent on purpose -- asking for a state the contact is
+	   already in does nothing at all -- because the MIDI path acts at once AND
+	   pushes the ioport field, so the field's own change handler arrives
+	   afterwards saying the same thing. */
+	void aciona_tecla(unsigned k, bool apertada);
+
+	// Host MIDI input: line level -> serial receiver, and byte -> key contact.
+	void midi_rxd_w(int state) { rx_w(state); }
+	void midi_byte(uint8_t b);
 	// Unpacks the eight bit-plane bytes into the sixteen samples of the FIRST
 	// HALF CYCLE, scaled to +-1.  No DC removal: the full period is the odd
 	// extension of these, so its mean is zero by construction.
@@ -336,6 +408,10 @@ private:
 	required_ioport_array<AMOSTRAS> m_pgrf_amostra;
 	required_ioport m_tecl_modo;    // manual / automatico
 	required_ioport m_tecl_transp;  // seven-position octave transposition
+	// TECL0..TECL3, the 49 key contacts themselves.  Held so that the MIDI
+	// path can push the very same fields the PC keyboard presses, which is
+	// what makes the key light up on the layout.
+	required_ioport_array<4> m_tecl_porta;
 	required_device<cassette_image_device> m_tape;
 
 	emu_timer *m_sync_timer = nullptr;
@@ -371,6 +447,14 @@ private:
 	int32_t m_tecla_atual = -1;       // the key that owns the voice, -1 = none
 	bool m_tecl_gate = false;         // CHV, from the keys
 	uint8_t m_tecl_pitch = 0;         // the pitch byte those keys produce
+
+	/* THE HOST MIDI RECEIVER'S OWN STATE -- three bytes of parser, and none of
+	   it is state of the emulated instrument.  Running status is honoured
+	   because controllers use it; real-time bytes are ignored; system-common
+	   clears it; anything that is not note-on or note-off is dropped. */
+	uint8_t m_midi_status = 0;        // running status byte
+	uint8_t m_midi_nota = 0;          // first data byte, the note number
+	bool m_midi_tem_nota = false;     // ...and whether it has arrived
 
 	// Phase in [0,1) over the WHOLE period, which is 32 steps: 16 samples
 	// forward, then the same 16 negated.  Fractional, so the period is not
