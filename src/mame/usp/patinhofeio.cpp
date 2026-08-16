@@ -71,7 +71,6 @@ public:
 	void patinho_feio(machine_config &config) ATTR_COLD;
 
 protected:
-	virtual void machine_start() override ATTR_COLD;
 	virtual void machine_reset() override ATTR_COLD;
 
 	// device_nvram_interface -- the core memory (see the note above the class)
@@ -226,9 +225,6 @@ void patinho_feio_state::load_raw_data(const char* name, unsigned int start_addr
 
    So the timer only advances the tape while CONTROL is asserted; with the
    reel stopped it costs nothing but a poll. */
-
-void patinho_feio_state::machine_start(){
-}
 
 /* A BRAND NEW SET OF CORE PLANES IS BLANK.
 
@@ -490,9 +486,38 @@ ROM_START( patinho )
 	ROM_REGION( 0x080, "loader", 0 )
 	ROM_LOAD( "loader_reconstruido.bin", 0x000, 0x080, BAD_DUMP CRC(33b2c552) SHA1(25488794ee85c7c9a8a02d3b237b9bc6aa88433f) )
 
-	/* Micro pre-loader:
-	   This was re-created by professor Joao Jose Neto based on his vague
-	   recollection of sequences of opcode values from almost 40 years ago :-) */
+	/* MICRO PRE-LOADER -- KEPT AS AN ARTEFACT, DELIBERATELY NOT USED.
+
+	   This was re-created by professor Joao Jose Neto in 2016, from his
+	   recollection of opcode values from almost 40 years earlier.  Nothing in
+	   the driver loads it, and that is on purpose: it does not run.  Read
+	   byte by byte against the PDF it came from, three things are wrong.
+
+	     - The tape reader is on channel /E, and this program talks to /D
+	       (CD 40, CD 16, CD 17...).  Channel /E is what chapter 12 of the July
+	       1977 manual says, what routine LEOT of Stolfi's executor uses, and
+	       what our absolute loader was verified against, 445 bytes at a time.
+	     - The interrupt handler re-initialises the counter on every byte:
+	       the vector is /004 (chapter 11) and /004-/006 are CARI /1C + TRI, so
+	       IND goes back to 28 for each frame and the SUS IND at /022 never
+	       reaches zero.  The loop cannot terminate.
+	     - /017 is B0 13, a PLAZ whose operand points at the SECOND byte of the
+	       CLC at /012-/013 -- into the middle of a two-byte instruction.  The
+	       listing prints the label LOOP at /00D, which would need 0D.  The
+	       listing and the object code disagree with each other.
+
+	   A CONTEMPORARY listing did survive, and it is the one this project
+	   actually uses: Moshe Bain, 21 July 1977, fourteen bytes at /000, on
+	   channel /E, internally consistent, and a quarter of the panel gestures.
+	   It lives in the PatinhoFeio repository as source rather than as a binary
+	   blob, because that is what it is -- software that was keyed in by hand,
+	   not a ROM this machine ever contained:
+
+	       scripts/bootstrap/micro_pre_loader_1977.asm
+	       scripts/bootstrap/bootstrap_fiel.sh   (keys it in and runs the chain)
+
+	   This region stays so the 2016 document remains represented in the
+	   romset, and BAD_DUMP-style honesty is served by this comment. */
 	ROM_REGION( 0x02a, "micro_pre_loader", 0 )
 	ROM_LOAD( "micro-pre-loader.bin", 0x000, 0x02a, CRC(1921feab) SHA1(bb063102e44e9ab963f95b45710141dc2c5046b0) )
 ROM_END
