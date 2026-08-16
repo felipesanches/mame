@@ -8,7 +8,6 @@
 
 #include "patinho_terminals.h"
 
-#include "bus/epusp/epusp.h"
 #include "bus/patinho/iobus.h"
 #include "bus/patinho/ptreader.h"
 #include "bus/patinho/duplex.h"
@@ -27,7 +26,6 @@ public:
 		: driver_device(mconfig, type, tag)
 		, m_maincpu(*this, "maincpu")
 		, m_iobus(*this, "iobus")
-		, m_synthport(*this, "synthport")
 		, m_ioslot(*this, "io%x", 1U)
 		, m_mode_button(*this, "MODE_BUTTON%u", 0U)
 		, m_output_acc(*this, "acc%u", 0U)
@@ -59,7 +57,6 @@ protected:
 
 	required_device<patinho_feio_cpu_device> m_maincpu;
 	required_device<patinho_io_bus_device> m_iobus;
-	required_device<epusp_synth_port_device> m_synthport;
 	optional_device_array<patinho_io_slot_device, 15> m_ioslot; // channels /1 to /F
 
 private:
@@ -301,35 +298,27 @@ void patinho_feio_state::patinho_feio(machine_config &config)
 	for (unsigned ch = 1; ch < patinho_io_bus_device::CHANNELS; ch++)
 		PATINHO_IO_SLOT(config, m_ioslot[ch - 1], ch, m_iobus, patinho_io_devices, dflt[ch]);
 
-	/* THE SYNTHESISER IS A SEPARATE INSTRUMENT, ON THE END OF A CABLE.
+	/* AND NOTHING ELSE.  THE SYNTHESISER IS NOT WIRED HERE.
 
-	   It is not part of this computer and never was: chapter 12 lists what
-	   each channel held, and /6 and /7 hold general-purpose 8-bit duplex
-	   boards -- the same board type twice.  What the machine sends is a
-	   (command, data) pair through those boards, which is exactly the command
-	   set of chapter 5 of the synthesiser manual, and what comes back is a
-	   clock.  So the driver configures a CONNECTOR and three wires, and the
-	   instrument on the other end is a user's choice.  See
-	   src/devices/bus/epusp/epusp.h for why it is a port of its own and not a
-	   card of the I/O bus above.
+	   It never was part of this computer: chapter 12 lists what each channel
+	   held, and /6 and /7 hold general-purpose 8-bit duplex boards -- the same
+	   board type twice, described as being there "para possibilitar a ligacao
+	   entre o Patinho Feio e outros computadores".  Guido Stolfi's executor
+	   couples that pair and sends the instrument a (command, data) pair, which
+	   is the command set of chapter 5 of the synthesiser manual.
 
-	   Unplug it with -synthport "" and the machine still runs: it becomes a
-	   Patinho Feio with nothing on the duplex boards, which is how it spent
-	   most of its life.  That configuration is also how the loader regression
-	   test runs, precisely because it proves the two are independent. */
-	EPUSP_SYNTH_PORT(config, m_synthport, epusp_synth_devices, "synth");
+	   So the connector belongs to the duplex board, not to the machine, and
+	   the instrument is plugged into it like any other slot device:
 
-	// Out: the (command, data) pair the executor addresses to channel /6.
-	m_iobus->tx_handler().set(m_synthport, FUNC(epusp_synth_port_device::command_w));
+	       ./mame patinho -io6:duplex:port synth
 
-	// Out: the internal time base, offered to the instrument so it can lay a
-	// sync track onto its tape while the first voice is being recorded.
-	m_iobus->tick_handler().set(m_synthport, FUNC(epusp_synth_port_device::tick_w));
-
-	// In: the time base recovered from that tape on a later pass, reaching the
-	// backplane where whichever card asked for an external one picks it up.
-	// "AVISA QUE O SINTETIZADOR MANDA", in the executor's own words.
-	m_synthport->sync_handler().set(m_iobus, FUNC(patinho_io_bus_device::ext_sync_w));
+	   An earlier version of this driver had a "synthport" here, at machine
+	   level.  It isolated the two halves correctly but invented an interface
+	   the real computer did not have; the board's own connector is the one
+	   that existed.  See src/devices/bus/patinho/duplex.h for the executor's
+	   evidence and for what the documents do not decide, and iobus.h for the
+	   two time base lines, which belong to the /4 board and reach the same
+	   instrument. */
 
 	config.set_default_layout(layout_patinho);
 
