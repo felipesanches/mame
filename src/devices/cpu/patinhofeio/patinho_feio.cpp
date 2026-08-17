@@ -406,9 +406,11 @@ void patinho_feio_cpu_device::execute_run() {
 			uint16_t const b = m_buttons_read_cb(0);
 
 			/* Sample the MEMORIA lever once per pass, before anything can
-			   touch core.  It is a lever: it holds whatever position the
-			   operator left it in, and 0 is PROTEGIDA (page 16.12 has the
-			   operator unprotecting after switching the machine on). */
+			   touch core.  It is a physical knob: it holds whatever position
+			   the operator left it in, across power cycles, so no bit value
+			   is "the" power-on state.  Mapping 0 to PROTEGIDA is a choice --
+			   see the comment in src/mame/layout/patinho.lay, which used to
+			   claim documentary support for it and no longer does. */
 			m_memory_protected = !(b & BUTTON_MEMORIA_LIBERADA);
 
 			/* The panel INTERRUPCAO button is a flip-flop of its own (page

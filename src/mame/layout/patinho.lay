@@ -39,12 +39,24 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 	         processor already assumes (patinhofeio_cpu.h: 0 = Fixo,
 	         1 = Sequencial).
 
-	       * MEMORIA rests at PROTEGIDA.  July 1977 manual, chapter 16, page
-	         16.12, the assembly procedure: step a) "Ligar o Patinho Feio",
-	         step f) "Desproteger a memoria", step i) "Proteger a memoria".
-	         Having to unprotect after switching the machine on only makes
-	         sense if it comes up protected, and the operator is told to leave
-	         it protected again at the end.
+	       * MEMORIA: bit 0 draws PROTEGIDA.  This is a CHOICE, not a reading.
+
+	         An earlier version of this comment argued that the machine "comes
+	         up protected", from the assembly procedure on page 16.12: step a)
+	         "Ligar o Patinho Feio", step f) "Desproteger a memoria", step i)
+	         "Proteger a memoria".  That argument is wrong and the project
+	         owner said so: THESE ARE PHYSICAL KNOBS.  A knob keeps whatever
+	         position it was left in and does not spring back when the power
+	         goes off, so there is no such thing as a documented power-on
+	         state for it.  Step f) tells the operator to unprotect because
+	         the memory might be protected -- from yesterday -- not because
+	         switching on protects it.
+
+	         What survives of the argument is only the pairing: the procedure
+	         leaves the machine protected at step i), so PROTEGIDA is the
+	         position the manual treats as the resting one for a machine not
+	         being loaded.  That is a reasonable default for bit 0 and nothing
+	         stronger.
 
 	     So bit 0 draws the needle to the LEFT on the addressing switch and to
 	     the RIGHT on the memory switch.  Two elements, one per lever.
