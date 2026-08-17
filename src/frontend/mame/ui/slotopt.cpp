@@ -198,7 +198,9 @@ void menu_slot_devices::populate()
 				? FLAG_LEFT_ARROW | FLAG_RIGHT_ARROW
 				: FLAG_DISABLE;
 
-		item_append(std::string(slot.slot_name()), std::move(opt_name), item_flags, (void *)&slot);
+		// display_name() is the slot name unless the slot asked for
+		// something the tag cannot spell
+		item_append(std::string(slot.display_name()), std::move(opt_name), item_flags, (void *)&slot);
 	}
 	item_append(menu_item_type::SEPARATOR);
 	item_append(_("Reset System"), 0, ITEMREF_RESET);

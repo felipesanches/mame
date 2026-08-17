@@ -2223,6 +2223,29 @@ end
 
 ---------------------------------------------------
 --
+--@src/devices/bus/epusp/epusp.h,BUSES["EPUSP"] = true
+---------------------------------------------------
+
+if BUSES["EPUSP"] then
+	files {
+		MAME_DIR .. "src/devices/bus/epusp/epusp.cpp",
+		MAME_DIR .. "src/devices/bus/epusp/epusp.h",
+		MAME_DIR .. "src/devices/bus/epusp/synth.cpp",
+		MAME_DIR .. "src/devices/bus/epusp/synth.h",
+	}
+
+	dependency {
+		{ MAME_DIR .. "src/devices/bus/epusp/synth.cpp", GEN_DIR .. "emu/layout/epusp_synth.lh" },
+	}
+
+	custombuildtask {
+		layoutbuildtask("emu/layout", "epusp_synth"),
+	}
+end
+
+
+---------------------------------------------------
+--
 --@src/devices/bus/fmt_scsi/fmt_scsi.h,BUSES["FMT_SCSI"] = true
 ---------------------------------------------------
 
@@ -4219,6 +4242,24 @@ if BUSES["PASOPIA"] then
 end
 
 
+
+---------------------------------------------------
+--
+--@src/devices/bus/patinho/iobus.h,BUSES["PATINHO"] = true
+---------------------------------------------------
+
+if (BUSES["PATINHO"]~=null) then
+	files {
+		MAME_DIR .. "src/devices/bus/patinho/iobus.cpp",
+		MAME_DIR .. "src/devices/bus/patinho/iobus.h",
+		MAME_DIR .. "src/devices/bus/patinho/ptreader.cpp",
+		MAME_DIR .. "src/devices/bus/patinho/ptreader.h",
+		MAME_DIR .. "src/devices/bus/patinho/tbgen.cpp",
+		MAME_DIR .. "src/devices/bus/patinho/tbgen.h",
+		MAME_DIR .. "src/devices/bus/patinho/duplex.cpp",
+		MAME_DIR .. "src/devices/bus/patinho/duplex.h",
+	}
+end
 ---------------------------------------------------
 --
 --@src/devices/bus/pc_joy/pc_joy.h,BUSES["PC_JOY"] = true
