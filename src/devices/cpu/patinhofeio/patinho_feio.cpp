@@ -220,7 +220,7 @@ void patinho_feio_cpu_device::device_reset()
 	m_mode = ADDRESSING_MODE;
 	m_prev_buttons = 0;
 
-	m_update_panel_cb(ACC, m_opcode, READ_BYTE_PANEL(m_addr), m_addr, PC, FLAGS, RC, m_mode);
+	m_update_panel_cb(ACC, m_opcode, READ_BYTE_PANEL(m_addr), m_addr, PC, FLAGS, RC, m_mode, !m_run);
 }
 
 /* The I/O bus drives this: the OR of the sixteen PEDIDO flip-flops.  There is
@@ -276,10 +276,13 @@ void patinho_feio_cpu_device::execute_run() {
 		read_panel_keys_register();
 		m_ext = READ_ACC_EXTENSION_REG();
 		m_idx = READ_INDEX_REG();
-		/* The lamps are the operator looking at the panel, so they show what is
-		   really in core even in the protected area: same reason ARMAZENAMENTO
-		   and EXPOSICAO are not blocked (see memory_is_protected()). */
-		m_update_panel_cb(ACC, READ_BYTE_PANEL(PC), READ_BYTE_PANEL(m_addr), m_addr, PC, FLAGS, RC, m_mode);
+		/* The lamps show what is really in core even in the protected area,
+		   for the same reason the panel is not blocked (see
+		   memory_is_protected()).  The last argument is the PARADO lamp, lit
+		   whenever the processor is not executing instructions -- PARE, ESP
+		   and the panel modes alike (chapter 11).  The panel's other lamp,
+		   EXTERNO, has no documented meaning and stays unwired. */
+		m_update_panel_cb(ACC, READ_BYTE_PANEL(PC), READ_BYTE_PANEL(m_addr), m_addr, PC, FLAGS, RC, m_mode, !m_run);
 
 		/* The panel INTERRUPCAO button is a flip-flop of its own (page A.11),
 		   so it has to be sampled while the processor is running too, not only
@@ -288,10 +291,10 @@ void patinho_feio_cpu_device::execute_run() {
 		{
 			uint16_t const b = m_buttons_read_cb(0);
 
-			/* Sample the MEMORIA lever once per pass, before anything can
-			   touch core.  It is a lever: it holds whatever position the
-			   operator left it in, and 0 is PROTEGIDA (page 16.12 has the
-			   operator unprotecting after switching the machine on). */
+			/* The MEMORIA lever is a physical knob and keeps its position
+			   across power cycles, so no bit value is the power-on state;
+			   mapping 0 to PROTEGIDA is a declared choice (see
+			   src/mame/layout/patinho.lay). */
 			m_memory_protected = !(b & BUTTON_MEMORIA_LIBERADA);
 
 			/* The panel INTERRUPCAO button is a flip-flop of its own (page

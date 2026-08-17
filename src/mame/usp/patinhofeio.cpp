@@ -46,6 +46,7 @@ public:
 		, m_output_pc(*this, "pc%u", 0U)
 		, m_output_rc(*this, "rc%u", 0U)
 		, m_output_flags(*this, "flags%u", 0U)
+		, m_output_parado(*this, "parado")
 	{ }
 
 	void init_patinho_feio() ATTR_COLD;
@@ -72,7 +73,7 @@ protected:
 
 
 
-	void update_panel(uint8_t ACC, uint8_t opcode, uint8_t mem_data, uint16_t mem_addr, uint16_t PC, uint8_t FLAGS, uint16_t RC, uint8_t mode);
+	void update_panel(uint8_t ACC, uint8_t opcode, uint8_t mem_data, uint16_t mem_addr, uint16_t PC, uint8_t FLAGS, uint16_t RC, uint8_t mode, bool halted);
 
 	// The PREPARACAO button also clears the flip-flops of every interface
 	// board (page 12.17 and page A.11), and those live on the bus.
@@ -91,6 +92,11 @@ private:
 	output_finder<12> m_output_pc;
 	output_finder<12> m_output_rc;
 	output_finder<2> m_output_flags;
+	/* The PARADO lamp of FASES DE OPERACAO.  It is the only one of the nine
+	   state lamps that is driven: the other eight, including EXTERNO right
+	   beside it, are still fixed drawings, because no document we have says
+	   what they show. */
+	output_finder<> m_output_parado;
 
 
 	uint8_t m_prev_ACC = 0;
@@ -122,24 +128,10 @@ void patinho_feio_state::machine_start()
 	save_item(NAME(m_prev_FLAGS));
 	save_item(NAME(m_prev_RC));
 
-	/* NOT REGISTERED HERE:
-
-	     the 4096 words of core   a memory share, saved by the memory manager
-	                              (see the comment in the CPU's device_start()).
-	                              The nvram interface above is a different
-	                              mechanism for a different purpose -- it makes
-	                              core survive between SESSIONS, the way ferrite
-	                              did between power cycles.
-
-	     the eight output_finders  the values behind them are saved by
-	                              output_manager::register_save(); the finders
-	                              themselves are topology.
-
-	     m_conf                   an ioport, and a configuration one at that.
-	                              MAME saves no ioports.
-
-	     m_maincpu, m_iobus,      device finders -- topology.
-	     m_ioslot                                                      */
+	/* Not registered here: the 4096 words of core (a memory share, saved by
+	   the memory manager; the nvram interface above is the separate mechanism
+	   that makes core survive between sessions), the output values (saved by
+	   output_manager::register_save()), and m_conf (MAME saves no ioports). */
 }
 
 
@@ -154,7 +146,12 @@ void patinho_feio_state::init_patinho_feio()
 	m_prev_RC = 0;
 }
 
-void patinho_feio_state::update_panel(uint8_t ACC, uint8_t opcode, uint8_t mem_data, uint16_t mem_addr, uint16_t PC, uint8_t FLAGS, uint16_t RC, uint8_t mode){
+void patinho_feio_state::update_panel(uint8_t ACC, uint8_t opcode, uint8_t mem_data, uint16_t mem_addr, uint16_t PC, uint8_t FLAGS, uint16_t RC, uint8_t mode, bool halted){
+	/* Written on every call rather than on change, like the mode buttons and
+	   unlike the bit lamps: one boolean is not worth a shadow copy, and a lamp
+	   with no shadow cannot fall out of step with one. */
+	m_output_parado = halted ? 1 : 0;
+
 	for (int i=0; i<6; i++){
 		m_mode_button[i] = (mode == i) ? 1 : 0;
 	}
