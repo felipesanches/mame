@@ -31,6 +31,35 @@
 #define ADDRESS_MASK_4K    0xFFF
 #define INCREMENT_PC_4K    (PC = (PC+1) & ADDRESS_MASK_4K)
 
+/* The "instrucoes curtas do grupo 2" (0x90-0x97) skip the *whole* next
+   instruction, which may well be a two-word long instruction. The July 1977
+   assembler manual is explicit about it, both in the chapter opening
+   ("Podem resultar em saltos (CI <- CI + 2)") and in a note on the sample
+   program ("Note que apos ST 0 e SV 1 ha instrucoes longas PLA FTP e PLA ROT
+   que ocupam duas palavras -- estas duas palavras serao saltadas quando a
+   condicao do salto for satisfeita").
+   Skipping a single word lands in the middle of a long instruction and
+   executes its operand as an opcode. */
+#define SKIP_NEXT_INSTRUCTION  { INCREMENT_PC_4K; INCREMENT_PC_4K; }
+
+/* Both flags are defined in chapter 2 of the July 1977 assembler manual.
+
+   V ("vai-um", carry): "o vai-um na ultima soma realizada (bit mais
+   significativo)" -- the carry out of bit 7.
+
+   T ("transbordo", overflow): chapter 3 says it is "modificado, por exemplo,
+   cada vez que e realizada uma adicao. Se houver transbordo na adicao, entao
+   e feito T = 1 e isto indica que o resultado (contido no ACC), esta errado."
+   Chapter 2 illustrates it with 60 + 70 = 130, which does not fit in the
+   representable range of a signed byte. That is signed overflow: it happens
+   when both operands share a sign and the result has the opposite one. */
+void patinho_feio_cpu_device::update_addition_flags(uint8_t operand_a, uint8_t operand_b){
+	uint16_t const result = operand_a + operand_b;
+
+	set_flag(V, result > 0xFF);
+	set_flag(T, BIT((operand_a ^ result) & (operand_b ^ result), 7));
+}
+
 void patinho_feio_cpu_device::set_flag(uint8_t flag, bool state){
 	if (state){
 		FLAGS |= flag;
@@ -219,9 +248,9 @@ void patinho_feio_cpu_device::execute_instruction()
 		case 0xD8:
 			//SOMI="Soma Imediato":
 			//     Add an immediate into the accumulator
-			set_flag(V, ((((int16_t) ACC) + ((int16_t) READ_BYTE_PATINHO(PC))) >> 8));
-			set_flag(T, ((((int8_t) (ACC & 0x7F)) + ((int8_t) (READ_BYTE_PATINHO(PC) & 0x7F))) >> 7) == V);
-			ACC += READ_BYTE_PATINHO(PC);
+			value = READ_BYTE_PATINHO(PC);
+			update_addition_flags(ACC, value);
+			ACC += value;
 			INCREMENT_PC_4K;
 			return;
 		case 0xDA:
@@ -326,14 +355,14 @@ void patinho_feio_cpu_device::execute_instruction()
 			//ST 0 = "Se T=0, Pula"
 			//       If T is zero, skip the next instruction
 			if ((FLAGS & T) == 0)
-				INCREMENT_PC_4K; //skip
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 			return;
 		case 0x91:
 			//STM 0 = "Se T=0, Pula e muda"
 			//        If T is zero, skip the next instruction
 			//        and toggle T.
 			if ((FLAGS & T) == 0){
-				INCREMENT_PC_4K; //skip
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 				FLAGS |= T; //set T=1
 			}
 			return;
@@ -341,14 +370,14 @@ void patinho_feio_cpu_device::execute_instruction()
 			//ST 1 = "Se T=1, Pula"
 			//       If T is one, skip the next instruction
 			if ((FLAGS & T) == T)
-				INCREMENT_PC_4K; //skip
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 			return;
 		case 0x93:
 			//STM 1 = "Se T=1, Pula e muda"
 			//        If T is one, skip the next instruction
 			//        and toggle T.
 			if ((FLAGS & T) == T){
-				INCREMENT_PC_4K; //skip
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 				FLAGS &= ~T; //set T=0
 			}
 			return;
@@ -356,29 +385,29 @@ void patinho_feio_cpu_device::execute_instruction()
 			//SV 0 = "Se V=0, Pula"
 			//       If V is zero, skip the next instruction
 			if ((FLAGS & V) == 0)
-				INCREMENT_PC_4K; //skip
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 			return;
 		case 0x95:
 			//SVM 0 = "Se V=0, Pula e muda"
 			//        If V is zero, skip the next instruction
 			//        and toggle V.
 			if ((FLAGS & V) == 0){
-				INCREMENT_PC_4K; //skip
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 				FLAGS |= V; //set V=1
 			}
 			return;
 		case 0x96:
 			//SV 1 = "Se V=1, Pula"
 			//       If V is one, skip the next instruction
-			if ((FLAGS & V) == 1)
-				INCREMENT_PC_4K; //skip
+			if ((FLAGS & V) == V)
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 			return;
 		case 0x97:
 			//SVM 1 = "Se V=1, Pula e muda"
 			//        If V is one, skip the next instruction
 			//        and toggle V.
-			if ((FLAGS & V) == 1){
-				INCREMENT_PC_4K; //skip
+			if ((FLAGS & V) == V){
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 				FLAGS &= ~V; //set V=0
 			}
 			return;
@@ -574,8 +603,9 @@ void patinho_feio_cpu_device::execute_instruction()
 			//SOM = "Soma": Add a value from a given memory position into the accumulator
 			compute_effective_address((m_opcode & 0x0F) << 8 | READ_BYTE_PATINHO(PC));
 			INCREMENT_PC_4K;
-			ACC += READ_BYTE_PATINHO(m_addr);
-			//TODO: update V and T flags
+			value = READ_BYTE_PATINHO(m_addr);
+			update_addition_flags(ACC, value);
+			ACC += value;
 			return;
 		case 0x70:
 			//SOMX = "Soma indexada": Add a value from a given indexed memory position into the accumulator
@@ -583,8 +613,9 @@ void patinho_feio_cpu_device::execute_instruction()
 			INCREMENT_PC_4K;
 			m_idx = READ_INDEX_REG();
 			compute_effective_address(m_idx + tmp);
-			ACC += READ_BYTE_PATINHO(m_addr);
-			//TODO: update V and T flags
+			value = READ_BYTE_PATINHO(m_addr);
+			update_addition_flags(ACC, value);
+			ACC += value;
 			return;
 		case 0xA0:
 			//PLAN = "Pula se ACC negativo": Jump to a given address if ACC is negative
