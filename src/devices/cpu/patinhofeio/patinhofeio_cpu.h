@@ -31,8 +31,22 @@ enum
 #define BUTTON_INTERRUPCAO           (1 << 7)  /* interrupt */
 #define BUTTON_PARTIDA               (1 << 8)  /* startup */
 #define BUTTON_PREPARACAO            (1 << 9)  /* reset */
-#define BUTTON_TIPO_DE_ENDERECAMENTO (1 << 10) /* Addressing mode (0: Fixed / 1: Sequential) */
-#define BUTTON_PROTECAO_DE_MEMORIA   (1 << 11) /* Memory protection (in the address range 0xF80-0xFFF (1: write-only / 0: read-write) */
+/* The ENDERECAMENTO lever, 0: Fixo / 1: Sequencial.  Storing a byte from the
+   panel leaves the address alone in Fixo and advances it in Sequencial, so the
+   safe position -- the one that cannot walk over memory if the operator forgets
+   about it -- is Fixo, and that is the one the bit rests at.  The layout draws
+   the needle accordingly: element "rotary_switch_enderecamento" points it left,
+   at the F I X O legend, for state 0.  No document fixes the electrical value;
+   see the long comment over that element in src/mame/layout/patinho.lay. */
+#define BUTTON_TIPO_DE_ENDERECAMENTO (1 << 10)
+/* The MEMORIA lever, 0: Protegida / 1: Liberada.  It rests at Protegida: the
+   assembly procedure of page 16.12 goes "Ligar o Patinho Feio" (a), then
+   "Desproteger a memoria" (f), then "Proteger a memoria" (i), so the machine
+   comes up protected and the operator is told to leave it that way.  The layout
+   draws the needle to the right, at the PROTEGIDA legend, for state 0.  What
+   the protection does is in the long comment over memory_is_protected() in
+   patinho_feio.cpp. */
+#define BUTTON_MEMORIA_LIBERADA      (1 << 11)
 
 class patinho_feio_cpu_device : public cpu_device {
 public:
@@ -116,6 +130,12 @@ protected:
 	 * aceitar uma interrupcao proveniente do painel". */
 	bool m_panel_interrupt;
 
+	/* The MEMORIA lever as it read on the last poll, sampled once per pass
+	 * through execute_run() so that a memory access does not have to go back
+	 * to the ioport.  It is a lever and not a flip-flop: nothing inside the
+	 * machine ever moves it. */
+	bool m_memory_protected = false;
+
 	/* One instruction of grace after PUL.  INFERRED, not documented -- see the
 	 * long comment over take_interrupt() in patinho_feio.cpp for the argument
 	 * and for what would settle it. */
@@ -154,6 +174,9 @@ private:
 	bool interrupt_accepted() const;
 	void take_interrupt();
 	void compute_effective_address(unsigned int addr);
+	bool memory_is_protected(offs_t addr) const;
+	uint8_t program_read_byte(offs_t addr);
+	void program_write_byte(offs_t addr, uint8_t data);
 	void set_flag(uint8_t flag, bool state);
 	void update_addition_flags(uint8_t operand_a, uint8_t operand_b);
 	uint16_t read_panel_keys_register();
