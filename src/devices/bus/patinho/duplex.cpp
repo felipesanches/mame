@@ -22,7 +22,9 @@ patinho_duplex_device::patinho_duplex_device(const machine_config &mconfig, cons
 	: device_t(mconfig, PATINHO_DUPLEX, tag, owner, clock)
 	, device_patinho_io_card_interface(mconfig, *this)
 	, m_tx_handler(*this)
-	, m_tx_time(attotime::from_usec(640))
+	// 8 bit-times at the 9600 Hz shift clock of page 29's receiving interface.
+	// See the long note in func_w(), case 0x4.
+	, m_tx_time(attotime::from_hz(9600) * 8)
 {
 }
 
@@ -111,11 +113,33 @@ void patinho_duplex_device::data_w(uint8_t cmd, uint8_t data)
 	{
 		/* "MANDA DADOS.": send the pair and go busy until it has gone.
 
-		   HOW LONG?  No document in the project gives the rate of these
-		   boards -- not chapter 12 of the assembler manual, which only says
-		   they are "para ligacao entre o PF e outros computadores", and not
-		   chapter 8 of the synthesiser manual.  What IS known is an upper
-		   bound, and it was measured rather than guessed: the executor polls
+		   HOW LONG?  Read off the receiving end's schematic, page 29 of the
+		   synthesiser manual (PDF 38).  The chain is drawn explicitly:
+
+		     2.457600 MHz crystal -> 7493 (/16) -> 7493 (/16) -> node "Cp"
+
+		   and "9600 Hz" is written on the wire leaving that node.  The
+		   arithmetic agrees exactly, 2457600 / 256 = 9600, so the label is
+		   confirmed and not merely legible.  Cp is the shift clock (pin 10)
+		   of the 8300 pairs that reassemble both bytes.
+
+		   COMANDO and DADO arrive on two SEPARATE serial lines, each with its
+		   own edge-detect front end and its own pair of 8300s (4 bits each),
+		   and both pairs are clocked by Cp.  The two bytes therefore shift in
+		   together, not one after the other: a (command, data) pair costs
+		   8 bit-times, 8 / 9600 = 833.3 us.
+
+		   WHAT IS INFERRED, AND WHAT THAT COSTS.  833 us is a FLOOR, not a
+		   reading of the transfer time.  The sheet's show-through carries the
+		   mirrored title "FORMAS DE ONDA DA INTERFACE RECEPTORA", so a
+		   waveform page exists and would give the framing -- start pulse, gap
+		   between pairs -- but it has not been located in the scan.  Any
+		   framing only adds.  And the Patinho-side board is not this board;
+		   it must agree on the bit rate for the link to work at all, which is
+		   the argument for using this number here, but its own turnaround
+		   could add more.
+
+		   The upper bound is still the measured one: the executor polls
 		   "SAL /61" inside the interrupt handler, so a transfer longer than
 		   the gap between ticks costs ticks.  scripts/sintetizador/
 		   orcamento_tx.py in the PatinhoFeio repository measures the worst
@@ -123,14 +147,16 @@ void patinho_duplex_device::data_w(uint8_t cmd, uint8_t data)
 		   leaves 30 ms / 12 = 2.50 ms per transfer before the executor starts
 		   losing time it cannot recover.
 
-		   640 us is a placeholder chosen to sit well inside that bound, not a
-		   reading.  set_tx_time() exists so the eventual sweep can vary it
-		   without touching this file. */
+		   So the true value lies in [833 us, 2.50 ms], and we take the floor,
+		   which is the only end of that interval a document supports.  This
+		   replaces a 640 us placeholder that was inside the bound but stood on
+		   nothing.  set_tx_time() still exists so a sweep can vary it. */
 		uint8_t const second = partner() ? partner()->reg() : 0x00;
 		uint16_t const pair = (uint16_t(reg()) << 8) | second;
 
 		LOGMASKED(LOG_TX, "MANDA DADOS: /%02X /%02X\n", reg(), second);
-		m_tx_handler(pair);
+		m_tx_handler(pair);   // for anything wired straight to this card
+		bus().tx_w(pair);     // and for the machine-level cable
 
 		set_status(false);              // busy: "SAL /61" waits on this
 		m_tx_timer->adjust(m_tx_time);
