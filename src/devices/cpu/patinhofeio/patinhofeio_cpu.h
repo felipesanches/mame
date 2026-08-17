@@ -56,6 +56,11 @@ public:
 	void transfer_byte_from_external_device(uint8_t channel, uint8_t data);
 	void set_iodev_status(uint8_t channel, bool status) { m_iodev_status[channel] = status; }
 
+	/* The CONTROL flip-flop is how a program tells a peripheral to start
+	   working: "FNC /n6" turns it on and sets STATUS to busy. A device needs to
+	   see it in order to know it has been asked for something. */
+	bool iodev_control(uint8_t channel) const { return m_iodev_control[channel]; }
+
 	void prog_8bit(address_map &map) ATTR_COLD;
 protected:
 
