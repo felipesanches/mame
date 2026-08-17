@@ -11,6 +11,9 @@
 #include "emu.h"
 #include "synth.h"
 
+#include "bus/midi/midi.h"
+#include "bus/midi/midiinport.h"
+
 #include "speaker.h"
 
 #include "epusp_synth.lh"
@@ -21,6 +24,7 @@
 #define LOG_CMD    (1U << 1)   // every command that arrives
 #define LOG_NOTE   (1U << 2)   // only the notes, with the frequency
 #define LOG_TIMBRE (1U << 3)   // timbre loads, and whether S1 can hear them
+#define LOG_MIDI   (1U << 4)   // bytes arriving from the host MIDI controller
 
 #define VERBOSE (0)
 #include "logmacro.h"
@@ -30,11 +34,13 @@ DEFINE_DEVICE_TYPE(EPUSP_SYNTH, epusp_synth_device, "epusp_synth", "EPUSP sound 
 epusp_synth_device::epusp_synth_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: device_t(mconfig, EPUSP_SYNTH, tag, owner, clock)
 	, device_sound_interface(mconfig, *this)
+	, device_serial_interface(mconfig, *this)
 	, device_epusp_synth_port_interface(mconfig, *this)
 	, m_s1(*this, "S1")
 	, m_pgrf_amostra(*this, "AM%u", 0U)
 	, m_tecl_modo(*this, "TECL")
 	, m_tecl_transp(*this, "TRANSP")
+	, m_tecl_porta(*this, "TECL%u", 0U)
 	, m_tape(*this, "tape")
 {
 	std::fill(std::begin(m_timbre), std::end(m_timbre), 0);
@@ -165,10 +171,12 @@ static INPUT_PORTS_START(epusp_synth)
 	PORT_CONFSETTING(5, "6 -- do5 (523,3 Hz) a do9 (8372,0 Hz)")
 	PORT_CONFSETTING(6, "7 -- do6 (1046,5 Hz) a do10 (16744,0 Hz)")
 
-	/* "Manual de 49 teclas" (chapter 3), C2 to C6 in the General MIDI naming
-	   MAME uses, which also makes them playable from a real keyboard through
-	   -midiin.  The parameter is the key index k = 0..48; the pitch byte comes
-	   from it and the transposition switch in recalcula_nota_do_teclado(). */
+	/* "Manual de 49 teclas" (chapter 3), C2 to C6 in MAME's General MIDI
+	   naming; the parameter is the key index k = 0..48.  PORT_GM_xx only sets
+	   the field name (field_set_gm_note does nothing else), so it is not what
+	   makes the keys reachable from -midiin; the receiver built in
+	   device_add_mconfig() is.  It does make the numbering line up: the first
+	   key is C2 = 36, so midi_byte() maps note n to contact n - 36. */
 #define PORT_TECLA(_mascara, _k, _nota) \
 	PORT_BIT(_mascara, IP_ACTIVE_HIGH, IPT_OTHER) _nota \
 		PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(epusp_synth_device::tecla), _k)
@@ -272,6 +280,26 @@ void epusp_synth_device::device_add_mconfig(machine_config &config)
 	   device's tag, so with the instrument on channel /6 it appears as
 	   "io6:duplex:port:synth Painel do sintetizador". */
 	config.set_default_layout(layout_epusp_synth);
+
+	/* Host plumbing that closes and opens the 49 key contacts; not a socket
+	   of the instrument.  It ends in aciona_tecla(), where the PC keyboard
+	   and the layout also end, so the octave transposition and
+	   manual-automatico switches apply unchanged.  rxd carries bits, not
+	   bytes: the instrument has no UART, so this device's
+	   device_serial_interface assembles them at MIDI's 31250 bps 8N1.
+
+	   The slot is fixed deliberately -- configured the usual way, bus/midi's
+	   midi_port_device would advertise a MIDI socket this 1975 instrument
+	   never had.  option_set() marks it fixed, and every place that offers
+	   slots to the user skips fixed slots (clifront.cpp -listslots,
+	   emuopts.cpp, ui/slotopt.cpp), so no slot option is created; the image
+	   option "-midiin" is unaffected.  The port still appears in
+	   -listdevices, hence the tag "kbdmidi" rather than the customary "mdin",
+	   which would read as a panel socket. */
+	midi_port_device &kbdmidi(MIDI_PORT(config, "kbdmidi"));
+	kbdmidi.option_set("midiin", MIDIIN_PORT);
+	kbdmidi.set_display_name("Entrada MIDI do hospedeiro (toca as 49 teclas)");
+	kbdmidi.rxd_handler().set(*this, FUNC(epusp_synth_device::midi_rxd_w));
 }
 
 /* Which store reaches the output right now.  On AUTO the computer's last
@@ -333,14 +361,26 @@ INPUT_CHANGED_MEMBER(epusp_synth_device::transfere)
    which are not modelled. */
 INPUT_CHANGED_MEMBER(epusp_synth_device::tecla)
 {
-	unsigned const k = param;
+	aciona_tecla(param, newval != 0);
+}
+
+/* The contact itself, reached by a key of the PC keyboard, a click on the
+   layout and a host MIDI note alike.  Idempotent: asking for the state the
+   contact already has returns without touching the sound stream, which is
+   what lets the MIDI path both act at once and push the ioport field, whose
+   own change handler then arrives a frame later as a no-op. */
+void epusp_synth_device::aciona_tecla(unsigned k, bool apertada)
+{
 	if (k >= TECLAS)
+		return;
+
+	uint64_t const bit = uint64_t(1) << k;
+	if (bool(m_teclas_apertadas & bit) == apertada)
 		return;
 
 	m_stream->update();
 
-	uint64_t const bit = uint64_t(1) << k;
-	if (newval)
+	if (apertada)
 	{
 		m_teclas_apertadas |= bit;
 		m_tecla_atual = int32_t(k);
@@ -366,7 +406,66 @@ INPUT_CHANGED_MEMBER(epusp_synth_device::tecla)
 
 	recalcula_nota_do_teclado();
 	LOGMASKED(LOG_NOTE, "teclado: tecla %u %s -> /%02X, CHV=%d\n",
-			k, newval ? "apertada" : "solta", m_tecl_pitch, m_tecl_gate ? 1 : 0);
+			k, apertada ? "apertada" : "solta", m_tecl_pitch, m_tecl_gate ? 1 : 0);
+}
+
+/* One byte at a time, assembled by this device's device_serial_interface from
+   the bits midi_port delivers, ending in aciona_tecla() and in a push on the
+   ioport field a PC key presses.  Accepted: note-on and note-off on any
+   channel for the 49 notes there are contacts for (C2 = 36 to C6 = 84).
+   Running status is honoured; real-time bytes (>= 0xF8) leave it undisturbed
+   and system-common bytes clear it, as the standard requires.  Velocity,
+   channel and after-touch are discarded -- chapter 3 gives this keyboard only
+   frf and a gate CHV of 0 or 5 V -- and velocity is read solely for the
+   note-on velocity 0 spelling of a release.  Notes outside the 49 are dropped
+   rather than folded into range; the octave transposition switch is what
+   moves the window. */
+void epusp_synth_device::midi_byte(uint8_t b)
+{
+	LOGMASKED(LOG_MIDI, "midi: %02X\n", b);
+
+	if (BIT(b, 7))
+	{
+		if (b >= 0xF8)
+			return;                                // real time: no effect on running status
+		m_midi_status = (b < 0xF0) ? b : 0;        // system common clears running status
+		m_midi_tem_nota = false;
+		return;
+	}
+
+	uint8_t const cmd = m_midi_status & 0xF0;      // the channel nibble is dropped on purpose
+	if (cmd != 0x90 && cmd != 0x80)
+		return;                                    // only note-on and note-off
+
+	if (!m_midi_tem_nota)
+	{
+		m_midi_nota = b;
+		m_midi_tem_nota = true;
+		return;
+	}
+
+	uint8_t const nota = m_midi_nota;
+	bool const apertada = (cmd == 0x90) && (b != 0);   // b is the velocity, and this is its ONLY use
+	m_midi_tem_nota = false;                           // ready for the next note in running status
+
+	if ((nota < MIDI_NOTA_BASE) || (nota >= MIDI_NOTA_BASE + TECLAS))
+		return;                                    // no contact there
+
+	unsigned const k = nota - MIDI_NOTA_BASE;
+	aciona_tecla(k, apertada);
+
+	/* And push the same field the PC keyboard presses, so the key moves on the
+	   layout too.  set_value() is an override ORed with the physical input
+	   (ioport.cpp: "curstate = m_digital_value || seq_pressed"), so a key held
+	   by hand is not released by a MIDI note-off of the same key. */
+	if (ioport_field *const campo = m_tecl_porta[k / 16]->field(ioport_value(1) << (k % 16)))
+		campo->set_value(apertada ? 1 : 0);
+}
+
+void epusp_synth_device::rcv_complete()
+{
+	receive_register_extract();
+	midi_byte(get_received_char());
 }
 
 /* The manual-automatico switch and the octave transposition.  Both change what
@@ -619,6 +718,18 @@ void epusp_synth_device::device_reset()
 	m_tecla_atual = -1;
 	m_tecl_gate = false;
 	m_tecl_pitch = 0;
+
+	/* MIDI is 31250 bps 8N1 and the line idles high.  rx_w(1) is required,
+	   not decoration: the receiver arms on a 1 -> 0 edge and its shift
+	   register comes up all zeros, so without being told the idle level once
+	   it would swallow the first byte of the session while hunting for a
+	   start bit. */
+	set_data_frame(1, 8, PARITY_NONE, STOP_BITS_1);
+	set_rate(31250);
+	rx_w(1);
+	m_midi_status = 0;
+	m_midi_nota = 0;
+	m_midi_tem_nota = false;
 
 	m_auto_select = PGRF;
 	m_phase = 0.0;
