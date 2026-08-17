@@ -162,6 +162,11 @@ private:
 	devcb_write8 m_io_data_w_cb;
 	devcb_read8  m_io_skip_cb;
 	uint8_t m_mode;
+	/* The panel buttons as they read on the previous poll.  PARTIDA has to act
+	   ONCE PER PRESS, not once per frame the finger is down: the store and view
+	   modes advance the address register in SEQUENTIAL, and advancing is not
+	   idempotent the way rewriting the same byte was. */
+	uint16_t m_prev_buttons;
 };
 
 DECLARE_DEVICE_TYPE(PATO_FEIO_CPU, patinho_feio_cpu_device)

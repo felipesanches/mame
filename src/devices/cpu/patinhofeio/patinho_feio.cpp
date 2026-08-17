@@ -134,6 +134,7 @@ void patinho_feio_cpu_device::device_start()
 	save_item(NAME(m_scheduled_IND_bit_reset));
 	save_item(NAME(m_indirect_addressing));
 	save_item(NAME(m_mode));
+	save_item(NAME(m_prev_buttons));
 
 	// Register state for debugger
 	state_add( PATINHO_FEIO_CI,         "CI",       m_pc         ).mask(0xFFF);
@@ -173,6 +174,7 @@ void patinho_feio_cpu_device::device_reset()
 	m_addr = 0;
 	m_opcode = 0;
 	m_mode = ADDRESSING_MODE;
+	m_prev_buttons = 0;
 
 	m_update_panel_cb(ACC, m_opcode, READ_BYTE_PATINHO(m_addr), m_addr, PC, FLAGS, RC, m_mode);
 }
@@ -266,22 +268,50 @@ void patinho_feio_cpu_device::execute_run() {
 			debugger_wait_hook();
 			if (!m_buttons_read_cb.isunset()){
 				uint16_t buttons = m_buttons_read_cb(0);
-				if (buttons & BUTTON_PARTIDA){
+				/* Edge, not level: only the 0->1 transition counts as a press. */
+				uint16_t pressed = buttons & ~m_prev_buttons;
+				m_prev_buttons = buttons;
+				if (pressed & BUTTON_PARTIDA){
 					/* "startup" button */
 					switch (m_mode){
 						case ADDRESSING_MODE: PC = RC; break;
 						case NORMAL_MODE: m_run = true; break;
-						case DATA_STORE_MODE: WRITE_BYTE_PATINHO(PC, RC & 0xFF); break; //TODO: we also need RE (address register, instead of using PC directly)
-						/*TODO: case DATA_VIEW_MODE: RD = READ_BYTE_PATINHO(RC); break; //we need to implement RD (the 'data register') */
+						case DATA_STORE_MODE:
+							/* The panel lever "ENDERECAMENTO
+							   (Fixo/Sequencial)": FIXED leaves the address
+							   put, so every PARTIDA rewrites the same word;
+							   SEQUENTIAL advances it by one, so a block can
+							   be keyed in without re-entering the address.
+							   Twelve-bit register, so /FFF wraps to /000. */
+							WRITE_BYTE_PATINHO(PC, RC & 0xFF);
+							if (buttons & BUTTON_TIPO_DE_ENDERECAMENTO)
+								PC = (PC + 1) & 0xFFF;
+							break; //TODO: we also need RE (address register, instead of using PC directly)
+						case DATA_VIEW_MODE:
+							/* EXPOSICAO shows the word the address register
+							   points at.  The address comes from PC and not
+							   from RC because RC is a row of physical levers
+							   that the machine cannot move.  Advancing in
+							   SEQUENTIAL is documented for the 1975
+							   simulator, chapter 3, command "X --
+							   Exposicao": "A execucao deste comando altera o
+							   valor do CI para CI + YY"; one word per press
+							   gives +1.  Coupling it to the Fixo/Sequencial
+							   lever is an inference -- the simulator has no
+							   such lever and always advances. */
+							m_addr = PC;
+							if (buttons & BUTTON_TIPO_DE_ENDERECAMENTO)
+								PC = (PC + 1) & 0xFFF;
+							break;
 						default: break;
 					}
 				}
-				if (buttons & BUTTON_NORMAL) m_mode = NORMAL_MODE;
-				if (buttons & BUTTON_ENDERECAMENTO) m_mode = ADDRESSING_MODE;
-				if (buttons & BUTTON_EXPOSICAO) m_mode = DATA_VIEW_MODE;
-				if (buttons & BUTTON_ARMAZENAMENTO) m_mode = DATA_STORE_MODE;
-				if (buttons & BUTTON_CICLO_UNICO) m_mode = CYCLE_STEP_MODE;
-				if (buttons & BUTTON_INSTRUCAO_UNICA) m_mode = INSTRUCTION_STEP_MODE;
+				if (pressed & BUTTON_NORMAL) m_mode = NORMAL_MODE;
+				if (pressed & BUTTON_ENDERECAMENTO) m_mode = ADDRESSING_MODE;
+				if (pressed & BUTTON_EXPOSICAO) m_mode = DATA_VIEW_MODE;
+				if (pressed & BUTTON_ARMAZENAMENTO) m_mode = DATA_STORE_MODE;
+				if (pressed & BUTTON_CICLO_UNICO) m_mode = CYCLE_STEP_MODE;
+				if (pressed & BUTTON_INSTRUCAO_UNICA) m_mode = INSTRUCTION_STEP_MODE;
 				// BUTTON_PREPARACAO is handled at the top of the loop, so that
 				// it works whether the machine is running or stopped.
 			}
