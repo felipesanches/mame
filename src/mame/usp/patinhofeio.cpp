@@ -19,11 +19,40 @@
 
 namespace {
 
-class patinho_feio_state : public driver_device
+/* THE MEMORY IS MAGNETIC CORE, AND CORE REMEMBERS.
+
+   The Patinho Feio had 4096 words of ferrite core memory.  Core is neither ROM
+   nor volatile RAM: a core plane stores a bit as the remanent magnetisation of
+   a little ring, and a ring stays magnetised with the power off.  A real
+   Patinho Feio switched on in the morning held whatever had been left in it the
+   evening before.  That is not a curiosity, it is the whole reason the machine
+   could be used at all: the July 1977 assembler manual, page 16.11, says the
+   absolute loader lived in a "area protegida na memoria do Patinho Feio, QUE
+   NAO E DESTRUIDA AO DESLIGAR-SE O COMPUTADOR", created exactly so that nobody
+   would have to key the loader in through the key register "sempre que o
+   Patinho Feio fosse ligado".  And the operating procedure on page 16.12 proves
+   it was used that way: step a) is "ligar o Patinho Feio e a leitora de fita"
+   and step d) is already "colocar no Registrador de Chaves o numero /F80".
+   There is no step that keys in a loader.
+
+   So the faithful model of this memory is NVRAM, not RAM: it is saved on exit
+   and restored on the next run.  What the machine comes up with is what the
+   previous session left in it.
+
+   The micro pre-loader was the RECOVERY procedure, not the morning routine --
+   page 16.11 again: it was needed "caso contrario", that is, when a program run
+   with the memory unprotected had wrecked the protected area.  (A 2016
+   recollection document in the archive claims the opposite, that core was
+   volatile and the pre-loader had to be keyed in at every power-up.  The 1977
+   manual is contemporary and says otherwise; core physics agrees with 1977.) */
+
+class patinho_feio_state : public driver_device, public device_nvram_interface
 {
 public:
 	patinho_feio_state(const machine_config &mconfig, device_type type, const char *tag)
 		: driver_device(mconfig, type, tag)
+		, device_nvram_interface(mconfig, *this)
+		, m_conf(*this, "CONF")
 		, m_maincpu(*this, "maincpu")
 		, m_iobus(*this, "iobus")
 		, m_ioslot(*this, "io%x", 1U)
@@ -42,7 +71,18 @@ public:
 	void patinho_feio(machine_config &config) ATTR_COLD;
 
 protected:
-	virtual void machine_start() override ATTR_COLD;
+	virtual void machine_reset() override ATTR_COLD;
+
+	// device_nvram_interface -- the core memory (see the note above the class)
+	virtual void nvram_default() override;
+	virtual bool nvram_read(util::read_stream &file) override;
+	virtual bool nvram_write(util::write_stream &file) override;
+
+	static constexpr unsigned CORE_SIZE = 0x1000; // 4096 words of ferrite core
+
+	uint8_t *core_memory() { return (uint8_t *) memshare("maincpu:internalram")->ptr(); }
+
+	required_ioport m_conf;
 
 	void load_tape(const char* name);
 	void load_raw_data(const char* name, unsigned int start_address, unsigned int data_length);
@@ -144,7 +184,7 @@ void patinho_feio_state::update_panel(uint8_t ACC, uint8_t opcode, uint8_t mem_d
    not use this function at all.
 */
 void patinho_feio_state::load_tape(const char* name){
-	uint8_t *RAM = (uint8_t *) memshare("maincpu:internalram")->ptr();
+	uint8_t *RAM = core_memory();
 	uint8_t *data = memregion(name)->base();
 	unsigned int data_length = data[0];
 	unsigned int start_address = data[1]*256 + data[2];
@@ -164,7 +204,7 @@ void patinho_feio_state::load_tape(const char* name){
 }
 
 void patinho_feio_state::load_raw_data(const char* name, unsigned int start_address, unsigned int data_length){
-	uint8_t *RAM = (uint8_t *) memshare("maincpu:internalram")->ptr();
+	uint8_t *RAM = core_memory();
 	uint8_t *data = memregion(name)->base();
 
 	memcpy(&RAM[start_address], data, data_length);
@@ -186,26 +226,97 @@ void patinho_feio_state::load_raw_data(const char* name, unsigned int start_addr
    So the timer only advances the tape while CONTROL is asserted; with the
    reel stopped it costs nothing but a poll. */
 
-void patinho_feio_state::machine_start(){
-	// Copy some programs directly into RAM.
-	// This is a hack for setting up the computer
-	// while we don't support loading programs
-	// from punched tape rolls...
+/* A BRAND NEW SET OF CORE PLANES IS BLANK.
 
-	//"absolute program example" from page 16.7
-	//    Prints "PATINHO FEIO" on the DECWRITER:
-	load_tape("exemplo_16.7");
+   This is what the machine looks like the very first time it is ever run, or
+   after the nvram file is thrown away: nothing in memory, which is what a
+   computer with no permanent storage really looked like before anybody had
+   keyed anything into it.  From here the only way in is the front panel, which
+   is exactly how it was in 1972. */
+void patinho_feio_state::nvram_default(){
+	std::fill_n(core_memory(), CORE_SIZE, 0x00);
+}
 
-	//"absolute program example" from appendix G:
-	//    Allows users to load programs from the
-	//    console into the computer memory.
-	load_raw_data("hexam", 0xE00, 0x0D5);
+bool patinho_feio_state::nvram_read(util::read_stream &file){
+	auto const [err, actual] = util::read(file, core_memory(), CORE_SIZE);
+	return !err && (actual == CORE_SIZE);
+}
 
-	load_raw_data("loader", 0xF80, 0x080);
-	//load_raw_data("micro_pre_loader", 0x000, 0x02A); //this is still experimental
+bool patinho_feio_state::nvram_write(util::write_stream &file){
+	auto const [err, actual] = util::write(file, core_memory(), CORE_SIZE);
+	return !err;
+}
+
+/* THE CONVENIENCE SETTING -- IT IS NOT FAITHFUL, AND THE DEFAULT IS THE FAITHFUL ONE.
+
+   Until 2026 this driver copied three programs straight into core inside
+   machine_start(), and its own comment called it what it was: "This is a hack
+   for setting up the computer while we don't support loading programs from
+   punched tape rolls".  That excuse has expired.  The optical reader on channel
+   /E works, the reconstructed absolute loader works (445 of 445 bytes verified
+   against a real tape), and the panel procedure is documented and tested, so
+   tapes really do load now.
+
+   The Patinho Feio had no permanent storage: no disc, no drum, no ROM.  A
+   machine that comes up with programs already in memory is therefore not the
+   machine -- it is a convenience.  So the hack is now OFF by default and lives
+   behind a configuration setting the user has to ask for:
+
+       Machine Configuration -> "Preloaded programs in core"
+
+   With it ON, three images are copied into core on the first reset, exactly as
+   the old hack did:
+
+     - the "absolute program example" of page 16.7, which prints PATINHO FEIO;
+     - HEXAM, from appendix G, the console memory examine/deposit utility;
+     - the reconstructed absolute loader at /F80.
+
+   NONE of that ever appeared by itself on a real Patinho Feio.  Somebody had to
+   put it there, through the panel or from a tape.  Anyone wanting the machine
+   as it was should leave this switch alone.
+
+   Why on the first machine_reset() and not in machine_start(): configuration
+   ports CANNOT be read at init time.  ioport_manager::m_safe_to_read only goes
+   true in load_config(config_type::FINAL), which runs after start_all_devices()
+   -- reading a port from machine_start() is a hard fatal error, not a wrong
+   value.  The order is ioport init -> machine_start -> load_settings ->
+   nvram_load -> machine_reset, so reset is the earliest moment the setting can
+   be honoured, and it also lands after nvram_load, which is what lets the copy
+   override whatever core was holding.  Measured, not assumed:
+   PatinhoFeio/scripts/mame/sondar_precarga.sh and lacunas_da_sonda_precarga.sh.
+
+   It is applied on EVERY reset, not only the first one, so that flipping the
+   setting in the UI and pressing F3 does what the user just asked for.  A real
+   reset does not touch core, of course -- but neither does a real machine copy
+   three programs into itself, and this switch is the one place in the driver
+   that is admittedly not the machine. */
+
+void patinho_feio_state::machine_reset(){
+	if (m_conf->read() & 0x01)
+	{
+		//"absolute program example" from page 16.7
+		//    Prints "PATINHO FEIO" on the DECWRITER:
+		load_tape("exemplo_16.7");
+
+		//"absolute program example" from appendix G:
+		//    Allows users to load programs from the
+		//    console into the computer memory.
+		load_raw_data("hexam", 0xE00, 0x0D5);
+
+		load_raw_data("loader", 0xF80, 0x080);
+	}
 }
 
 static INPUT_PORTS_START( patinho_feio )
+	/* NOT A SWITCH ON THE REAL PANEL.  See the long comment on machine_reset():
+	   the machine had no permanent storage, so coming up with programs already
+	   in core is a convenience for the emulator user, not history.  Default OFF
+	   is the faithful one. */
+	PORT_START("CONF")
+	PORT_CONFNAME(0x01, 0x00, "Preloaded programs in core")
+	PORT_CONFSETTING(   0x00, DEF_STR( Off ))   // as the real machine
+	PORT_CONFSETTING(   0x01, DEF_STR( On ))    // convenience: 16.7, HEXAM, loader
+
 	/* Address/Data input Switches */
 	PORT_START("SWITCHES")
 	PORT_BIT(0x001, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("Switch #0") PORT_CODE(KEYCODE_EQUALS) PORT_TOGGLE
@@ -375,9 +486,38 @@ ROM_START( patinho )
 	ROM_REGION( 0x080, "loader", 0 )
 	ROM_LOAD( "loader_reconstruido.bin", 0x000, 0x080, BAD_DUMP CRC(33b2c552) SHA1(25488794ee85c7c9a8a02d3b237b9bc6aa88433f) )
 
-	/* Micro pre-loader:
-	   This was re-created by professor Joao Jose Neto based on his vague
-	   recollection of sequences of opcode values from almost 40 years ago :-) */
+	/* MICRO PRE-LOADER -- KEPT AS AN ARTEFACT, DELIBERATELY NOT USED.
+
+	   This was re-created by professor Joao Jose Neto in 2016, from his
+	   recollection of opcode values from almost 40 years earlier.  Nothing in
+	   the driver loads it, and that is on purpose: it does not run.  Read
+	   byte by byte against the PDF it came from, three things are wrong.
+
+	     - The tape reader is on channel /E, and this program talks to /D
+	       (CD 40, CD 16, CD 17...).  Channel /E is what chapter 12 of the July
+	       1977 manual says, what routine LEOT of Stolfi's executor uses, and
+	       what our absolute loader was verified against, 445 bytes at a time.
+	     - The interrupt handler re-initialises the counter on every byte:
+	       the vector is /004 (chapter 11) and /004-/006 are CARI /1C + TRI, so
+	       IND goes back to 28 for each frame and the SUS IND at /022 never
+	       reaches zero.  The loop cannot terminate.
+	     - /017 is B0 13, a PLAZ whose operand points at the SECOND byte of the
+	       CLC at /012-/013 -- into the middle of a two-byte instruction.  The
+	       listing prints the label LOOP at /00D, which would need 0D.  The
+	       listing and the object code disagree with each other.
+
+	   A CONTEMPORARY listing did survive, and it is the one this project
+	   actually uses: Moshe Bain, 21 July 1977, fourteen bytes at /000, on
+	   channel /E, internally consistent, and a quarter of the panel gestures.
+	   It lives in the PatinhoFeio repository as source rather than as a binary
+	   blob, because that is what it is -- software that was keyed in by hand,
+	   not a ROM this machine ever contained:
+
+	       scripts/bootstrap/micro_pre_loader_1977.asm
+	       scripts/bootstrap/bootstrap_fiel.sh   (keys it in and runs the chain)
+
+	   This region stays so the 2016 document remains represented in the
+	   romset, and BAD_DUMP-style honesty is served by this comment. */
 	ROM_REGION( 0x02a, "micro_pre_loader", 0 )
 	ROM_LOAD( "micro-pre-loader.bin", 0x000, 0x02a, CRC(1921feab) SHA1(bb063102e44e9ab963f95b45710141dc2c5046b0) )
 ROM_END
