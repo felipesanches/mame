@@ -88,8 +88,12 @@ offs_t patinho_feio_disassembler::disassemble(std::ostream &stream, offs_t pc, c
 			{
 				case 0x10: util::stream_format(stream, "FNC     /%c%c", n, f); return 2;
 				case 0x20: util::stream_format(stream, "SAL     /%c%c", n, f); return 2;
-				case 0x40: util::stream_format(stream, "ENTR    /%c0", n); return 2;
-				case 0x80: util::stream_format(stream, "SAI     /%c0", n); return 2;
+				/* The command nibble is not always zero: the synthesizer
+				   executor issues SAI /62, /63 and /64 on the same channel.
+				   Printing it as "/n0" hid three distinct operations behind
+				   one mnemonic. */
+				case 0x40: util::stream_format(stream, "ENTR    /%c%c", n, f); return 2;
+				case 0x80: util::stream_format(stream, "SAI     /%c%c", n, f); return 2;
 			}
 			break;
 		case 0xD0:
