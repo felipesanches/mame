@@ -291,7 +291,7 @@ void patinho_feio_cpu_device::device_reset()
 	m_mode = ADDRESSING_MODE;
 	m_prev_buttons = 0;
 
-	m_update_panel_cb(ACC, m_opcode, READ_BYTE_PANEL(m_addr), m_addr, PC, FLAGS, RC, m_mode);
+	m_update_panel_cb(ACC, m_opcode, READ_BYTE_PANEL(m_addr), m_addr, PC, FLAGS, RC, m_mode, !m_run);
 }
 
 /* The I/O bus drives this: the OR of the sixteen PEDIDO flip-flops.  There is
@@ -381,8 +381,22 @@ void patinho_feio_cpu_device::execute_run() {
 		m_idx = READ_INDEX_REG();
 		/* The lamps are the operator looking at the panel, so they show what is
 		   really in core even in the protected area: same reason ARMAZENAMENTO
-		   and EXPOSICAO are not blocked (see memory_is_protected()). */
-		m_update_panel_cb(ACC, READ_BYTE_PANEL(PC), READ_BYTE_PANEL(m_addr), m_addr, PC, FLAGS, RC, m_mode);
+		   and EXPOSICAO are not blocked (see memory_is_protected()).
+
+		   THE PARADO LAMP is the last argument, and it is lit whenever the
+		   processor is not executing instructions.  That covers all three ways
+		   of getting there, and chapter 11 puts the first two in the same
+		   words: PARE "para o processamento, que so recomeca quando for
+		   acionado o botao de partida", ESP "para o processamento ate acontecer
+		   um pedido de interrupcao ou ser acionado o botao de partida", and the
+		   panel modes stop it as well ("ou ate ser parado manualmente pelo
+		   operador", chapter 3).
+
+		   The panel has a second lamp next to this one, EXTERNO, and it is
+		   TEMPTING to give ESP that one and leave PARADO for PARE alone.  No
+		   document we have says what EXTERNO means, so it stays as it has
+		   always been, unwired, rather than being wired to a guess. */
+		m_update_panel_cb(ACC, READ_BYTE_PANEL(PC), READ_BYTE_PANEL(m_addr), m_addr, PC, FLAGS, RC, m_mode, !m_run);
 
 		/* The panel INTERRUPCAO button is a flip-flop of its own (page A.11),
 		   so it has to be sampled while the processor is running too, not only
@@ -392,9 +406,11 @@ void patinho_feio_cpu_device::execute_run() {
 			uint16_t const b = m_buttons_read_cb(0);
 
 			/* Sample the MEMORIA lever once per pass, before anything can
-			   touch core.  It is a lever: it holds whatever position the
-			   operator left it in, and 0 is PROTEGIDA (page 16.12 has the
-			   operator unprotecting after switching the machine on). */
+			   touch core.  It is a physical knob: it holds whatever position
+			   the operator left it in, across power cycles, so no bit value
+			   is "the" power-on state.  Mapping 0 to PROTEGIDA is a choice --
+			   see the comment in src/mame/layout/patinho.lay, which used to
+			   claim documentary support for it and no longer does. */
 			m_memory_protected = !(b & BUTTON_MEMORIA_LIBERADA);
 
 			/* The panel INTERRUPCAO button is a flip-flop of its own (page

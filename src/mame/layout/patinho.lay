@@ -39,12 +39,24 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 	         processor already assumes (patinhofeio_cpu.h: 0 = Fixo,
 	         1 = Sequencial).
 
-	       * MEMORIA rests at PROTEGIDA.  July 1977 manual, chapter 16, page
-	         16.12, the assembly procedure: step a) "Ligar o Patinho Feio",
-	         step f) "Desproteger a memoria", step i) "Proteger a memoria".
-	         Having to unprotect after switching the machine on only makes
-	         sense if it comes up protected, and the operator is told to leave
-	         it protected again at the end.
+	       * MEMORIA: bit 0 draws PROTEGIDA.  This is a CHOICE, not a reading.
+
+	         An earlier version of this comment argued that the machine "comes
+	         up protected", from the assembly procedure on page 16.12: step a)
+	         "Ligar o Patinho Feio", step f) "Desproteger a memoria", step i)
+	         "Proteger a memoria".  That argument is wrong and the project
+	         owner said so: THESE ARE PHYSICAL KNOBS.  A knob keeps whatever
+	         position it was left in and does not spring back when the power
+	         goes off, so there is no such thing as a documented power-on
+	         state for it.  Step f) tells the operator to unprotect because
+	         the memory might be protected (from yesterday) and not because
+	         switching on protects it.
+
+	         What survives of the argument is only the pairing: the procedure
+	         leaves the machine protected at step i), so PROTEGIDA is the
+	         position the manual treats as the resting one for a machine not
+	         being loaded.  That is a reasonable default for bit 0 and nothing
+	         stronger.
 
 	     So bit 0 draws the needle to the LEFT on the addressing switch and to
 	     the RIGHT on the memory switch.  Two elements, one per lever.
@@ -555,6 +567,19 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 	<element name="str_liberada"><text string="LIBERADA"><color red="0" green="0" blue="0"/></text></element>
 	<element name="str_protegida"><text string="PROTEGIDA"><color red="0" green="0" blue="0"/></text></element>
 
+	<!-- a frame around the strip of paper, so that the teleprinter can be
+	     told from the background of the view while nothing is printed yet -->
+	<element name="moldura_papel">
+		<rect><color red="0.75" green="0.78" blue="0.75"/></rect>
+	</element>
+
+	<!-- printed over the black of the teleprinter, not over panel green -->
+	<element name="str_teleimpressor">
+		<text string="T E L E I M P R E S S O R   /B" align="1">
+			<color red="0.75" green="0.78" blue="0.75"/>
+		</text>
+	</element>
+
 	<!-- numeros 0-9 -->
 	<repeat count="10">
 		<param name="i" start="0" increment="1"/>
@@ -588,13 +613,23 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		</element>
 	</repeat>
 
-<!-- define background -->
+<!-- =====================================================================
+     THE PANEL ITSELF
 
-	<view name="Default layout">
+     The whole drawing lives in a group so that more than one view can show
+     it without a second copy: the plain front panel, the front panel with
+     the teleprinter beside it, and the synthesiser bench at the end of the
+     file all instantiate this same group.
+
+     The group's own coordinate system is 1280 x 1200, and every item is
+     inside it, which is why the views below need no explicit bounds.
+     ===================================================================== -->
+
+	<group name="painel">
 		<bounds x="0" y="0" width="1280" height="1200" />
 
 		<element ref="panel_background">
-			<bounds x="-33" y="-980" width="1343" height="2218" />
+			<bounds x="0" y="0" width="1280" height="1200" />
 		</element>
 
 		<!-- define orange rectangles -->
@@ -1047,7 +1082,20 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 			<param name="mask" start="0x800" rshift="1" />
 
 			<element ref="str_num_~i~"><bounds x="~x_label~" y="780" width="18" height="16"/></element>
-			<element name="rc~n~" ref="switch" inputtag="rc" inputmask="~mask~">
+			<!-- ENTRADA MANUAL DE DADOS: the twelve levers of the key register.
+
+			     inputtag names the I/O PORT the mouse acts on, and this used to
+			     say "rc", which is the name of the OUTPUT the driver writes for
+			     the lamps.  There is no port called that, and a missing port is
+			     silent: root_device().ioport() returns nullptr, has_input() is
+			     then false, and an item with no input and clickthrough left at
+			     its default never enters the interactive list at all, so the
+			     pointer had nothing to hit.  The levers still drew correctly,
+			     because name= makes the state come from the output, which is
+			     why they looked alive and could only be worked from the
+			     keyboard.  The port is SWITCHES, and its masks are the same
+			     ones this repeat walks, from 0x800 down. -->
+			<element name="rc~n~" ref="switch" inputtag="SWITCHES" inputmask="~mask~">
 				<bounds x="~x_switch~" y="830" width="20" height="30"/>
 			</element>
 		</repeat>
@@ -1422,9 +1470,16 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 			<bounds x="364" y="742" width="36" height="36" />
 		</element>
 
-		<element ref="state_lamp">
+		<!-- PARADO: lit whenever the processor is not executing instructions,
+		     which is after PARE, after ESP, and in any of the panel modes.
+		     The driver writes the output; see the call to the panel callback
+		     in patinho_feio.cpp for why all three light the same lamp. -->
+		<element name="parado" ref="state_lamp">
 			<bounds x="579" y="651" width="36" height="36" />
 		</element>
+		<!-- EXTERNO: still a fixed drawing.  Nothing in the manuals we have
+		     says what it shows, and a lamp wired to a guess is worse than a
+		     lamp that is honestly dark. -->
 		<element ref="state_lamp">
 			<bounds x="688" y="651" width="36" height="36" />
 		</element>
@@ -1476,5 +1531,1017 @@ Front panel of the Patinho Feio mini-computer with clickable buttons, switches a
 		<element ref="str_liberada"><bounds x="1012" y="615" width="56" height="16"/></element>
 		<element ref="str_protegida"><bounds x="1146" y="615" width="68" height="16"/></element>
 
+	</group>
+
+<!-- =====================================================================
+     THE SYNTHESISER'S PANEL, COPIED FROM THE INSTRUMENT'S OWN LAYOUT
+
+     Everything between the BEGIN COPY and END COPY marks below is a copy of
+     src/emu/layout/epusp_synth.lay, made by
+
+         PatinhoFeio/scripts/mame/copiar_painel_do_sintetizador.py
+
+     DO NOT EDIT IT BY HAND.  Edit the instrument's file and run that script
+     again; run it with the "conferir" flag to check that the two agree.
+
+     WHY A COPY AT ALL.  A MAME layout file is closed: an element or a group
+     can only be referenced inside the file that defines it ("It is an error
+     if no group with this name is defined in the file",
+     docs/source/techspecs/layout_files.rst), and the format has no include
+     directive.  The "Synth Bench" view has to show the computer's panel and
+     the instrument's panel at the same time, so both drawings must sit in
+     one file, and one of the two has to be copied.
+
+     WHY THIS DIRECTION.  The slider drag library at the end of this file
+     keeps its widgets in one list per FILE and, on a click, walks all of
+     them comparing coordinates.  Two slider-bearing views in the same file
+     would fight over the pointer.  Here only "Synth Bench" has sliders, so
+     the library works unchanged; inside epusp_synth.lay there would be two.
+
+     WHAT THE SCRIPT REWRITES.  str_num_ becomes sint_num_, the one element
+     name the two files share; and every inputtag gains the path of the
+     instrument, io6:duplex:port:synth:, because in a system layout the tags
+     are relative to the root of the machine and not to the card.  That path
+     is the cabling this project documents everywhere,
+
+         ./mame patinho -io6:duplex:port synth
+
+     and it is the one thing here that a different cabling would break: plug
+     the instrument into /7 and the drawing still appears, but inert.
+     ===================================================================== -->
+
+	<!-- BEGIN COPY: elements, groups and panel drawing of src/emu/layout/epusp_synth.lay -->
+
+	<!-- panel and title bars -->
+
+	<element name="fundo_painel">
+		<rect><color red="0.66" green="0.64" blue="0.58"/></rect>
+	</element>
+
+	<element name="faixa_titulo">
+		<rect><bounds x="0" y="0" width="400" height="30"/><color red="0" green="0" blue="0"/></rect>
+		<rect><bounds x="2" y="2" width="396" height="26"/><color red="0.83" green="0.33" blue="0"/></rect>
+	</element>
+
+	<element name="traco">
+		<rect><color red="0" green="0" blue="0"/></rect>
+	</element>
+
+	<!-- the graphic panel's sixteen sliders -->
+
+	<element name="canal_chave">
+		<rect><color red="0.10" green="0.11" blue="0.10"/></rect>
+	</element>
+
+	<element name="trilho_chave">
+		<rect><color red="0.22" green="0.23" blue="0.21"/></rect>
+	</element>
+
+	<!-- the bar that draws the sample: same orange as the title bars, so the
+	     waveform reads as the panel's one live quantity -->
+	<element name="barra_onda">
+		<rect><color red="0.90" green="0.42" blue="0.05"/></rect>
+	</element>
+
+	<element name="area_invisivel">
+		<rect><color red="0" green="0" blue="0" alpha="0"/></rect>
+	</element>
+
+	<!-- state 1 is "the pointer is dragging me", set by the script -->
+	<element name="cursor_chave" defstate="0">
+		<rect>
+			<bounds x="0" y="0" width="52" height="20"/>
+			<color red="0" green="0" blue="0"/>
+		</rect>
+		<rect>
+			<bounds x="1" y="1" width="50" height="18"/>
+			<color state="0" red="0.16" green="0.17" blue="0.16"/>
+			<color state="1" red="0.30" green="0.34" blue="0.30"/>
+		</rect>
+		<rect>
+			<bounds x="1" y="2" width="50" height="2"/>
+			<color red="0.34" green="0.36" blue="0.34"/>
+		</rect>
+		<!-- the reading edge: the cursor's centre line is the sample value -->
+		<rect>
+			<bounds x="0" y="8" width="52" height="4"/>
+			<color red="0.86" green="0.86" blue="0.82"/>
+		</rect>
+	</element>
+
+	<!-- the S1 selector: a nine-position pointer knob.  The pointer is one
+	     SVG per position rather than an interpolated bounds, because a knob
+	     turns and interpolated bounds only slide. -->
+
+	<element name="knob_s1" defstate="1">
+		<image><data><![CDATA[
+			<svg width="160" height="160">
+				<circle cx="80" cy="80" r="78" fill="#000000"/>
+				<circle cx="80" cy="80" r="73" fill="#0a1719"/>
+				<circle cx="80" cy="80" r="62" fill="#005200"/>
+				<circle cx="80" cy="80" r="56" fill="#008000"/>
+			</svg>
+		]]></data></image>
+		<image state="0"><data><![CDATA[
+			<svg width="160" height="160"><g transform="rotate(-120 80 80)">
+				<rect x="75" y="26" width="10" height="46" fill="#b3b3b3" stroke="#808080" stroke-width="2"/>
+				<circle cx="80" cy="80" r="9" fill="#b3b3b3"/>
+			</g></svg>
+		]]></data></image>
+		<image state="1"><data><![CDATA[
+			<svg width="160" height="160"><g transform="rotate(-90 80 80)">
+				<rect x="75" y="26" width="10" height="46" fill="#b3b3b3" stroke="#808080" stroke-width="2"/>
+				<circle cx="80" cy="80" r="9" fill="#b3b3b3"/>
+			</g></svg>
+		]]></data></image>
+		<image state="2"><data><![CDATA[
+			<svg width="160" height="160"><g transform="rotate(-60 80 80)">
+				<rect x="75" y="26" width="10" height="46" fill="#b3b3b3" stroke="#808080" stroke-width="2"/>
+				<circle cx="80" cy="80" r="9" fill="#b3b3b3"/>
+			</g></svg>
+		]]></data></image>
+		<image state="3"><data><![CDATA[
+			<svg width="160" height="160"><g transform="rotate(-30 80 80)">
+				<rect x="75" y="26" width="10" height="46" fill="#b3b3b3" stroke="#808080" stroke-width="2"/>
+				<circle cx="80" cy="80" r="9" fill="#b3b3b3"/>
+			</g></svg>
+		]]></data></image>
+		<image state="4"><data><![CDATA[
+			<svg width="160" height="160"><g transform="rotate(0 80 80)">
+				<rect x="75" y="26" width="10" height="46" fill="#b3b3b3" stroke="#808080" stroke-width="2"/>
+				<circle cx="80" cy="80" r="9" fill="#b3b3b3"/>
+			</g></svg>
+		]]></data></image>
+		<image state="5"><data><![CDATA[
+			<svg width="160" height="160"><g transform="rotate(30 80 80)">
+				<rect x="75" y="26" width="10" height="46" fill="#b3b3b3" stroke="#808080" stroke-width="2"/>
+				<circle cx="80" cy="80" r="9" fill="#b3b3b3"/>
+			</g></svg>
+		]]></data></image>
+		<image state="6"><data><![CDATA[
+			<svg width="160" height="160"><g transform="rotate(60 80 80)">
+				<rect x="75" y="26" width="10" height="46" fill="#b3b3b3" stroke="#808080" stroke-width="2"/>
+				<circle cx="80" cy="80" r="9" fill="#b3b3b3"/>
+			</g></svg>
+		]]></data></image>
+		<image state="7"><data><![CDATA[
+			<svg width="160" height="160"><g transform="rotate(90 80 80)">
+				<rect x="75" y="26" width="10" height="46" fill="#b3b3b3" stroke="#808080" stroke-width="2"/>
+				<circle cx="80" cy="80" r="9" fill="#b3b3b3"/>
+			</g></svg>
+		]]></data></image>
+		<image state="8"><data><![CDATA[
+			<svg width="160" height="160"><g transform="rotate(120 80 80)">
+				<rect x="75" y="26" width="10" height="46" fill="#b3b3b3" stroke="#808080" stroke-width="2"/>
+				<circle cx="80" cy="80" r="9" fill="#b3b3b3"/>
+			</g></svg>
+		]]></data></image>
+	</element>
+
+	<!-- the octave transposition: seven positions -->
+	<element name="knob_transp" defstate="2">
+		<image><data><![CDATA[
+			<svg width="90" height="90">
+				<circle cx="45" cy="45" r="44" fill="#000000"/>
+				<circle cx="45" cy="45" r="41" fill="#0a1719"/>
+				<circle cx="45" cy="45" r="35" fill="#005200"/>
+				<circle cx="45" cy="45" r="31" fill="#008000"/>
+			</svg>
+		]]></data></image>
+		<image state="0"><data><![CDATA[
+			<svg width="90" height="90"><g transform="rotate(-90 45 45)">
+				<rect x="41" y="14" width="8" height="26" fill="#b3b3b3" stroke="#808080" stroke-width="2"/>
+				<circle cx="45" cy="45" r="6" fill="#b3b3b3"/>
+			</g></svg>
+		]]></data></image>
+		<image state="1"><data><![CDATA[
+			<svg width="90" height="90"><g transform="rotate(-60 45 45)">
+				<rect x="41" y="14" width="8" height="26" fill="#b3b3b3" stroke="#808080" stroke-width="2"/>
+				<circle cx="45" cy="45" r="6" fill="#b3b3b3"/>
+			</g></svg>
+		]]></data></image>
+		<image state="2"><data><![CDATA[
+			<svg width="90" height="90"><g transform="rotate(-30 45 45)">
+				<rect x="41" y="14" width="8" height="26" fill="#b3b3b3" stroke="#808080" stroke-width="2"/>
+				<circle cx="45" cy="45" r="6" fill="#b3b3b3"/>
+			</g></svg>
+		]]></data></image>
+		<image state="3"><data><![CDATA[
+			<svg width="90" height="90"><g transform="rotate(0 45 45)">
+				<rect x="41" y="14" width="8" height="26" fill="#b3b3b3" stroke="#808080" stroke-width="2"/>
+				<circle cx="45" cy="45" r="6" fill="#b3b3b3"/>
+			</g></svg>
+		]]></data></image>
+		<image state="4"><data><![CDATA[
+			<svg width="90" height="90"><g transform="rotate(30 45 45)">
+				<rect x="41" y="14" width="8" height="26" fill="#b3b3b3" stroke="#808080" stroke-width="2"/>
+				<circle cx="45" cy="45" r="6" fill="#b3b3b3"/>
+			</g></svg>
+		]]></data></image>
+		<image state="5"><data><![CDATA[
+			<svg width="90" height="90"><g transform="rotate(60 45 45)">
+				<rect x="41" y="14" width="8" height="26" fill="#b3b3b3" stroke="#808080" stroke-width="2"/>
+				<circle cx="45" cy="45" r="6" fill="#b3b3b3"/>
+			</g></svg>
+		]]></data></image>
+		<image state="6"><data><![CDATA[
+			<svg width="90" height="90"><g transform="rotate(90 45 45)">
+				<rect x="41" y="14" width="8" height="26" fill="#b3b3b3" stroke="#808080" stroke-width="2"/>
+				<circle cx="45" cy="45" r="6" fill="#b3b3b3"/>
+			</g></svg>
+		]]></data></image>
+	</element>
+
+	<!-- the keyboard's manual-automatico switch: two positions -->
+	<element name="chave_2pos" defstate="1">
+		<image><data><![CDATA[
+			<svg width="64" height="64">
+				<circle cx="32" cy="32" r="31" fill="#000000"/>
+				<circle cx="32" cy="32" r="29" fill="#0a1719"/>
+				<circle cx="32" cy="32" r="25" fill="#005200"/>
+				<circle cx="32" cy="32" r="22" fill="#008000"/>
+			</svg>
+		]]></data></image>
+		<image state="0"><data><![CDATA[
+			<svg width="64" height="64"><g transform="rotate(-40 32 32)">
+				<rect x="29" y="9" width="6" height="20" fill="#b3b3b3" stroke="#808080" stroke-width="2"/>
+				<circle cx="32" cy="32" r="5" fill="#b3b3b3"/>
+			</g></svg>
+		]]></data></image>
+		<image state="1"><data><![CDATA[
+			<svg width="64" height="64"><g transform="rotate(40 32 32)">
+				<rect x="29" y="9" width="6" height="20" fill="#b3b3b3" stroke="#808080" stroke-width="2"/>
+				<circle cx="32" cy="32" r="5" fill="#b3b3b3"/>
+			</g></svg>
+		]]></data></image>
+	</element>
+
+	<!-- one indicator lamp per S1 position: lit when the raw port value is i -->
+	<repeat count="9">
+		<param name="i" start="0" increment="1"/>
+		<element name="lampada_s1_~i~" defstate="0">
+			<disk><bounds x="0" y="0" width="14" height="14"/><color red="0" green="0" blue="0"/></disk>
+			<disk><bounds x="2" y="2" width="10" height="10"/><color red="0.40" green="0.48" blue="0.61"/></disk>
+			<disk state="~i~"><bounds x="2" y="2" width="10" height="10"/><color red="1" green="1" blue="1"/></disk>
+		</element>
+	</repeat>
+
+	<!-- the same lamp, for the two positions of the manual-automatico switch -->
+	<repeat count="2">
+		<param name="i" start="0" increment="1"/>
+		<element name="lampada_tecl_~i~" defstate="1">
+			<disk><bounds x="0" y="0" width="14" height="14"/><color red="0" green="0" blue="0"/></disk>
+			<disk><bounds x="2" y="2" width="10" height="10"/><color red="0.40" green="0.48" blue="0.61"/></disk>
+			<disk state="~i~"><bounds x="2" y="2" width="10" height="10"/><color red="1" green="1" blue="1"/></disk>
+		</element>
+	</repeat>
+
+	<!-- the seven TRANSFERE commands: momentary, so they light while held -->
+	<element name="botao_transfere" defstate="0">
+		<disk><bounds x="0" y="0" width="56" height="56"/><color red="0" green="0" blue="0"/></disk>
+		<disk><bounds x="3" y="3" width="50" height="50"/><color red="0.04" green="0.09" blue="0.1"/></disk>
+		<disk><bounds x="6" y="6" width="44" height="44"/><color red="0" green="0.32" blue="0"/></disk>
+		<disk state="0"><bounds x="9" y="9" width="38" height="38"/><color red="0" green="0.5" blue="0"/></disk>
+		<disk state="1"><bounds x="9" y="9" width="38" height="38"/><color red="0" green="1" blue="0"/></disk>
+	</element>
+
+	<!-- the 49-key manual -->
+	<element name="tecla_branca" defstate="0">
+		<rect><bounds x="0" y="0" width="26" height="130"/><color red="0" green="0" blue="0"/></rect>
+		<rect>
+			<bounds x="1" y="0" width="24" height="128"/>
+			<color state="0" red="0.95" green="0.94" blue="0.90"/>
+			<color state="1" red="0.90" green="0.50" blue="0.10"/>
+		</rect>
+	</element>
+
+	<element name="tecla_preta" defstate="0">
+		<rect><bounds x="0" y="0" width="16" height="82"/><color red="0" green="0" blue="0"/></rect>
+		<rect>
+			<bounds x="1" y="0" width="14" height="80"/>
+			<color state="0" red="0.10" green="0.10" blue="0.10"/>
+			<color state="1" red="0.90" green="0.50" blue="0.10"/>
+		</rect>
+	</element>
+
+<!-- ===
+     SCREEN PRINTING.  Portuguese, as on the apparatus; spaced out the way
+     src/mame/layout/patinho.lay spaces NORMAL, PARTIDA and PREPARACAO.
+     === -->
+
+	<element name="str_titulo">
+		<text string="S I N T E T I Z A D O R   D E   S O M"><color red="0" green="0" blue="0"/></text>
+	</element>
+	<element name="str_epusp">
+		<text string="E P U S P"><color red="0" green="0" blue="0"/></text>
+	</element>
+
+	<element name="str_pgrf_hdr">
+		<text string="P A I N E L   G R Á F I C O   ( P G R F )       M E I O   C I C L O   D E   U M A   F U N Ç Ã O   Í M P A R"><color red="0" green="0" blue="0"/></text>
+	</element>
+	<element name="str_pgrf_nota">
+		<text string="16 CHAVES DESLIZANTES DE 16 POSIÇÕES CADA — COMO NO APARELHO (CAP. 3)"><color red="0.16" green="0.16" blue="0.14"/></text>
+	</element>
+	<element name="str_nivel"><text string="NÍVEL"><color red="0" green="0" blue="0"/></text></element>
+	<element name="str_amostra"><text string="AMOSTRA"><color red="0" green="0" blue="0"/></text></element>
+
+	<element name="str_s1_hdr">
+		<text string="S E L E T O R   S 1"><color red="0" green="0" blue="0"/></text>
+	</element>
+	<element name="str_AUTO"><text string="A U T O"><color red="0" green="0" blue="0"/></text></element>
+	<element name="str_PGRF"><text string="P G R F"><color red="0" green="0" blue="0"/></text></element>
+	<repeat count="7">
+		<param name="i" start="1" increment="1"/>
+		<element name="str_M~i~"><text string="M~i~"><color red="0" green="0" blue="0"/></text></element>
+	</repeat>
+
+	<element name="str_transf_hdr">
+		<text string="T R A N S F E R E"><color red="0" green="0" blue="0"/></text>
+	</element>
+	<element name="str_transf_cap">
+		<text string="D O   P A I N E L   P A R A   A   M E M Ó R I A"><color red="0" green="0" blue="0"/></text>
+	</element>
+
+	<element name="str_teclado_hdr">
+		<text string="T E C L A D O"><color red="0" green="0" blue="0"/></text>
+	</element>
+	<element name="str_chave_ma">
+		<text string="C H A V E   M A N U A L  -  A U T O M Á T I C O"><color red="0" green="0" blue="0"/></text>
+	</element>
+	<element name="str_MANUAL"><text string="M A N U A L" align="1"><color red="0" green="0" blue="0"/></text></element>
+	<element name="str_AUTOMATICO"><text string="A U T O M Á T I C O" align="1"><color red="0" green="0" blue="0"/></text></element>
+	<element name="str_transp_cap">
+		<text string="T R A N S P O S I Ç Ã O   D E   O I T A V A S"><color red="0" green="0" blue="0"/></text>
+	</element>
+
+	<!-- the range the transposition switch is on right now.  Same seven
+	     readings as the PORT_CONFSETTING lines of synth.cpp. -->
+	<element name="str_transp_faixa" defstate="2">
+		<text state="0" string="DÓ0 (16,35 Hz)  a  DÓ4 (261,6 Hz)"><color red="0" green="0" blue="0"/></text>
+		<text state="1" string="DÓ1 (32,7 Hz)  a  DÓ5 (523,3 Hz)"><color red="0" green="0" blue="0"/></text>
+		<text state="2" string="DÓ2 (65,4 Hz)  a  DÓ6 (1046,5 Hz)"><color red="0" green="0" blue="0"/></text>
+		<text state="3" string="DÓ3 (130,8 Hz)  a  DÓ7 (2093,0 Hz)"><color red="0" green="0" blue="0"/></text>
+		<text state="4" string="DÓ4 (261,6 Hz)  a  DÓ8 (4186,0 Hz)"><color red="0" green="0" blue="0"/></text>
+		<text state="5" string="DÓ5 (523,3 Hz)  a  DÓ9 (8372,0 Hz)"><color red="0" green="0" blue="0"/></text>
+		<text state="6" string="DÓ6 (1046,5 Hz)  a  DÓ10 (16744,0 Hz)"><color red="0" green="0" blue="0"/></text>
+	</element>
+
+	<element name="str_manual49_hdr">
+		<text string="M A N U A L   D E   4 9   T E C L A S"><color red="0" green="0" blue="0"/></text>
+	</element>
+	<element name="str_DO"><text string="DÓ"><color red="0" green="0" blue="0"/></text></element>
+	<!-- The keyboard itself IS emulated - it really drives the note and the
+	     gate.  What is not emulated is the rest of what chapter 3 lists at its
+	     output, and the panel says so rather than leaving it to a comment. -->
+	<element name="str_lvd">
+		<text string="AS SAÍDAS L, D E VBR"><bounds x="0" y="0" width="210" height="14"/><color red="0.20" green="0.14" blue="0.10"/></text>
+		<text string="DO TECLADO"><bounds x="0" y="16" width="210" height="14"/><color red="0.20" green="0.14" blue="0.10"/></text>
+		<text string="NÃO SÃO EMULADAS"><bounds x="0" y="32" width="210" height="14"/><color red="0.20" green="0.14" blue="0.10"/></text>
+	</element>
+
+	<!-- Visible until the script hides it, so a session run with -noplugins
+	     says why the mouse does nothing to the sliders. -->
+	<element name="str_aviso_plugin" defstate="1">
+		<text state="1" string="PARA ARRASTAR AS CHAVES COM O MOUSE, O PLUGIN &quot;layout&quot; TEM DE ESTAR ATIVO  —  SEM ELE, USE Tab -&gt; Slider Controls">
+			<color red="0.35" green="0.10" blue="0.02"/>
+		</text>
+	</element>
+
+	<!-- 0 to 15, for the sample numbers and the level scale -->
+	<repeat count="16">
+		<param name="i" start="0" increment="1"/>
+		<element name="sint_num_~i~"><text string="~i~"><color red="0" green="0" blue="0"/></text></element>
+	</repeat>
+
+
+
+	<!-- ONE SAMPLE OF THE GRAPHIC PANEL.
+
+	     Local coordinates are 60 x 320.  The cursor's centre travels between
+	     y = 10 (value 15) and y = 310 (value 0), and the bar hangs from that
+	     centre down to y = 310, which is the zero line of the half cycle.
+
+	     The invisible click area must span EXACTLY the cursor's travel plus
+	     half a cursor at each end, because that is what the drag library
+	     assumes when it turns a pointer position into a value. -->
+	<group name="amostra">
+		<bounds x="0" y="0" width="60" height="320"/>
+
+		<element ref="canal_chave"><bounds x="0" y="0" width="60" height="320"/></element>
+		<element ref="trilho_chave"><bounds x="25" y="8" width="10" height="304"/></element>
+
+		<element ref="barra_onda">
+			<animate inputtag="~porta~" inputmask="0xff"/>
+			<bounds state="0"  x="6" y="308" width="48" height="2"/>
+			<bounds state="15" x="6" y="10"  width="48" height="300"/>
+		</element>
+
+		<element id="~id~" ref="area_invisivel">
+			<bounds x="0" y="0" width="60" height="320"/>
+		</element>
+
+		<element id="cursor_~id~" ref="cursor_chave">
+			<animate inputtag="~porta~" inputmask="0xff"/>
+			<bounds state="0"  x="4" y="300" width="52" height="20"/>
+			<bounds state="15" x="4" y="0"   width="52" height="20"/>
+		</element>
+	</group>
+
+
+
+	<group name="painel_do_sintetizador">
+		<bounds x="0" y="0" width="1280" height="1080"/>
+
+		<element ref="fundo_painel"><bounds x="0" y="0" width="1280" height="1080"/></element>
+
+		<!-- title -->
+		<element ref="faixa_titulo"><bounds x="40" y="16" width="1200" height="40"/></element>
+		<element ref="str_titulo"><bounds x="360" y="26" width="440" height="20"/></element>
+		<element ref="str_epusp"><bounds x="1080" y="26" width="120" height="20"/></element>
+
+		<!-- ==============================================================
+		     THE GRAPHIC PANEL
+		     ============================================================== -->
+		<element ref="faixa_titulo"><bounds x="40" y="70" width="1200" height="30"/></element>
+		<element ref="str_pgrf_hdr"><bounds x="60" y="77" width="1160" height="16"/></element>
+
+		<!-- level scale, 15 at the top down to 0 at the zero line -->
+		<element ref="str_nivel"><bounds x="40" y="112" width="52" height="14"/></element>
+		<repeat count="16">
+			<param name="lv" start="15" increment="-1"/>
+			<param name="ytexto" start="133" increment="20"/>
+			<param name="ytraco" start="139" increment="20"/>
+			<element ref="sint_num_~lv~"><bounds x="44" y="~ytexto~" width="30" height="14"/></element>
+			<element ref="traco"><bounds x="80" y="~ytraco~" width="12" height="2"/></element>
+		</repeat>
+
+		<!-- the zero line of the half cycle, under every bar -->
+		<element ref="traco"><bounds x="94" y="439" width="1114" height="2"/></element>
+
+		<!-- the sixteen sliders -->
+		<repeat count="16">
+			<param name="n" start="0" increment="1"/>
+			<param name="x" start="96" increment="70"/>
+			<param name="porta" value="io6:duplex:port:synth:AM~n~"/>
+			<param name="id" value="am~n~"/>
+			<group ref="amostra"><bounds x="~x~" y="130" width="60" height="320"/></group>
+		</repeat>
+
+		<!-- sample numbers, 0 to 15 -->
+		<element ref="str_amostra"><bounds x="26" y="456" width="66" height="14"/></element>
+		<repeat count="16">
+			<param name="n" start="0" increment="1"/>
+			<param name="x" start="99" increment="70"/>
+			<element ref="sint_num_~n~"><bounds x="~x~" y="456" width="54" height="16"/></element>
+		</repeat>
+
+		<element ref="str_pgrf_nota"><bounds x="40" y="478" width="1200" height="14"/></element>
+
+		<!-- ==============================================================
+		     S1, THE NINE-POSITION SELECTOR
+		     ============================================================== -->
+		<element ref="faixa_titulo"><bounds x="40" y="520" width="320" height="28"/></element>
+		<element ref="str_s1_hdr"><bounds x="60" y="526" width="280" height="16"/></element>
+
+		<!-- Clicking the knob steps to the next position: the field carries
+		     PORT_TOGGLE, so a press runs select_next_setting() and cycles
+		     AUTO -> PGRF -> M1 ... M7 -> AUTO. -->
+		<element ref="knob_s1" inputtag="io6:duplex:port:synth:S1" inputmask="0x0f" inputraw="yes">
+			<bounds x="120" y="630" width="160" height="160"/>
+		</element>
+
+		<element ref="lampada_s1_0" inputtag="io6:duplex:port:synth:S1" inputmask="0x0f" inputraw="yes"><bounds x="113" y="749" width="14" height="14"/></element>
+		<element ref="lampada_s1_1" inputtag="io6:duplex:port:synth:S1" inputmask="0x0f" inputraw="yes"><bounds x="101" y="703" width="14" height="14"/></element>
+		<element ref="lampada_s1_2" inputtag="io6:duplex:port:synth:S1" inputmask="0x0f" inputraw="yes"><bounds x="113" y="657" width="14" height="14"/></element>
+		<element ref="lampada_s1_3" inputtag="io6:duplex:port:synth:S1" inputmask="0x0f" inputraw="yes"><bounds x="147" y="623" width="14" height="14"/></element>
+		<element ref="lampada_s1_4" inputtag="io6:duplex:port:synth:S1" inputmask="0x0f" inputraw="yes"><bounds x="193" y="611" width="14" height="14"/></element>
+		<element ref="lampada_s1_5" inputtag="io6:duplex:port:synth:S1" inputmask="0x0f" inputraw="yes"><bounds x="239" y="623" width="14" height="14"/></element>
+		<element ref="lampada_s1_6" inputtag="io6:duplex:port:synth:S1" inputmask="0x0f" inputraw="yes"><bounds x="273" y="657" width="14" height="14"/></element>
+		<element ref="lampada_s1_7" inputtag="io6:duplex:port:synth:S1" inputmask="0x0f" inputraw="yes"><bounds x="285" y="703" width="14" height="14"/></element>
+		<element ref="lampada_s1_8" inputtag="io6:duplex:port:synth:S1" inputmask="0x0f" inputraw="yes"><bounds x="273" y="749" width="14" height="14"/></element>
+
+		<element ref="str_AUTO"><bounds x="51" y="767" width="72" height="16"/></element>
+		<element ref="str_PGRF"><bounds x="34" y="702" width="72" height="16"/></element>
+		<element ref="str_M1"><bounds x="69" y="637" width="36" height="16"/></element>
+		<element ref="str_M2"><bounds x="117" y="589" width="36" height="16"/></element>
+		<element ref="str_M3"><bounds x="182" y="572" width="36" height="16"/></element>
+		<element ref="str_M4"><bounds x="247" y="589" width="36" height="16"/></element>
+		<element ref="str_M5"><bounds x="295" y="637" width="36" height="16"/></element>
+		<element ref="str_M6"><bounds x="312" y="702" width="36" height="16"/></element>
+		<element ref="str_M7"><bounds x="295" y="767" width="36" height="16"/></element>
+
+		<!-- ==============================================================
+		     THE SEVEN TRANSFERE COMMANDS
+		     ============================================================== -->
+		<element ref="faixa_titulo"><bounds x="400" y="520" width="520" height="28"/></element>
+		<element ref="str_transf_hdr"><bounds x="420" y="526" width="480" height="16"/></element>
+		<element ref="str_transf_cap"><bounds x="400" y="562" width="520" height="16"/></element>
+
+		<repeat count="7">
+			<param name="i" start="1" increment="1"/>
+			<param name="x" start="430" increment="68"/>
+			<param name="mask" start="0x01" lshift="1"/>
+			<element ref="botao_transfere" inputtag="io6:duplex:port:synth:TRANSF" inputmask="~mask~">
+				<bounds x="~x~" y="590" width="56" height="56"/>
+			</element>
+			<element ref="str_M~i~"><bounds x="~x~" y="654" width="56" height="16"/></element>
+		</repeat>
+
+		<!-- ==============================================================
+		     THE KEYBOARD'S OWN TWO SWITCHES
+		     ============================================================== -->
+		<element ref="faixa_titulo"><bounds x="950" y="520" width="290" height="28"/></element>
+		<element ref="str_teclado_hdr"><bounds x="960" y="526" width="270" height="16"/></element>
+
+		<element ref="str_chave_ma"><bounds x="950" y="558" width="290" height="14"/></element>
+		<element ref="chave_2pos" inputtag="io6:duplex:port:synth:TECL" inputmask="0x01" inputraw="yes">
+			<bounds x="960" y="586" width="64" height="64"/>
+		</element>
+		<element ref="lampada_tecl_0" inputtag="io6:duplex:port:synth:TECL" inputmask="0x01" inputraw="yes"><bounds x="1040" y="592" width="14" height="14"/></element>
+		<element ref="str_MANUAL"><bounds x="1062" y="590" width="170" height="16"/></element>
+		<element ref="lampada_tecl_1" inputtag="io6:duplex:port:synth:TECL" inputmask="0x01" inputraw="yes"><bounds x="1040" y="624" width="14" height="14"/></element>
+		<element ref="str_AUTOMATICO"><bounds x="1062" y="622" width="170" height="16"/></element>
+
+		<element ref="str_transp_cap"><bounds x="950" y="670" width="290" height="14"/></element>
+		<element ref="knob_transp" inputtag="io6:duplex:port:synth:TRANSP" inputmask="0x07" inputraw="yes">
+			<bounds x="1050" y="710" width="90" height="90"/>
+		</element>
+		<element ref="sint_num_1"><bounds x="1019" y="748" width="20" height="14"/></element>
+		<element ref="sint_num_2"><bounds x="1028" y="715" width="20" height="14"/></element>
+		<element ref="sint_num_3"><bounds x="1052" y="691" width="20" height="14"/></element>
+		<element ref="sint_num_4"><bounds x="1085" y="682" width="20" height="14"/></element>
+		<element ref="sint_num_5"><bounds x="1118" y="691" width="20" height="14"/></element>
+		<element ref="sint_num_6"><bounds x="1142" y="715" width="20" height="14"/></element>
+		<element ref="sint_num_7"><bounds x="1151" y="748" width="20" height="14"/></element>
+		<element ref="str_transp_faixa" inputtag="io6:duplex:port:synth:TRANSP" inputmask="0x07" inputraw="yes">
+			<bounds x="950" y="806" width="290" height="14"/>
+		</element>
+
+		<!-- ==============================================================
+		     THE 49-KEY MANUAL.
+
+		     Written out key by key rather than generated: the port a key
+		     lands in changes in the middle of an octave (TECL0 holds keys 0
+		     to 15, TECL1 16 to 31, TECL2 32 to 47, TECL3 the last one), so
+		     no repeat over octaves would come out right.
+
+		     White keys are 26 wide at x = 263 + 26 * w; a black key sits at
+		     the seam after white key w, that is x = 263 + 26 * (w + 1) - 8.
+		     ============================================================== -->
+		<element ref="faixa_titulo"><bounds x="40" y="850" width="1200" height="28"/></element>
+		<element ref="str_manual49_hdr"><bounds x="60" y="856" width="1160" height="16"/></element>
+
+		<!-- white keys, DO2 upwards -->
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL0" inputmask="0x0001"><bounds x="263"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL0" inputmask="0x0004"><bounds x="289"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL0" inputmask="0x0010"><bounds x="315"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL0" inputmask="0x0020"><bounds x="341"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL0" inputmask="0x0080"><bounds x="367"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL0" inputmask="0x0200"><bounds x="393"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL0" inputmask="0x0800"><bounds x="419"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL0" inputmask="0x1000"><bounds x="445"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL0" inputmask="0x4000"><bounds x="471"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL1" inputmask="0x0001"><bounds x="497"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL1" inputmask="0x0002"><bounds x="523"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL1" inputmask="0x0008"><bounds x="549"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL1" inputmask="0x0020"><bounds x="575"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL1" inputmask="0x0080"><bounds x="601"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL1" inputmask="0x0100"><bounds x="627"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL1" inputmask="0x0400"><bounds x="653"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL1" inputmask="0x1000"><bounds x="679"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL1" inputmask="0x2000"><bounds x="705"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL1" inputmask="0x8000"><bounds x="731"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL2" inputmask="0x0002"><bounds x="757"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL2" inputmask="0x0008"><bounds x="783"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL2" inputmask="0x0010"><bounds x="809"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL2" inputmask="0x0040"><bounds x="835"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL2" inputmask="0x0100"><bounds x="861"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL2" inputmask="0x0200"><bounds x="887"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL2" inputmask="0x0800"><bounds x="913"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL2" inputmask="0x2000"><bounds x="939"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL2" inputmask="0x8000"><bounds x="965"  y="900" width="26" height="130"/></element>
+		<element ref="tecla_branca" inputtag="io6:duplex:port:synth:TECL3" inputmask="0x0001"><bounds x="991"  y="900" width="26" height="130"/></element>
+
+		<!-- black keys -->
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL0" inputmask="0x0002"><bounds x="281"  y="900" width="16" height="82"/></element>
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL0" inputmask="0x0008"><bounds x="307"  y="900" width="16" height="82"/></element>
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL0" inputmask="0x0040"><bounds x="359"  y="900" width="16" height="82"/></element>
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL0" inputmask="0x0100"><bounds x="385"  y="900" width="16" height="82"/></element>
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL0" inputmask="0x0400"><bounds x="411"  y="900" width="16" height="82"/></element>
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL0" inputmask="0x2000"><bounds x="463"  y="900" width="16" height="82"/></element>
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL0" inputmask="0x8000"><bounds x="489"  y="900" width="16" height="82"/></element>
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL1" inputmask="0x0004"><bounds x="541"  y="900" width="16" height="82"/></element>
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL1" inputmask="0x0010"><bounds x="567"  y="900" width="16" height="82"/></element>
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL1" inputmask="0x0040"><bounds x="593"  y="900" width="16" height="82"/></element>
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL1" inputmask="0x0200"><bounds x="645"  y="900" width="16" height="82"/></element>
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL1" inputmask="0x0800"><bounds x="671"  y="900" width="16" height="82"/></element>
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL1" inputmask="0x4000"><bounds x="723"  y="900" width="16" height="82"/></element>
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL2" inputmask="0x0001"><bounds x="749"  y="900" width="16" height="82"/></element>
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL2" inputmask="0x0004"><bounds x="775"  y="900" width="16" height="82"/></element>
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL2" inputmask="0x0020"><bounds x="827"  y="900" width="16" height="82"/></element>
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL2" inputmask="0x0080"><bounds x="853"  y="900" width="16" height="82"/></element>
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL2" inputmask="0x0400"><bounds x="905"  y="900" width="16" height="82"/></element>
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL2" inputmask="0x1000"><bounds x="931"  y="900" width="16" height="82"/></element>
+		<element ref="tecla_preta" inputtag="io6:duplex:port:synth:TECL2" inputmask="0x4000"><bounds x="957"  y="900" width="16" height="82"/></element>
+
+		<!-- the five DO keys; which octave they sound is what the
+		     transposition switch decides, so no number is printed -->
+		<element ref="str_DO"><bounds x="256"  y="1034" width="40" height="14"/></element>
+		<element ref="str_DO"><bounds x="438"  y="1034" width="40" height="14"/></element>
+		<element ref="str_DO"><bounds x="620"  y="1034" width="40" height="14"/></element>
+		<element ref="str_DO"><bounds x="802"  y="1034" width="40" height="14"/></element>
+		<element ref="str_DO"><bounds x="984"  y="1034" width="40" height="14"/></element>
+
+		<element ref="str_lvd"><bounds x="40" y="936" width="210" height="46"/></element>
+		<element id="aviso_plugin" ref="str_aviso_plugin"><bounds x="40" y="1056" width="1200" height="14"/></element>
+	</group>
+
+	<!-- END COPY -->
+
+<!-- =====================================================================
+     VIEWS
+
+     THE ORDER MATTERS, AND SO DOES THE HIDDEN TELEPRINTER.
+
+     MAME does not pick view 0 when the machine has a screen.  It looks for
+     "the first view with this screen and this screen only" and falls back
+     to view 0 only when no view has one (render_target::configured_view,
+     src/emu/render.cpp).  A view with no screen is skipped whatever its
+     index, and the "Screen 0 Standard (4:3)" views are generated for every
+     screen in the machine, so before this file had a screen anywhere the
+     machine always opened on the teleprinter's blank paper.
+
+     That is why "Front Panel" carries the teleprinter screen in a
+     collection that starts hidden: the view then counts as a view with
+     that screen, is the first such view, and wins the automatic choice,
+     while what is on the glass is the panel alone.  The collection is not
+     dead weight either: Video Options -> Front Panel lets you tick the
+     teleprinter back on and read the paper beside the panel.
+
+     "Front Panel Alone" exists for one reason: a view whose screen tag
+     does not resolve is DROPPED (layout_reference_error, caught per view
+     in rendlay.cpp, whose own comment explains the same trap for intlc44).
+     Start the machine with an empty /B slot (./mame patinho -iob "")
+     and every view that names the teleprinter disappears.  Without this
+     one there would be no panel left to look at.
+     ===================================================================== -->
+
+	<view name="Front Panel">
+		<group ref="painel"/>
+
+		<collection name="Teleimpressor" visible="no">
+			<screen tag="iob:tty:terminal:tty_screen">
+				<bounds x="1320" y="400" width="640" height="400"/>
+			</screen>
+		</collection>
 	</view>
+
+	<view name="Front Panel Alone">
+		<group ref="painel"/>
+	</view>
+
+<!-- =====================================================================
+     THE BENCH
+
+     Everything Guido Stolfi's executor needs, at once: the computer's front
+     panel on the left, the instrument on the right, and above the
+     instrument the last lines of the teleprinter's paper, which is where
+     the executor's ".ERRO" comes out (SAI /B0 at /0D9).
+
+     THE PAPER IS CROPPED BY THE EDGE OF THE VIEW.  The screen is 800 tall
+     here and starts at y = -480, so only its bottom 320, about twenty
+     printed lines, fall inside the view; the rest is above the top edge
+     and is clipped away.  That is the only way to crop a screen in a
+     layout: xscroll and yscroll exist for ELEMENTS, not for screens.
+
+     THE BOTTOM IS THE RIGHT END TO KEEP, and it is worth saying why,
+     because the obvious guess is wrong.  Most MAME terminals fill from the
+     top and only scroll once the screen is full.  This one does not:
+     teleprinter_device (src/mame/shared/teleprinter.cpp) always writes on
+     the LAST line and scrolls the whole page up on every line feed, which
+     is what a roll of paper does.  So the print head is on the bottom line
+     from the first character, and the band above it holds the twenty lines
+     that came before.  Measured, not assumed: printing three lines and
+     photographing the screen view puts them at the bottom of the paper
+     (PatinhoFeio/scripts/mame/foto_da_bancada.sh).
+
+     2640 x 1440 is close to 16:9, so the whole bench fits a normal
+     landscape window at once, which is the point of having it.
+
+     Like "Front Panel", this view names the teleprinter and so disappears
+     from a machine started without one.  Unlike it, it also draws the
+     instrument, which is optional in a different way: a missing input port
+     costs no view, it only leaves the drawing inert.  So on a machine
+     started without -io6:duplex:port synth the bench still opens, with a
+     synthesiser panel that does not move.
+     ===================================================================== -->
+
+	<view name="Synth Bench">
+		<bounds x="0" y="0" width="2640" height="1440"/>
+
+		<group ref="painel"><bounds x="20" y="120" width="1280" height="1200"/></group>
+
+		<element ref="moldura_papel"><bounds x="1334" y="0" width="1292" height="326"/></element>
+		<screen tag="iob:tty:terminal:tty_screen">
+			<bounds x="1340" y="-480" width="1280" height="800"/>
+		</screen>
+		<element ref="str_teleimpressor"><bounds x="1340" y="332" width="420" height="18"/></element>
+
+		<group ref="painel_do_sintetizador"><bounds x="1340" y="356" width="1280" height="1080"/></group>
+	</view>
+
+	<script><![CDATA[
+		file:set_resolve_tags_callback(
+			function()
+				-- The instrument is optional: it is only in the machine when
+				-- the duplex board of channel /6 was cabled with
+				-- -io6:duplex:port synth.  Without it the drawing is still
+				-- here, inert, and no slider may be registered: the library
+				-- below would hold a nil field and fail on the first click.
+				local sint = "io6:duplex:port:synth:"
+				local presente = file.device:ioport(sint .. "AM0") ~= nil
+
+				for view_name, view in pairs(file.views) do
+					-- this script is running, so the layout plugin is on and
+					-- the mouse can drag: hide the warning that only a
+					-- -noplugins session should read
+					local aviso = view.items["aviso_plugin"]
+					if aviso then
+						aviso:set_state(0)
+					end
+
+					-- Only the bench carries the sixteen cursors.  Registering
+					-- widgets for a view that does not show them would make a
+					-- click anywhere on the front panel land on a slider,
+					-- because the library matches by coordinates alone over
+					-- one list shared by the whole file.
+					if presente and view.items["am0"] then
+						install_slider_callbacks(view)
+						for i = 0, 15 do
+							add_slider(view, "am" .. i, "cursor_am" .. i, sint .. "AM" .. i)
+						end
+					end
+				end
+			end)
+
+		-- BEGIN COPY: slider and knob library of src/emu/layout/epusp_synth.lay
+		-----------------------------------------------------------------------
+		-- Slider and knob library starts.
+		-- Can be copied as-is to other layouts.
+		-- version: 11
+		-----------------------------------------------------------------------
+
+		-- Global configuration. Can be overwritten in the resolve_tags callback.
+		KNOB_DOT_ANGLE_SPAN = 150  -- -/+ 150 degrees from top center.
+		UPDATE_CLICK_STATE = true
+
+		-- Constants.
+		VERTICAL = 0
+		HORIZONTAL = 1
+
+		local widgets = {}   -- Stores slider and knob information.
+		local pointers = {}  -- Tracks pointer state.
+
+		-- The knob's Y position must be animated using <animate inputtag="{port_name}">.
+		-- The click area's vertical size must exactly span the range of the
+		-- knob's movement.
+		function add_slider(view, clickarea_id, knob_id, port_name)
+			table.insert(widgets, {
+				clickarea   = get_layout_item(view, clickarea_id),
+				slider_knob = get_layout_item(view, knob_id),
+				field       = get_port_field(port_name),
+				is_knob     = false })
+		end
+
+		-- A sweep between the attached field's min and max values requires
+		-- moving the pointer by `scale * clickarea.height` pixels, when drag
+		-- direction is VERTICAL. Replace `height` with `width` when HORIZONTAL.
+		--
+		-- `dot_id` is optional. If not nil, this script will take control of the
+		-- element's position as the knob rotates. The distance of the dot from
+		-- the center of `clickarea` will be preserved during rotation.
+		-- It is suggested you place the dot at the top-center of the knob.
+		function add_knob(view, clickarea_id, port_name, scale, drag_direction, dot_id)
+			table.insert(widgets, {
+				clickarea     = get_layout_item(view, clickarea_id),
+				field         = get_port_field(port_name),
+				is_knob       = true,
+				scale         = scale,
+				is_horizontal = (drag_direction == HORIZONTAL),
+				knob_dot      = dot_id and get_layout_item(view, dot_id) })
+		end
+
+		function get_layout_item(view, item_id)
+			local item = view.items[item_id]
+			if item == nil then
+				emu.print_error("Layout element: '" .. item_id .. "' not found.")
+			end
+			return item
+		end
+
+		function get_port_field(port_name)
+			local port = file.device:ioport(port_name)
+			if port == nil then
+				emu.print_error("Port: '" .. port_name .. "' not found.")
+				return nil
+			end
+			local field = nil
+			for k, val in pairs(port.fields) do
+				field = val
+				break
+			end
+			local field_msg = "Needs to either be an IPT_ADJUSTER, or an analog port with auto-center."
+			if field == nil then
+				emu.print_error("Port '" .. port_name .."' " .. field_msg)
+				return nil
+			end
+			if field.is_analog and (not field.centerdelta or field.centerdelta == 0) then
+				emu.print_error("Port '" .. port_name .."' " .. field_msg)
+				return nil
+			end
+			return field
+		end
+
+		local function set_click_state(widget, state)
+			if UPDATE_CLICK_STATE then
+				if widget.is_knob then
+					widget.clickarea:set_state(state)
+				else
+					widget.slider_knob:set_state(state)
+				end
+			end
+		end
+
+		local function release_pointer(pointer_id)
+			if pointers[pointer_id] then
+				local widget = widgets[pointers[pointer_id].selected_widget]
+				set_click_state(widget, 0)
+				local field = widget.field
+				if field.is_analog then
+					field:clear_value()
+				end
+			end
+			pointers[pointer_id] = nil
+		end
+
+		local function pointer_updated(type, id, dev, x, y, btn, dn, up, cnt)
+			-- If a button is not pressed, reset the state of the current pointer.
+			if btn & 1 == 0 then
+				release_pointer(id)
+				return
+			end
+
+			-- If a button was just pressed, find the affected widget, if any.
+			if dn & 1 ~= 0 then
+				for i = 1, #widgets do
+					local found, relative
+					if widgets[i].slider_knob and widgets[i].slider_knob.bounds:includes(x, y) then
+						found = true
+						relative = true
+					elseif widgets[i].clickarea.bounds:includes(x, y) then
+						found = true
+						relative = false
+					end
+					if found then
+						set_click_state(widgets[i], 1)
+						pointers[id] = {
+							selected_widget = i,
+							relative = relative,
+							start_x = x,
+							start_y = y,
+							start_value = widgets[i].field.port:read() }
+						break
+					end
+				end
+			end
+
+			-- If there is no widget selected by the current pointer, we are done.
+			if pointers[id] == nil then
+				return
+			end
+
+			-- A widget is selected. Update its state based on the pointer's position.
+
+			local pointer = pointers[id]
+			local widget = widgets[pointer.selected_widget]
+
+			local min_value = widget.field.minvalue
+			local max_value = widget.field.maxvalue
+			local value_range = max_value - min_value
+
+			local new_value
+			if widget.is_knob then
+				if widget.is_horizontal then
+					local step_x = value_range / (widget.scale * widget.clickarea.bounds.width)
+					new_value = pointer.start_value + (x - pointer.start_x) * step_x
+				else
+					local step_y = value_range / (widget.scale * widget.clickarea.bounds.height)
+					new_value = pointer.start_value + (pointer.start_y - y) * step_y
+				end
+			else
+				local knob_half_height = widget.slider_knob.bounds.height / 2
+				local min_y = widget.clickarea.bounds.y0 + knob_half_height
+				local max_y = widget.clickarea.bounds.y1 - knob_half_height
+
+				if pointer.relative then
+					-- User clicked on the knob. The new value will depend on how
+					--  much the knob was dragged.
+					new_value = pointer.start_value - value_range * (y - pointer.start_y) / (max_y - min_y)
+				else
+					-- User clicked elsewhere on the slider. The new value will depend on
+					-- the absolute position of the click.
+					new_value = max_value - value_range * (y - min_y) / (max_y - min_y)
+				end
+			end
+
+			new_value = math.floor(new_value + 0.5)
+			if new_value < min_value then new_value = min_value end
+			if new_value > max_value then new_value = max_value end
+
+			if widget.field.is_analog then
+				widget.field:set_value(new_value)
+			else
+				widget.field.user_value = new_value
+			end
+		end
+
+		local function get_knob_dot_bounds(widget)
+			local dot = widget.knob_dot_cache
+			local value = (widget.field.port:read() - dot.value_min) / dot.value_range
+			local angle = dot.angle_min + value * dot.angle_range
+			local rx = -dot.center_y * math.sin(angle) * dot.aspect
+			local ry = dot.center_y * math.cos(angle)
+			local x = rx + dot.dx
+			local y = ry + dot.dy
+			return emu.render_bounds(x, y, x + dot.width, y + dot.height)
+		end
+
+		local function configure_knob_dots()
+			for i = 1, #widgets do
+				local dot = widgets[i].knob_dot
+				if dot then
+					-- Remove bounds callback, since we need to access the
+					-- configured bounds.
+					dot:set_bounds_callback(nil)
+
+					local field = widgets[i].field
+					local knob_bounds = widgets[i].clickarea.bounds
+					local dot_bounds = dot.bounds
+					local max_angle = KNOB_DOT_ANGLE_SPAN * 2.0 * math.pi / 360.0
+
+					-- Compute the distance of the knob dot from the knob center.
+					local dot_x = dot_bounds.x0 + dot_bounds.width / 2.0
+					local dot_y = dot_bounds.y0 + dot_bounds.height / 2.0
+					local knob_x = knob_bounds.x0 + knob_bounds.width / 2.0
+					local knob_y = knob_bounds.y0 + knob_bounds.height / 2.0
+					local radius = math.sqrt((dot_y - knob_y) ^ 2 + (dot_x - knob_x) ^ 2)
+
+					widgets[i].knob_dot_cache = {
+						width       = dot_bounds.width,
+						height      = dot_bounds.height,
+						aspect      = dot_bounds.aspect,
+						value_min   = field.minvalue,
+						value_range = field.maxvalue - field.minvalue,
+						angle_min   = -max_angle,
+						angle_range = 2.0 * max_angle,
+						center_y    = -radius,
+						dx = knob_bounds.x0 + (knob_bounds.width - dot_bounds.width) / 2.0,
+						dy = knob_bounds.y0 + (knob_bounds.height - dot_bounds.height) / 2.0 }
+
+					dot:set_bounds_callback(
+						function()
+							return get_knob_dot_bounds(widgets[i])
+						end)
+				end
+			end
+		end
+
+		local function pointer_left(type, id, dev, x, y, up, cnt)
+			release_pointer(id)
+		end
+
+		local function pointer_aborted(type, id, dev, x, y, up, cnt)
+			release_pointer(id)
+		end
+
+		local function forget_pointers()
+			for id, pointer in pairs(pointers) do
+				release_pointer(id)
+			end
+			pointers = {}
+		end
+
+		function install_slider_callbacks(view)
+			view:set_recomputed_callback(configure_knob_dots)
+			view:set_pointer_updated_callback(pointer_updated)
+			view:set_pointer_left_callback(pointer_left)
+			view:set_pointer_aborted_callback(pointer_aborted)
+			view:set_forget_pointers_callback(forget_pointers)
+		end
+		-----------------------------------------------------------------------
+		-- Slider and knob library ends.
+		-----------------------------------------------------------------------
+		-- END COPY
+	]]></script>
+
 </mamelayout>
