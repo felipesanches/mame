@@ -1,0 +1,86 @@
+// license:GPL-2.0+
+// copyright-holders:Felipe Sanches
+/***************************************************************************
+
+    Optical punched tape reader for the Patinho Feio -- HP-2737-A
+
+    See ptreader.h for the documentary basis.  Per chapter 12 of the
+    assembler manual the reel turns only while CONTROLE is asserted: "FNC
+    /E6" asserts it and delivering a frame drops it again ("ENTRA C/ DADOS E
+    PARA FITA"), so every further frame needs a fresh "FNC /E6".
+
+***************************************************************************/
+
+#include "emu.h"
+#include "ptreader.h"
+
+DEFINE_DEVICE_TYPE(PATINHO_PTREADER, patinho_ptreader_device, "patinho_ptreader", "HP-2737-A optical punched tape reader")
+
+patinho_ptreader_device::patinho_ptreader_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: paper_tape_reader_device(mconfig, PATINHO_PTREADER, tag, owner, clock)
+	, device_patinho_io_card_interface(mconfig, *this)
+{
+}
+
+void patinho_ptreader_device::device_start()
+{
+	m_step_timer = timer_alloc(FUNC(patinho_ptreader_device::step), this);
+
+	save_item(NAME(m_skip_feed));
+}
+
+void patinho_ptreader_device::device_reset()
+{
+	m_step_timer->reset();
+	m_skip_feed = false;
+}
+
+void patinho_ptreader_device::card_reset()
+{
+	device_patinho_io_card_interface::card_reset();
+
+	m_step_timer->reset();
+	m_skip_feed = false;
+}
+
+void patinho_ptreader_device::control_w(int state)
+{
+	// 300 frames per second at most (doc 03, chapter 1)
+	if (state)
+		m_step_timer->adjust(attotime::from_hz(300), 0, attotime::from_hz(300));
+	else
+		m_step_timer->reset();
+}
+
+void patinho_ptreader_device::func_w(uint8_t cmd)
+{
+	// "FNC /E8": the manual says this one only works on the tape reader --
+	// "ignora todos os feed-frames (bytes nulos) da fita, ate a proxima
+	// perfuracao (1o byte nao nulo)".
+	if (cmd == 8)
+		m_skip_feed = true;
+	else
+		device_patinho_io_card_interface::func_w(cmd);
+}
+
+TIMER_CALLBACK_MEMBER(patinho_ptreader_device::step)
+{
+	uint8_t frame;
+
+	do
+	{
+		if (!is_loaded() || (fread(&frame, 1U) != 1U))
+		{
+			// End of the roll, or no roll mounted. STATUS stays busy and the
+			// program waits, which is what the real machine did when the tape
+			// ran out of the head.
+			return;
+		}
+	}
+	while (m_skip_feed && !frame);
+
+	m_skip_feed = false;
+
+	// Drops CONTROLE, sets STATUS ready, and raises PEDIDO if enabled.
+	receive_byte(frame);
+}

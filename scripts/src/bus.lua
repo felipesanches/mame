@@ -4219,6 +4219,20 @@ if BUSES["PASOPIA"] then
 end
 
 
+
+---------------------------------------------------
+--
+--@src/devices/bus/patinho/iobus.h,BUSES["PATINHO"] = true
+---------------------------------------------------
+
+if (BUSES["PATINHO"]~=null) then
+	files {
+		MAME_DIR .. "src/devices/bus/patinho/iobus.cpp",
+		MAME_DIR .. "src/devices/bus/patinho/iobus.h",
+		MAME_DIR .. "src/devices/bus/patinho/ptreader.cpp",
+		MAME_DIR .. "src/devices/bus/patinho/ptreader.h",
+	}
+end
 ---------------------------------------------------
 --
 --@src/devices/bus/pc_joy/pc_joy.h,BUSES["PC_JOY"] = true
