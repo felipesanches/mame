@@ -360,8 +360,25 @@ ROM_START( patinho )
 	ROM_REGION( 0x028, "exemplo_16.7", 0 )
 	ROM_LOAD( "exemplo_16.7.bin", 0x000, 0x028, CRC(0a87ac8d) SHA1(7c35ac3eed9ed239f2ef56c26e6f0c59f635e1ac) )
 
+	/* THE ABSOLUTE LOADER, RECONSTRUCTED -- not a dump.
+
+	   The original never survived: the file that was here is 128 bytes of
+	   ZEROS, which is why it carried BAD_DUMP and why nothing could be loaded
+	   from a punched tape without writing memory from outside the machine.
+
+	   What is here now is a working reconstruction, assembled from
+	   scripts/carregador/carregador_absoluto.asm in the PatinhoFeio
+	   repository.  It is NOT the historical program -- it is a program that
+	   does the same job, written with the same instructions and with the same
+	   reader handshake the executor of Guido Stolfi uses (routine LEOT of
+	   FITA#011).  Verified by loading FITA#012D.BIN through the reader and
+	   comparing all 445 bytes against the tape: they match.
+
+	   BAD_DUMP stays on purpose.  It is the only flag MAME has that tells a
+	   user "this is not the real thing", and that is exactly what needs
+	   saying.  Whoever finds the true dump should replace it. */
 	ROM_REGION( 0x080, "loader", 0 )
-	ROM_LOAD( "loader.bin", 0x000, 0x080, BAD_DUMP CRC(c2a8fa9d) SHA1(0ae4f711ef5d6e9d26c611fd2c8c8ac45ecbf9e7) )
+	ROM_LOAD( "loader_reconstruido.bin", 0x000, 0x080, BAD_DUMP CRC(33b2c552) SHA1(25488794ee85c7c9a8a02d3b237b9bc6aa88433f) )
 
 	/* Micro pre-loader:
 	   This was re-created by professor Joao Jose Neto based on his vague
