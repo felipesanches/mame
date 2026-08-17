@@ -4,13 +4,9 @@
 
     Sound synthesiser of the EPUSP, by Guido Stolfi
 
-    This is the FIRST STAGE only: the control interface, made audible with a
-    square wave.  None of the analogue blocks are modelled -- no VCF, no
-    envelopes, no portamento, no vibrato.  What it does model is what the
-    computer can actually address: the command set of chapter 5 of the
-    synthesiser manual, "Comandos do Computador".
-
-    The commands, transcribed from that chapter:
+    Control interface only, made audible with a square wave: no VCF,
+    envelopes, portamento or vibrato.  What is modelled is the command set
+    of chapter 5 of the synthesiser manual, "Comandos do Computador":
 
          0   NOTA TOCADA          pitch, with the gate on
          1-8 armazenamento de timbre (TIMBRE)
@@ -27,182 +23,75 @@
         31   dados genericos na interface = SINC
        255   NOP
 
-    Of those, this stage sounds 0, 11 and 12.  The rest are decoded, stored
-    and logged, so that adding a block later is a matter of using state that
-    is already being kept correctly.
-
-    THE PITCH CODE IS NOT MIDI.  It is
-
-        nibble alto = oitava,  nibble baixo = semitom
-
-    and the frequency follows from chapter 3, which puts the scale between
-    "o do de 16,35 Hz" and "o si de 15 804,3 Hz" -- ten octaves of twelve
-    semitones:
+    Of those, 0, 11 and 12 sound; the rest are decoded and stored only.  The
+    pitch code is not MIDI: nibble alto = oitava, nibble baixo = semitom,
+    over the ten octaves of twelve semitones chapter 3 places between "o do
+    de 16,35 Hz" and "o si de 15 804,3 Hz":
 
         f(codigo) = 16.3516 Hz * 2^( (codigo >> 4) + (codigo & 15) / 12 )
 
-    That gives /39 -> 220.0 Hz and /40 -> 261.6 Hz, which is what the score
-    FITA#020 calls LA,4 and DO,5.  The MIDI reading would give 69 instead of
-    /49 for LA,5 and is refuted by test C1.2 of
-    scripts/sintetizador/verificar.py in the PatinhoFeio repository.
+    so /39 -> 220.0 Hz and /40 -> 261.6 Hz, the LA,4 and DO,5 of FITA#020.
 
-    THE SIXTEEN SAMPLES ARE HALF A CYCLE, NOT A WHOLE ONE.
+    A timbre's sixteen samples are half a cycle, not a whole one: chapter 3
+    has "16 chaves deslizantes de 16 posicoes ... no qual se desenha MEIO
+    CICLO de uma forma de onda IMPAR", and clock frl runs at "32 VEZES" the
+    output = 16 samples x 2 half-cycles.  The period is w(k) then -w(k), odd
+    and of zero mean, so no DC offset is to be subtracted; SAU is -5 to +5 V.
 
-    Chapter 3, "Gerador de Timbres (TMBR-PGRF-MEMR)", is explicit twice over:
+    Chapter 3 gives the timbre selector as "chave de 2 posicoes (AUTO --
+    MANUAL) + chave de 8 posicoes (PGRF-M1-M2...M7)": nine positions, hence
+    seven memories and a graphic panel, not eight.  Its "LEIA" and
+    "TRANSFIRA" are LETMB (10) and GRTMB (9); commands 1 to 8 fill the
+    computer's store, GRTMB copies it into memory n, and LETMB picks the
+    store heard while the selector is on AUTO.
 
-        "Conjunto de 16 chaves deslizantes de 16 posicoes cada uma no qual se
-         desenha MEIO CICLO de uma forma de onda IMPAR."
+    Store 0 is PGRF, the graphic panel, drawn by hand; FITA#023 plays most of
+    its length with "LETMB,0" and that drawing did not survive, so PGRF comes
+    up holding a square -- a declared modelling choice.  A memory's
+    AUTO/TRANSF. -- BLOQUEIA switch keeps "a ultima forma de onda armazenada
+    [...] inalterada"; write protection is unrecorded, so all are writable.
 
-        "Saida de audio selecionavel (SAU).  Sinal analogico (-5 a +5 Volts)
-         -- FUNCAO IMPAR -- cujo PRIMEIRO SEMI-CICLO e o registrado no painel
-         de chaves (posicao PAINEL) ou os armazenados nas memorias."
+    The real panel is 64 toggle switches, chapter 11's "16 chaves de entrada"
+    on each of four bit units, one bit of one sample each; modelled here as
+    sixteen 16-position sliders of identical information content, a declared
+    usability choice.  One IPT_ADJUSTER each (as in fixfreq.cpp) keeps a
+    drawing in cfg and in Tab -> Slider Controls without layout or plugin.
+    The seven TRANSFERE switches ("7 chaves de transferencia" per bit unit)
+    copy the panel into memory n, the manual twin of GRTMB, which copies the
+    computer's store (chapter 11's "8.a memoria", filled serially through
+    en1/en0).  The panel is a physical control and never a destination.
 
-    and the clock rate proves it independently:
+    The 49-key manual, from chapter 6 (schematics) and chapter 3 (function),
+    outputs frf (a square wave at 32x the note) and CHV (0 V with no key
+    down, 5 V with one); chapter 9 labels the note interface decoder output
+    "(Ao teclado -- oitava mais alta)", so the computer injects into the very
+    octave dividers the keys drive, and the manual-automatico switch selects
+    which of the two supplies note and gate.  With 49 keys (k = 0..48) and
+    the seven-position octave transposition (p = 0..6, twelve semitones),
 
-        "Frequencia de relogio (frl).  Sinal digital (onda quadrada) de
-         frequencia 32 VEZES a da forma de onda de saida (TMB)."
+        n = 12 * p + k,   pitch byte = ((n / 12) << 4) | (n % 12)
 
-    32 = 16 samples x 2 half-cycles.  So the waveform is w(k) for the first
-    half of the period and -w(k) for the second, which makes it odd by
-    construction and therefore EXACTLY ZERO MEAN.  The earlier version treated
-    the 16 samples as a full cycle and subtracted their mean to kill a DC
-    offset; the offset was an artefact of that mistake, and the subtraction is
-    gone.
+    which spans the 121 values chapter 3 counts for the manual position
+    ("entre 121 (manualmente) ou 120 (automaticamente) valores"), topped by
+    16.3516 x 2^10 = 16 743.9 Hz, chapter 3's "16 744,0 Hz"; automatic gets
+    120 because the byte holds octave 0-9 and semitone 0-11.  That is a
+    derivation from those two numbers, not a reading.  Neither L and D, the
+    pulses that fire the chapter 7 envelopes, nor VBR, the vibrato voltage,
+    is generated.  The monophonic rule is undocumented and so a declared
+    choice: last key wins, and on release the highest key still held.
 
-    WHO CHOOSES WHICH TIMBRE PLAYS
+    A host MIDI controller is an input device of the emulator, not a MIDI
+    socket this instrument acquired: the receiver ends in aciona_tecla(),
+    where a PC key and a layout click also end, so a note goes through the
+    same switches a finger does.  Velocity, channel and after-touch are
+    ignored because CHV is a contact giving 0 V or 5 V; only note-on velocity
+    0 = note-off is honoured.  A plain MIDI_PORT() would advertise a socket
+    the hardware has not got, so option_set() marks the slot fixed, which
+    clifront.cpp, emuopts.cpp and ui/slotopt.cpp skip; "-midiin" survives as
+    an image option, and with no source selected no byte arrives.
 
-    Chapter 3 again, and it corrects a first reading taken from chapter 11:
-
-        "Chave de selecao de modo de operacao.  Chave de 2 posicoes (AUTO --
-         MANUAL) + chave de 8 posicoes (PGRF-M1-M2...M7) + botao de comando.
-
-         AUTO -- funcionamento automatico (computador).  Nesta posicao o
-         computador pode selecionar para a saida SAU a forma de onda do painel
-         ou as das memorias, e pode armazenar formas de ondas nas memorias que
-         estiverem disponiveis (AUTO/TRANSF.)."
-
-    So the nine positions chapter 11 counts are AUTO plus PGRF plus M1 to M7 --
-    not "external plus memories 1 to 8".  There are SEVEN memories and a
-    GRAPHIC PANEL, not eight memories.
-
-    And the two computer commands are named there too:
-
-        "Entradas do computador -- 8 linhas de dados mais 8 linhas de comandos
-         de timbre, alem de um comando 'LEIA' e um comando 'TRANSFIRA'
-         destinados a controle automatico do timbre."
-
-    "leia" is LETMB (command 10) and "transfira" is GRTMB (command 9).  That
-    ends a question this project had open for four sessions: commands 1 to 8
-    fill the computer's own store, GRTMB copies that store into memory n, and
-    LETMB selects which of PGRF/M1..M7 reaches the output.
-
-    WHAT STILL CANNOT BE REPRODUCED, AND WHY THAT IS THE HONEST ANSWER
-
-    Position 0 is PGRF, the graphic panel: sixteen sliding switches the
-    composer set BY HAND.  FITA#023 selects it with "LETMB,0" for most of the
-    piece.  That drawing is not on the tape and did not survive, so the one
-    thing needed to reproduce the piece exactly is the one thing no tape can
-    carry.  PGRF comes up holding a square here -- a declared modelling choice,
-    for the same reason as before: silence with no error is the worst failure
-    mode this project has.
-
-    Each memory also has an AUTO/TRANSF. -- BLOQUEIA switch, and in BLOQUEIA
-    "a ultima forma de onda armazenada permanece inalterada, independentemente
-    do modo de operacao e dos comandos do computador".  Whether a given memory
-    was write-protected in 1977 is likewise unrecorded; they default to
-    writable here, which is what a tape issuing GRTMB evidently assumes.
-
-    THE FRONT PANEL, added 2026-08-16: the drawing that no tape could carry
-
-    Until now the only thing a user could turn on this instrument was S1.  The
-    PGRF waveform -- the very thing FITA#023 plays for most of its length, and
-    the very thing that did not survive -- was a hardcoded square.  Three
-    controls of the real machine are now here, and each one is a decision worth
-    stating rather than a schematic being copied.
-
-    1. THE GRAPHIC PANEL: SIXTEEN SLIDERS OF SIXTEEN POSITIONS.
-
-       Chapter 11 counts the real control exactly: "16 chaves de entrada" per
-       BIT UNIT, and there are four bit units -- that is 4 x 16 = 64 toggle
-       switches, one per bit of one sample, arranged as four bit planes.  What
-       is modelled here is SIXTEEN SLIDERS, one per sample, each with sixteen
-       positions carrying the four bits of that sample.
-
-       That is not the real control and is not claimed to be: it is a usability
-       choice made by the project owner, in full knowledge of the 64 switches.
-       The information content is identical -- 16 samples x 4 bits either way --
-       and the reason for the swap is in the name of the thing.  PGRF is the
-       PAINEL GRAFICO, and chapter 3 says what happens at it: "Conjunto de 16
-       chaves deslizantes de 16 posicoes cada uma no qual se desenha MEIO CICLO
-       de uma forma de onda IMPAR".  A row of sixteen cursor positions DRAWS the
-       waveform; a matrix of 64 on/off switches spells it out in binary.  The
-       chapter-3 wording is itself evidence that at least one revision of the
-       instrument had sliding switches, one per sample.
-
-       These sixteen are HALF A CYCLE, exactly as everything else in this file:
-       they feed store 0 and nothing else, and sound_stream_update() extends
-       them oddly as before.  Nothing about that logic changed.
-
-       The MAME idiom is one IPT_ADJUSTER per sample (see fixfreq.cpp and
-       paia/fatman.cpp).  Two consequences that matter here:
-         - the values are saved in cfg/patinho.cfg, so a waveform drawn by hand
-           SURVIVES BETWEEN SESSIONS.  That is precisely the thing the paper
-           tape could not carry;
-         - every adjuster appears in Tab -> Slider Controls with no layout and
-           no plugin, so the panel is usable even with -noplugins.
-
-    2. THE SEVEN "TRANSFERE" SWITCHES.
-
-       Chapter 11: "Um timbre programado manualmente nesta entrada pode ser
-       transferido (manualmente) para uma de 7 memorias (numeradas de 1 a 7)
-       pelos comandos TRANSFERE", and its parts list has "7 chaves de
-       transferencia" per bit unit.  So they copy THE PANEL into memory n --
-       they are the manual twin of GRTMB, which copies the COMPUTER's store
-       (chapter 11's "8.a memoria", filled serially through en1/en0) into the
-       same memories.  Two sources, seven destinations, and the panel is never
-       a destination: it is a physical control and cannot be written.
-
-    3. THE 49-KEY MANUAL, from chapter 6 (schematics) and chapter 3 (function).
-
-       It is REALLY IMPLEMENTED and not a picture, because the signal path it
-       drives is the one this device already models.  Chapter 3 lists the
-       keyboard's outputs as frf (a square wave at 32x the note) and CHV (0 V
-       with no key down, 5 V with one), and chapter 9 labels the note interface
-       decoder output "(Ao teclado -- oitava mais alta)": the computer injects
-       into the SAME octave dividers the keys drive.  The manual-automatico
-       switch chooses WHO supplies note and gate; downstream is identical.  In
-       this device that means the keyboard is a second source for m_pitch and
-       m_gate, and nothing else.
-
-       THE CODE A KEY PRODUCES.  With 49 keys (k = 0..48) and the seven-position
-       octave transposition (p = 0..6, twelve semitones apart),
-
-           n = 12 * p + k,   pitch byte = ((n / 12) << 4) | (n % 12)
-
-       which spans n = 0..120 -- 121 values, and 121 is exactly what chapter 3
-       counts for the manual position ("entre 121 (manualmente) ou 120
-       (automaticamente) valores").  The top of that range is
-       16.3516 x 2^10 = 16 743.9 Hz, which is chapter 3's "16 744,0 Hz"; the
-       automatic position gets 120 because the computer's byte holds octave 0-9
-       and semitone 0-11, the same 120 that inventario_comandos.py measured
-       across the surviving tapes.  This arithmetic is a DERIVATION from two
-       numbers in chapter 3, not a sentence read off the page; it is checked by
-       scripts/sintetizador/teclado_121_valores.py in the PatinhoFeio
-       repository.
-
-       WHAT THE KEYBOARD HONESTLY DOES NOT DO, all three declared here:
-         - L and D, the note-start and note-end pulses, exist to fire the
-           envelopes of chapter 7, and no envelope is modelled.  They are not
-           generated, because generating a signal with nothing on the other end
-           would be decoration;
-         - VBR, the vibrato control voltage, is not modelled either;
-         - the monophonic priority rule is NOT DOCUMENTED ANYWHERE.  Last key
-           wins, and on release the highest key still held takes over.  Declared
-           choice, not a reading.
-
-    WHAT IS DELIBERATELY ABSENT: the general-purpose potentiometers of chapter
-    17 (they have no fixed function, and no analogue block is modelled that they
-    could feed) and any display of the resulting waveform.
+    Deliberately absent: the general-purpose potentiometers of chapter 17
+    (no fixed function, no analogue block to feed) and any waveform display.
 
 ***************************************************************************/
 #ifndef MAME_BUS_EPUSP_SYNTH_H
@@ -214,10 +103,14 @@
 
 #include "imagedev/cassette.h"
 
+// For the host MIDI input path: the byte assembly at 31250 bps 8N1.  It models
+// no hardware of this instrument -- see the note above.
+#include "diserial.h"
+
 
 // ======================> epusp_synth_device
 
-class epusp_synth_device : public device_t, public device_sound_interface, public device_epusp_synth_port_interface
+class epusp_synth_device : public device_t, public device_sound_interface, public device_serial_interface, public device_epusp_synth_port_interface
 {
 public:
 	epusp_synth_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
@@ -262,6 +155,11 @@ public:
 	static constexpr unsigned AMOSTRAS = 16;
 	static constexpr unsigned TECLAS = 49;
 
+	// The 49 keys are named C2 to C6 in the General MIDI naming the port list
+	// uses, so a host controller's note n closes contact n - 36.  Nothing else
+	// about MIDI reaches the instrument; see the header comment.
+	static constexpr uint8_t MIDI_NOTA_BASE = 36;   // C2
+
 	// Channel 0 is the audio, channel 1 the 1 kHz. Chapter 15: the frame sync
 	// is NOT recorded, "devido a dificuldades com a resposta em frequencia do
 	// gravador", so channel 1 carries ticks and nothing else.
@@ -281,7 +179,18 @@ protected:
 	virtual ioport_constructor device_input_ports() const override ATTR_COLD;
 	virtual void sound_stream_update(sound_stream &stream) override;
 
+	// A whole MIDI byte has arrived on the host input path.
+	virtual void rcv_complete() override;
+
 private:
+	/* The one place a key contact opens or closes: PC keyboard, layout click
+	   and host MIDI all end here.  Idempotent, because the MIDI path acts at
+	   once and also pushes the ioport field, whose handler repeats the call. */
+	void aciona_tecla(unsigned k, bool apertada);
+
+	// Host MIDI input: line level -> serial receiver, and byte -> key contact.
+	void midi_rxd_w(int state) { rx_w(state); }
+	void midi_byte(uint8_t b);
 	// Unpacks the eight bit-plane bytes into the sixteen samples of the FIRST
 	// HALF CYCLE, scaled to +-1.  No DC removal: the full period is the odd
 	// extension of these, so its mean is zero by construction.
@@ -321,6 +230,10 @@ private:
 	required_ioport_array<AMOSTRAS> m_pgrf_amostra;
 	required_ioport m_tecl_modo;    // manual / automatico
 	required_ioport m_tecl_transp;  // seven-position octave transposition
+	// TECL0..TECL3, the 49 key contacts themselves.  Held so that the MIDI
+	// path can push the very same fields the PC keyboard presses, which is
+	// what makes the key light up on the layout.
+	required_ioport_array<4> m_tecl_porta;
 	required_device<cassette_image_device> m_tape;
 
 	emu_timer *m_sync_timer = nullptr;
@@ -352,6 +265,14 @@ private:
 	int32_t m_tecla_atual = -1;       // the key that owns the voice, -1 = none
 	bool m_tecl_gate = false;         // CHV, from the keys
 	uint8_t m_tecl_pitch = 0;         // the pitch byte those keys produce
+
+	/* THE HOST MIDI RECEIVER'S OWN STATE -- three bytes of parser, and none of
+	   it is state of the emulated instrument.  Running status is honoured
+	   because controllers use it; real-time bytes are ignored; system-common
+	   clears it; anything that is not note-on or note-off is dropped. */
+	uint8_t m_midi_status = 0;        // running status byte
+	uint8_t m_midi_nota = 0;          // first data byte, the note number
+	bool m_midi_tem_nota = false;     // ...and whether it has arrived
 
 	// Phase in [0,1) over the WHOLE period, which is 32 steps: 16 samples
 	// forward, then the same 16 negated.  Fractional, so the period is not
