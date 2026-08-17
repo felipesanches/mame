@@ -43,6 +43,18 @@ public:
 	// interrupt discovery routine tests "SAL /n4".
 	auto int_handler() { return m_int_handler.bind(); }
 
+	/* The cable that leaves a peripheral for something that is not on the bus.
+	   The synthesiser is the case that exists: it is not on a channel of its
+	   own -- it hangs off the pair of duplex boards, and every transfer is a
+	   (command, data) pair from chapter 5 of its manual.
+
+	   It lives on the bus rather than on the card because the card sits in a
+	   user-configurable slot, and a machine_config cannot bind to a device
+	   that may or may not be plugged in. High byte = the register of the
+	   channel that sent it, low byte = the register of its neighbour. */
+	auto tx_handler() { return m_tx_handler.bind(); }
+	void tx_w(uint16_t pair) { m_tx_handler(pair); }
+
 	// ---- CPU side --------------------------------------------------------
 	// In all four entry points the offset is (channel << 4) | command, the
 	// command being the low nibble of the second word of the I/O instruction.
@@ -73,6 +85,7 @@ private:
 	void update_int();
 
 	devcb_write_line m_int_handler;
+	devcb_write16 m_tx_handler;
 	device_patinho_io_card_interface *m_card[CHANNELS];
 	bool m_int_state;
 };

@@ -23,6 +23,7 @@ DEFINE_DEVICE_TYPE(PATINHO_IO_SLOT, patinho_io_slot_device, "patinho_io_slot", "
 patinho_io_bus_device::patinho_io_bus_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: device_t(mconfig, PATINHO_IO_BUS, tag, owner, clock)
 	, m_int_handler(*this)
+	, m_tx_handler(*this)
 	, m_int_state(false)
 {
 	std::fill(std::begin(m_card), std::end(m_card), nullptr);

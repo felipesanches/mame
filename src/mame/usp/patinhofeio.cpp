@@ -6,6 +6,10 @@
 
 #include "emu.h"
 
+#include "epusp_synth.h"
+
+#include "sound/spkrdev.h"
+#include "speaker.h"
 #include "patinho_terminals.h"
 
 #include "bus/patinho/iobus.h"
@@ -26,6 +30,7 @@ public:
 		: driver_device(mconfig, type, tag)
 		, m_maincpu(*this, "maincpu")
 		, m_iobus(*this, "iobus")
+		, m_synth(*this, "synth")
 		, m_ioslot(*this, "io%x", 1U)
 		, m_mode_button(*this, "MODE_BUTTON%u", 0U)
 		, m_output_acc(*this, "acc%u", 0U)
@@ -57,6 +62,7 @@ protected:
 
 	required_device<patinho_feio_cpu_device> m_maincpu;
 	required_device<patinho_io_bus_device> m_iobus;
+	required_device<epusp_synth_device> m_synth;
 	optional_device_array<patinho_io_slot_device, 15> m_ioslot; // channels /1 to /F
 
 private:
@@ -286,6 +292,14 @@ void patinho_feio_state::patinho_feio(machine_config &config)
 
 	for (unsigned ch = 1; ch < patinho_io_bus_device::CHANNELS; ch++)
 		PATINHO_IO_SLOT(config, m_ioslot[ch - 1], ch, m_iobus, patinho_io_devices, dflt[ch]);
+
+	/* The synthesiser hangs off the coupled duplex boards: chapter 5 of its
+	   manual is a list of (command, data) pairs, and those are exactly what
+	   "MANDA DADOS" sends. It is wired to whatever sits in channel /6, which
+	   is where the executor addresses the pair. */
+	SPEAKER(config, "mono").front_center();
+	EPUSP_SYNTH(config, m_synth).add_route(ALL_OUTPUTS, "mono", 1.0);
+	m_iobus->tx_handler().set(m_synth, FUNC(epusp_synth_device::command_w));
 
 	config.set_default_layout(layout_patinho);
 
