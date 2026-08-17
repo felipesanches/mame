@@ -206,6 +206,27 @@ public:
 	device_t *get_card_device() const { return m_card_device; }
 	void set_card_device(device_t *dev) { m_card_device = dev; }
 	std::string_view slot_name() const { return device().tag() + 1; }
+
+	/// \brief Set a human-readable name for the slot
+	///
+	/// Slots are identified to the user by their tag, which
+	/// validity_checker::validate_tag() restricts to lowercase letters,
+	/// digits and a little punctuation, and which is also the command
+	/// line option name and the configuration file key.  A slot whose
+	/// name in the machine's documentation cannot be spelt that way may
+	/// supply it here for display; the tag is unaffected.
+	/// \param [in] name Name to show in the user interface.
+	/// \sa display_name
+	void set_display_name(std::string name) { m_display_name = std::move(name); }
+
+	/// \brief Returns the name to show the user for this slot
+	///
+	/// Returns the name set with #set_display_name, or the slot name
+	/// (i.e. the tag) if none was set.
+	/// \return Name to show in the user interface.
+	/// \sa set_display_name
+	std::string_view display_name() const { return m_display_name.empty() ? slot_name() : std::string_view(m_display_name); }
+
 	slot_option &option_set(char const *tag, device_type devtype) { m_default_option = tag; m_fixed = true; return option_add_internal(tag, devtype); }
 
 protected:
@@ -218,6 +239,7 @@ private:
 	slot_option_map m_options;
 	u32 m_default_clock;
 	char const *m_default_option;
+	std::string m_display_name;
 	bool m_fixed;
 	device_t *m_card_device;
 
