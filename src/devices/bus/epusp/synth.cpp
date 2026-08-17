@@ -913,6 +913,29 @@ void epusp_synth_device::schedule_next_sync()
 
 	cassette_image *const img = m_tape->get_image();
 	double const passo = 1.0 / double(std::max(1U, img->get_info().sample_frequency));
+
+	/* THE SCAN CURSOR HAS TO FOLLOW THE HEAD, or a rewind strands it.
+
+	   m_sync_scan is only seeded where the stream first arms the timer, and
+	   the timer re-arms itself for ever after.  So when the operator rewinds
+	   between voices -- which is exactly what an overdub is -- the cursor
+	   stayed parked at the end of the first pass while the tape went back to
+	   zero.  Every search then read blank tape past the end of the recording,
+	   found no edge, and fell into the quarter-second fallback below, so the
+	   CPU got a tick every 250 ms instead of every millisecond: the second
+	   voice ran 250 times too slow and stopped a third of the way through.
+	   Meanwhile the recorder went on painting channel 1 with a held level,
+	   erasing the very tone it had failed to read.
+
+	   Anything outside a window around the head means the tape was moved under
+	   us -- rewind, seek, a new reel, a restored save state -- and the honest
+	   answer is to start looking again from wherever the head actually is.
+	   Tape behind the head is spent in a recording pass anyway: it has already
+	   been painted over. */
+	double const cabecote = tape_position();
+	if ((m_sync_scan < cabecote - 0.01) || (m_sync_scan > cabecote + 0.5))
+		m_sync_scan = cabecote;
+
 	double const limite = m_sync_scan + 0.25;   // um quarto de segundo por busca
 
 	int32_t anterior = 0;
