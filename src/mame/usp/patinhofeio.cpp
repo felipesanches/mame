@@ -197,11 +197,8 @@ void patinho_feio_state::teletype_kbd_input(u8 data)
 	m_maincpu->transfer_byte_from_external_device(0xB, ~data);
 }
 
-/* The hardware does not perform this checking.
-   This is implemented here only for debugging purposes.
-
-   Also, proper punched paper tape emulation does
-   not use this function at all.
+/* The hardware does not perform this checking; it is here only for debugging.
+   Proper punched paper tape emulation does not use this function at all.
 */
 void patinho_feio_state::load_tape(const char* name){
 	uint8_t *RAM = (uint8_t *) memshare("maincpu:internalram")->ptr();
