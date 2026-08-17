@@ -119,6 +119,12 @@ public:
 		m_channel = channel;
 		m_bus.set_tag(std::forward<T>(bus_tag));
 		set_options(std::forward<U>(opts), dflt, false);
+		// Channels are numbered in hexadecimal: chapter 12 of the July 1977
+		// assembler manual, "numerados de 0 a F (hexadecimal)"; the leading
+		// slash is the manual's notation for an address.  Display only -- the
+		// tag, and with it the -io* option and the cfg key, stays lowercase
+		// and slash-free.
+		set_display_name(util::string_format("I/O Channel /%X", channel));
 	}
 	patinho_io_slot_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 
