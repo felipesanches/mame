@@ -22,7 +22,9 @@ patinho_duplex_device::patinho_duplex_device(const machine_config &mconfig, cons
 	: device_t(mconfig, PATINHO_DUPLEX, tag, owner, clock)
 	, device_patinho_io_card_interface(mconfig, *this)
 	, m_tx_handler(*this)
-	, m_tx_time(attotime::from_usec(640))
+	// 8 bit-times at the 9600 Hz shift clock of page 29's receiving interface.
+	// See the long note in func_w(), case 0x4.
+	, m_tx_time(attotime::from_hz(9600) * 8)
 {
 }
 
@@ -107,28 +109,25 @@ void patinho_duplex_device::data_w(uint8_t cmd, uint8_t data)
 
 	case 0x4:
 	{
-		/* "MANDA DADOS.": send the pair and go busy until it has gone.
+		/* "MANDA DADOS.": send the pair and go busy until it has gone.  Timing
+		   from the receiving end's schematic, page 29 of the synthesiser
+		   manual: a 2.457600 MHz crystal divided by two 7493s gives node "Cp",
+		   labelled 9600 Hz (2457600 / 256 = 9600), the shift clock of the 8300
+		   pairs reassembling both bytes.  COMANDO and DADO arrive on two
+		   separate serial lines clocked together, so a (command, data) pair
+		   costs 8 bit-times, 8 / 9600 = 833.3 us.
 
-		   HOW LONG?  No document in the project gives the rate of these
-		   boards -- not chapter 12 of the assembler manual, which only says
-		   they are "para ligacao entre o PF e outros computadores", and not
-		   chapter 8 of the synthesiser manual.  What IS known is an upper
-		   bound, and it was measured rather than guessed: the executor polls
-		   "SAL /61" inside the interrupt handler, so a transfer longer than
-		   the gap between ticks costs ticks.  scripts/sintetizador/
-		   orcamento_tx.py in the PatinhoFeio repository measures the worst
-		   burst in the surviving corpus at 12 events in one t_min, which
-		   leaves 30 ms / 12 = 2.50 ms per transfer before the executor starts
-		   losing time it cannot recover.
-
-		   640 us is a placeholder chosen to sit well inside that bound, not a
-		   reading.  set_tx_time() exists so the eventual sweep can vary it
-		   without touching this file. */
+		   Inference: this is a floor, giving a range of [833 us, 2.50 ms].
+		   Framing would come from the waveform sheet "FORMAS DE ONDA DA
+		   INTERFACE RECEPTORA", not located in the scan, and the Patinho-side
+		   board may add turnaround; above 2.50 ms the executor loses interrupt
+		   ticks while polling "SAL /61".  set_tx_time() allows a sweep. */
 		uint8_t const second = partner() ? partner()->reg() : 0x00;
 		uint16_t const pair = (uint16_t(reg()) << 8) | second;
 
 		LOGMASKED(LOG_TX, "MANDA DADOS: /%02X /%02X\n", reg(), second);
-		m_tx_handler(pair);
+		m_tx_handler(pair);   // for anything wired straight to this card
+		bus().tx_w(pair);     // and for the machine-level cable
 
 		set_status(false);              // busy: "SAL /61" waits on this
 		m_tx_timer->adjust(m_tx_time);
