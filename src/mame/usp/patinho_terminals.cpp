@@ -11,6 +11,14 @@
 #include "emu.h"
 #include "patinho_terminals.h"
 
+/* LOG_CHAR sends each printed character to the error log with the address of
+   the instruction that sent it; at 10 characters per second it is not a
+   flood. */
+#define LOG_CHAR  (1U << 1)
+
+#define VERBOSE (0)
+#include "logmacro.h"
+
 DEFINE_DEVICE_TYPE(PATINHO_DECWRITER, patinho_decwriter_device, "patinho_decwriter", "DECwriter printing terminal")
 DEFINE_DEVICE_TYPE(PATINHO_TTY,       patinho_tty_device,       "patinho_tty",       "Teletype ASR33 printing terminal")
 
@@ -49,6 +57,9 @@ void patinho_terminal_device::data_w(uint8_t cmd, uint8_t data)
 		logerror("unknown SAI command /%X\n", cmd);
 		return;
 	}
+
+	LOGMASKED(LOG_CHAR, "imprime /%02X %s\n", data,
+			(data >= 0x20 && data < 0x7F) ? util::string_format("'%c'", char(data)) : std::string());
 
 	m_teleprinter->write(data);
 

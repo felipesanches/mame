@@ -10,6 +10,7 @@
 
 #include "bus/patinho/iobus.h"
 #include "bus/patinho/ptreader.h"
+#include "bus/patinho/duplex.h"
 #include "bus/patinho/tbgen.h"
 #include "cpu/patinhofeio/patinhofeio_cpu.h"
 
@@ -240,6 +241,7 @@ static void patinho_io_devices(device_slot_interface &device)
 	device.option_add("tty",       PATINHO_TTY);       // Teletype ASR33, historically /B
 	device.option_add("ptreader",  PATINHO_PTREADER);  // HP-2737-A, historically /E
 	device.option_add("tbgen",     PATINHO_TBGEN);     // synthesiser time base, /4
+	device.option_add("duplex",    PATINHO_DUPLEX);    // 8-bit duplex, historically /6 and /7
 }
 
 void patinho_feio_state::patinho_feio(machine_config &config)
@@ -277,7 +279,7 @@ void patinho_feio_state::patinho_feio(machine_config &config)
 	static char const *const dflt[16] =
 	{
 		nullptr, nullptr, nullptr, nullptr,       // /0 /1 /2 /3
-		"tbgen", nullptr, nullptr, nullptr,       // /4 /5 /6 /7
+		"tbgen", nullptr, "duplex", "duplex",     // /4 /5 /6 /7
 		nullptr, nullptr, "decwriter", "tty",     // /8 /9 /A /B
 		nullptr, nullptr, "ptreader", nullptr     // /C /D /E /F
 	};
