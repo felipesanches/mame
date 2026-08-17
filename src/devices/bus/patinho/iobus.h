@@ -55,6 +55,19 @@ public:
 	auto tx_handler() { return m_tx_handler.bind(); }
 	void tx_w(uint16_t pair) { m_tx_handler(pair); }
 
+	/* The external time base line of the backplane.  The tape recorder's
+	   recovered 1 kHz arrives through the synthesiser and is offered to every
+	   card; only the one that asked for an external clock does anything with
+	   it.  Broadcast rather than point-to-point because the bus has no
+	   business knowing which channel holds a time base generator. */
+	void ext_sync_w(int state);
+
+	/* The other direction: a card's own time base, offered to whatever is
+	   recording it.  The time base generator pulses this on every internal
+	   tick so the 1 kHz reaches the tape while voice 1 is being laid down. */
+	auto tick_handler() { return m_tick_handler.bind(); }
+	void tick_w(int state) { m_tick_handler(state); }
+
 	// ---- CPU side --------------------------------------------------------
 	// In all four entry points the offset is (channel << 4) | command, the
 	// command being the low nibble of the second word of the I/O instruction.
@@ -86,6 +99,7 @@ private:
 
 	devcb_write_line m_int_handler;
 	devcb_write16 m_tx_handler;
+	devcb_write_line m_tick_handler;
 	device_patinho_io_card_interface *m_card[CHANNELS];
 	bool m_int_state;
 };
@@ -182,6 +196,9 @@ protected:
 	// not work that way -- the synthesiser time base, where ESTADO selects the
 	// clock source and the request comes from the tick.
 	virtual bool irq_from_status() const { return true; }
+
+	// The backplane's external time base. Ignored by cards that do not use it.
+	virtual void ext_sync_w(int state) { }
 
 	// PREPARACAO.  A card that overrides it must call the base first.
 	virtual void card_reset();

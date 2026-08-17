@@ -26,6 +26,8 @@ epusp_synth_device::epusp_synth_device(const machine_config &mconfig, const char
 	: device_t(mconfig, EPUSP_SYNTH, tag, owner, clock)
 	, device_sound_interface(mconfig, *this)
 	, m_s1(*this, "S1")
+	, m_tape(*this, finder_base::DUMMY_TAG)
+	, m_sync_handler(*this)
 {
 	std::fill(std::begin(m_timbre), std::end(m_timbre), 0);
 	std::fill(std::begin(m_computer_half), std::end(m_computer_half), 0.0);
@@ -163,6 +165,8 @@ void epusp_synth_device::unpack(const uint8_t planes[8], double half[16])
 void epusp_synth_device::device_start()
 {
 	m_stream = stream_alloc(0, 1, 48000);
+	m_sync_timer = timer_alloc(FUNC(epusp_synth_device::sync_edge), this);
+	m_sync_off_timer = timer_alloc(FUNC(epusp_synth_device::sync_off), this);
 
 	save_item(NAME(m_pitch));
 	save_item(NAME(m_gate));
@@ -172,6 +176,122 @@ void epusp_synth_device::device_start()
 	save_item(NAME(m_store));
 	save_item(NAME(m_auto_select));
 	save_item(NAME(m_phase));
+	save_item(NAME(m_sync_scan));
+	save_item(NAME(m_sync_written));
+	save_item(NAME(m_sync_level));
+}
+
+/* Where the tape head is, in seconds.  cassette_image_device keeps the
+   position for us whether it is playing or recording. */
+double epusp_synth_device::tape_position() const
+{
+	return (m_tape && m_tape->exists()) ? m_tape->get_position() : 0.0;
+}
+
+bool epusp_synth_device::tape_moving() const
+{
+	return m_tape && m_tape->exists()
+			&& (m_tape->is_playing() || m_tape->is_recording());
+}
+
+/* RECORDING THE 1 kHz.  cassette_image_device already knows how to hold a
+   level and paint it into a channel as the tape moves, which is exactly what a
+   sync track is.  Pointing it at channel 1 does two jobs at once: it writes the
+   tone for us, and it stops its own update() from painting channel 0 -- which
+   it would otherwise fill with silence and wipe the audio we are recording. */
+void epusp_synth_device::tape_tick_w(int state)
+{
+	if (!m_tape || !m_tape->exists())
+		return;
+
+	/* set_channel() HAS to be done here and not once at start-up, because
+	   cassette_image_device::call_load() resets the channel to 0 when an image
+	   is mounted.  Setting it in device_start() looked right and was silently
+	   undone: the sync tone went to channel 0, on top of the audio, which came
+	   out saturated while channel 1 stayed empty. */
+	m_tape->set_channel(SYNC_CHANNEL);
+
+	/* THE PULSE NEEDS WIDTH, or there is no tone at all.
+
+	   The time base generator raises and drops its tick in the same instant,
+	   which is right for an interrupt line and useless for a tape: the level
+	   between the two edges lasts zero seconds, so the recorder paints a
+	   constant DC and channel 1 comes back with no edges to recover.  The
+	   first recording did exactly that -- full scale RMS, zero crossings.
+
+	   So the tone is built here: high on the tick, low again half a tick
+	   later, which lays down a square wave at the tick rate.  SYNC_HALF is
+	   500 us because every surviving music tape uses TEMPI = 0, whose tick is
+	   1 ms; a tape written at another TEMPI would need this to follow it. */
+	if (state)
+	{
+		m_tape->output(1.0);
+		m_sync_off_timer->adjust(SYNC_HALF);
+	}
+}
+
+TIMER_CALLBACK_MEMBER(epusp_synth_device::sync_off)
+{
+	if (m_tape && m_tape->exists())
+	{
+		m_tape->set_channel(SYNC_CHANNEL);
+		m_tape->output(-1.0);
+	}
+}
+
+/* RECOVERING THE 1 kHz.  Scans channel 1 forward for the next rising edge and
+   schedules a timer to it, so the tick the CPU sees lands where it was written
+   instead of at a sound-stream boundary.  The music's whole timing hangs off
+   these edges; quantising them to the audio chunk would be audible. */
+void epusp_synth_device::schedule_next_sync()
+{
+	/* "A fita esta andando" is playing OR recording, and the difference cost a
+	   debugging round: an overdub is both at once, but MAME's cassette UI
+	   state is one or the other, and is_playing() is FALSE while recording.
+	   Guarding the edge hunt on is_playing() alone meant the tape never drove
+	   the clock during the very pass that needed it. */
+	if (!m_tape || !m_tape->exists() || !tape_moving())
+		return;
+
+	cassette_image *const img = m_tape->get_image();
+	double const passo = 1.0 / double(std::max(1U, img->get_info().sample_frequency));
+	double const limite = m_sync_scan + 0.25;   // um quarto de segundo por busca
+
+	int32_t anterior = 0;
+	img->get_sample(SYNC_CHANNEL, m_sync_scan, passo, &anterior);
+	for (double t = m_sync_scan + passo; t < limite; t += passo)
+	{
+		int32_t v = 0;
+		img->get_sample(SYNC_CHANNEL, t, passo, &v);
+		if (anterior <= 0 && v > 0)
+		{
+			m_sync_scan = t;
+			double const agora = tape_position();
+			m_sync_timer->adjust(attotime::from_double(std::max(0.0, t - agora)));
+			return;
+		}
+		anterior = v;
+	}
+	m_sync_scan = limite;
+	m_sync_timer->adjust(attotime::from_double(0.25));
+}
+
+TIMER_CALLBACK_MEMBER(epusp_synth_device::sync_edge)
+{
+	m_sync_handler(1);
+	m_sync_handler(0);
+
+	/* THE SYNC TRACK PASSES THROUGH on an overdub, and it has to.
+
+	   MAME's cassette paints its selected channel with a held level whenever
+	   it is in RECORD, and pass 2 is in RECORD because that is what makes the
+	   image get saved.  Left alone it would flatten the 1 kHz it is reading --
+	   the tape would come back with the audio of both voices and no way to
+	   record a third.  Re-recording each recovered edge keeps the track alive,
+	   which is what a real sync system does with it anyway. */
+	tape_tick_w(1);
+	m_sync_scan += 0.0002;   // sai da borda que acabou de disparar
+	schedule_next_sync();
 }
 
 void epusp_synth_device::device_reset()
@@ -223,6 +343,10 @@ void epusp_synth_device::device_reset()
 
 	m_auto_select = PGRF;
 	m_phase = 0.0;
+	m_sync_scan = 0.0;
+	m_sync_level = 0;
+	m_sync_written = 0.0;
+	schedule_next_sync();
 }
 
 void epusp_synth_device::command_w(uint16_t pair)
@@ -310,51 +434,132 @@ void epusp_synth_device::command_w(uint16_t pair)
 
 void epusp_synth_device::sound_stream_update(sound_stream &stream)
 {
-	if (!m_gate || m_intensity == 0)
+	/* THE LIVE VOICE FIRST, then the tape on top.
+
+	   Both halves must run on EVERY update, and the reason is the overdub: if
+	   this returned early while the note is off, the tape would neither be
+	   heard nor rewritten during the rests, and voice 1's audio would come out
+	   of the second pass full of holes.  So silence is written as silence, not
+	   skipped. */
+	double const f = frequency(m_pitch);
+	bool const soando = m_gate && m_intensity != 0
+			&& f > 0.0 && f < stream.sample_rate() / 2.0;
+
+	if (!soando)
+	{
+		stream.fill(0, 0.0);
+	}
+	else
+	{
+		/* THE WAVETABLE.  The store holds sixteen samples that are HALF a
+		   cycle of an odd waveform, so the period is 32 steps: the sixteen
+		   forwards, then the same sixteen negated.  Chapter 3 states it twice
+		   (the panel draws "meio ciclo de uma forma de onda impar"; SAU is a
+		   "funcao impar cujo primeiro semi-ciclo e o registrado") and the
+		   clock proves it a third time -- frl is "32 vezes a da forma de onda
+		   de saida", and 32 = 16 x 2.
+
+		   Earlier attempts fed the sixteen samples in as a whole cycle and had
+		   to subtract their mean to stop a DC offset from swamping the signal;
+		   a half-range ramp read that way sits off-centre, went silent, and
+		   looked like a missing indirection in GRTMB/LETMB.  It was not: it
+		   was the half cycle.
+
+		   A FRACTIONAL PHASE ACCUMULATOR, not an integer step counter.  The
+		   first square-wave version counted down from int(rate / (2*f)), which
+		   quantises the period to whole samples: every note came out up to
+		   1.3% sharp, and scripts/sintetizador/analisar_wav.py in the
+		   PatinhoFeio repository saw a systematic error in the same direction
+		   on every note.
+
+		   No interpolation: the instrument steps its D/A once per frl edge and
+		   holds, so zero-order hold is what it did. */
+		double const *const half = m_store[selected_store()];
+		double const step = f / stream.sample_rate();
+		double const level = double(m_intensity) / 255.0;
+
+		for (int i = 0; i < stream.samples(); i++)
+		{
+			m_phase += step;
+			if (m_phase >= 1.0)
+				m_phase -= 1.0;
+
+			unsigned const k = unsigned(m_phase * 32.0) & 31;
+			double const s = (k < 16) ? half[k] : -half[k - 16];
+			stream.put(0, i, s * level);
+		}
+	}
+
+	mix_tape(stream);
+}
+
+/* THE OVERDUB, on channel 0.
+
+   What comes out of the speaker while the tape runs is the sum of what is
+   already on the tape and what the synthesiser is playing now -- which is what
+   the musician heard, and what the recorder wrote if it was in record.  So:
+
+       ouvido = fita + vivo
+       fita   = ouvido        (quando gravando)
+
+   Reading before writing is what makes it an OVERDUB and not an erase: voice 2
+   adds to voice 1 instead of replacing it.  The sum is clipped, because a real
+   recorder saturates and silently wrapping would sound like a fault that is not
+   there. */
+void epusp_synth_device::mix_tape(sound_stream &stream)
+{
+	if (!m_tape || !m_tape->exists())
 		return;
 
-	double const f = frequency(m_pitch);
-	if (f <= 0.0 || f >= stream.sample_rate() / 2.0)
-		return;   // above Nyquist there is nothing honest to emit
+	bool const gravando = m_tape->is_recording();
+	if (!tape_moving())
+		return;
 
-	/* THE WAVETABLE, AT LAST -- and what changed to make it honest.
+	/* The device's own record path writes m_channel, so it must point at the
+	   sync track at all times -- not only when a tick happens to arrive.  In
+	   the overdub pass no internal tick ever fires, and with the channel left
+	   at 0 the recorder quietly wiped the audio it was supposed to be adding
+	   to. */
+	m_tape->set_channel(SYNC_CHANNEL);
 
-	   The store holds sixteen samples that are HALF a cycle of an odd
-	   waveform, so the period is 32 steps: the sixteen forwards, then the same
-	   sixteen negated.  Chapter 3 states it twice (the panel draws "meio ciclo
-	   de uma forma de onda impar"; SAU is a "funcao impar cujo primeiro
-	   semi-ciclo e o registrado") and the clock proves it a third time -- frl
-	   is "32 vezes a da forma de onda de saida", and 32 = 16 x 2.
+	cassette_image *const img = m_tape->get_image();
+	double const pos = m_tape->get_position();
+	double const passo = 1.0 / double(stream.sample_rate());
 
-	   That is what unblocked this.  Earlier attempts fed the sixteen samples
-	   in as a whole cycle and had to subtract their mean to stop a DC offset
-	   from swamping the signal; a half-range ramp read that way sits
-	   off-centre, went silent, and looked like a missing indirection.  Read as
-	   a half cycle there is no offset to remove, because an odd function has
-	   none.
+	/* START THE EDGE HUNT HERE, and not at reset.
 
-	   A FRACTIONAL PHASE ACCUMULATOR, not an integer step counter.  The first
-	   square-wave version counted down from int(rate / (2*f)), which quantises
-	   the period to whole samples: every note came out up to 1.3% sharp, and
-	   scripts/sintetizador/analisar_wav.py in the PatinhoFeio repository saw a
-	   systematic error in the same direction on every note.  A machine built
-	   to play music in tune should not be detuned by the emulator's
-	   arithmetic.
-
-	   No interpolation: the instrument steps its D/A once per frl edge and
-	   holds, so zero-order hold is what it did. */
-	double const *const half = m_store[selected_store()];
-	double const step = f / stream.sample_rate();
-	double const level = double(m_intensity) / 255.0;
-
-	for (int i = 0; i < stream.samples(); i++)
+	   device_reset() runs before any tape is mounted -- the harness loads the
+	   image after the machine is up -- so a scan armed there finds no image,
+	   returns, and is never armed again.  The first overdub ran with the
+	   internal oscillator doing all the work and looked perfectly fine: the
+	   music was right, because both clocks are exactly 1 kHz in emulation.
+	   Only the counter of ticks-taken-from-tape showed it, which is why that
+	   counter exists. */
+	if (!m_sync_timer->enabled())
 	{
-		m_phase += step;
-		if (m_phase >= 1.0)
-			m_phase -= 1.0;
+		m_sync_scan = pos;
+		schedule_next_sync();
+	}
+	int const n = stream.samples();
 
-		unsigned const k = unsigned(m_phase * 32.0) & 31;
-		double const s = (k < 16) ? half[k] : -half[k - 16];
-		stream.put(0, i, s * level);
+	for (int i = 0; i < n; i++)
+	{
+		double const t = pos + i * passo;
+		int32_t bruto = 0;
+		img->get_sample(AUDIO_CHANNEL, t, passo, &bruto);
+		double const fita = double(bruto) / 2147483648.0;
+
+		/* THE RECORDING LEVEL, which is a knob the musician set and nobody
+		   wrote down.  A voice recorded at full scale leaves no room for the
+		   next one, and the overdub would clip on the very first note.  Half
+		   scale per voice lets two sum to full, which is what the surviving
+		   scores need -- they come in "1a. VOZ" and "2a. VOZ" pairs.  Declared
+		   choice, not a reading. */
+		double soma = fita + stream.get_output(0, i) * RECORD_LEVEL;
+		soma = std::clamp(soma, -1.0, 1.0);
+
+		stream.put(0, i, soma);
+		if (gravando)
+			img->put_sample(AUDIO_CHANNEL, t, passo, int32_t(soma * 2147483000.0));
 	}
 }

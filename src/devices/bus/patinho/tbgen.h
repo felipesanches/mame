@@ -51,6 +51,16 @@ public:
 	// eventual sweep can try other values without touching the card.
 	void set_frame_ticks(unsigned n) { m_frame_ticks = n; }
 
+	/* The external time base: with "FNC /42" the tick comes from the 1 kHz
+	   tone on the second channel of the audio tape instead of from this
+	   board's oscillator, which is what allows overdubbing.  The frame pulse
+	   still comes from this board's own counter: the executor reloads CSQ from
+	   CEM (99) at each frame pulse and decrements it once per tick, so tape
+	   drift leaves CSQ non-zero and FITA#011's "SINC" routine corrects for it.
+	   Counting the frame off the recovered ticks would leave CSQ always zero
+	   and that correction dead. */
+	virtual void ext_sync_w(int state) override;
+
 protected:
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
@@ -69,6 +79,7 @@ protected:
 
 private:
 	TIMER_CALLBACK_MEMBER(tick);
+	void advance();
 	attotime tick_period() const;
 	void restart();
 
@@ -78,6 +89,9 @@ private:
 	bool m_sync_pulse = false;   // f.f. PULSO SINC., only FNC /43 clears it
 	unsigned m_frame_count = 0;  // ticks since the last frame pulse
 	unsigned m_frame_ticks = 100;
+	bool m_external = false;     // FNC /42 chose the tape; FNC /41 the crystal
+	bool m_ext_sync = false;
+	uint32_t m_ext_ticks = 0;   // quantos tiques vieram da fita     // last level seen on the recovered 1 kHz
 };
 
 DECLARE_DEVICE_TYPE(PATINHO_TBGEN, patinho_tbgen_device)
