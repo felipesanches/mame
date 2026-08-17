@@ -349,8 +349,14 @@ ROM_START( patinho )
 	ROM_REGION( 0x028, "exemplo_16.7", 0 )
 	ROM_LOAD( "exemplo_16.7.bin", 0x000, 0x028, CRC(0a87ac8d) SHA1(7c35ac3eed9ed239f2ef56c26e6f0c59f635e1ac) )
 
+	/* Reconstruction, not a dump: the original absolute loader never survived
+	   (the file formerly here was 128 zero bytes).  This one does the same job
+	   with the same instructions and the same reader handshake as routine LEOT
+	   of Stolfi's executor (FITA#011), and was checked by loading
+	   FITA#012D.BIN through the reader: all 445 bytes match.  BAD_DUMP stays
+	   until the true dump turns up. */
 	ROM_REGION( 0x080, "loader", 0 )
-	ROM_LOAD( "loader.bin", 0x000, 0x080, BAD_DUMP CRC(c2a8fa9d) SHA1(0ae4f711ef5d6e9d26c611fd2c8c8ac45ecbf9e7) )
+	ROM_LOAD( "loader_reconstruido.bin", 0x000, 0x080, BAD_DUMP CRC(33b2c552) SHA1(25488794ee85c7c9a8a02d3b237b9bc6aa88433f) )
 
 	/* Micro pre-loader:
 	   This was re-created by professor Joao Jose Neto based on his vague
