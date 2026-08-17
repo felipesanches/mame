@@ -53,6 +53,7 @@ public:
 	void patinho_feio(machine_config &config) ATTR_COLD;
 
 protected:
+	virtual void machine_start() override ATTR_COLD;
 	virtual void machine_reset() override ATTR_COLD;
 
 	// device_nvram_interface -- the core memory (see the note above the class)
@@ -100,6 +101,46 @@ private:
 	uint8_t m_prev_FLAGS = 0;
 	uint16_t m_prev_RC = 0;
 };
+
+
+/* The m_prev_* shadows must stay in the save state, cache though they look.
+   update_panel() writes only lamps whose bit changed, so it relies on
+   lamp == m_prev_* after every call.  Output values are themselves part of a
+   save state (running_machine::start() calls output().register_save(); see
+   output_manager::presave()/postload()), so after a load the lamps hold the
+   saved values while unsaved shadows would hold the live ones, and any lamp
+   whose shadow already agreed with the incoming value would never be
+   rewritten.  m_mode_button needs no shadow: all six are rewritten always. */
+
+void patinho_feio_state::machine_start()
+{
+	save_item(NAME(m_prev_ACC));
+	save_item(NAME(m_prev_opcode));
+	save_item(NAME(m_prev_mem_data));
+	save_item(NAME(m_prev_mem_addr));
+	save_item(NAME(m_prev_PC));
+	save_item(NAME(m_prev_FLAGS));
+	save_item(NAME(m_prev_RC));
+
+	/* NOT REGISTERED HERE:
+
+	     the 4096 words of core   a memory share, saved by the memory manager
+	                              (see the comment in the CPU's device_start()).
+	                              The nvram interface above is a different
+	                              mechanism for a different purpose -- it makes
+	                              core survive between SESSIONS, the way ferrite
+	                              did between power cycles.
+
+	     the eight output_finders  the values behind them are saved by
+	                              output_manager::register_save(); the finders
+	                              themselves are topology.
+
+	     m_conf                   an ioport, and a configuration one at that.
+	                              MAME saves no ioports.
+
+	     m_maincpu, m_iobus,      device finders -- topology.
+	     m_ioslot                                                      */
+}
 
 
 void patinho_feio_state::init_patinho_feio()
@@ -401,5 +442,12 @@ ROM_END
 
 } // anonymous namespace
 
+/* MACHINE_SUPPORTS_SAVE: every device registers the state it owns, including
+   the tape reader's head position, which needs a pre_save/post_load pair
+   because MAME's image layer does not save file positions.  What it cannot
+   promise is the contents of a mounted image: those are host files and travel
+   with no save state, so rewinding, remounting or re-recording between save
+   and load leaves the restored positions pointing at something else. */
+
 //    YEAR  NAME     PARENT  COMPAT  MACHINE       INPUT         CLASS               INIT               COMPANY                                           FULLNAME         FLAGS
-COMP( 1972, patinho, 0,      0,      patinho_feio, patinho_feio, patinho_feio_state, init_patinho_feio, "Escola Politecnica - Universidade de Sao Paulo", "Patinho Feio" , MACHINE_NO_SOUND_HW | MACHINE_NOT_WORKING )
+COMP( 1972, patinho, 0,      0,      patinho_feio, patinho_feio, patinho_feio_state, init_patinho_feio, "Escola Politecnica - Universidade de Sao Paulo", "Patinho Feio" , MACHINE_NO_SOUND_HW | MACHINE_NOT_WORKING | MACHINE_SUPPORTS_SAVE )

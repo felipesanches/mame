@@ -136,6 +136,13 @@ void patinho_feio_cpu_device::device_start()
 	save_item(NAME(m_mode));
 	save_item(NAME(m_prev_buttons));
 
+	/* The internal RAM is not registered here: it is a memory share, and
+	   memory_manager::allocate_memory() already puts every allocated block in
+	   the save state, so a save_pointer() would register it twice.  MAME does
+	   not save ioports, so m_prev_buttons -- the edge detector over the panel
+	   buttons -- is emulated state that must be saved even though the buttons
+	   themselves cannot be. */
+
 	// Register state for debugger
 	state_add( PATINHO_FEIO_CI,         "CI",       m_pc         ).mask(0xFFF);
 	state_add( PATINHO_FEIO_RC,         "RC",       m_rc         ).mask(0xFFF);

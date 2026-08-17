@@ -34,6 +34,9 @@ void epusp_synth_port_device::device_config_complete()
 	m_dev = get_card_device();
 }
 
+/* No state to save: m_dev is resolved in device_config_complete() and
+   m_sync_handler is a callback -- both topology, identical either side of a
+   save state. */
 void epusp_synth_port_device::device_start()
 {
 }

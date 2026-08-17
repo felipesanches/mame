@@ -48,6 +48,11 @@ void patinho_duplex_device::device_start()
 
 	save_item(NAME(m_serial_mode));
 	save_item(NAME(m_coupled));
+
+	/* Not registered: m_data and the flip-flops are saved for every board by
+	   interface_post_start() in iobus.cpp; m_tx_timer is saved by the
+	   scheduler and needs no re-arming, as its callback only sets m_status,
+	   which is itself saved; m_tx_time and m_port are configuration. */
 }
 
 void patinho_duplex_device::device_reset()

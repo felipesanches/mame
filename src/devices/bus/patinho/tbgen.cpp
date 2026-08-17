@@ -35,6 +35,12 @@ void patinho_tbgen_device::device_start()
 	save_item(NAME(m_frame_ticks));
 	save_item(NAME(m_ext_sync));
 	save_item(NAME(m_external));
+	save_item(NAME(m_ext_ticks));
+
+	/* m_tick_timer is deliberately not registered: the timer's own state
+	   (period, expiry, whether it is armed) is saved by the scheduler.
+	   m_frame_ticks is configuration rather than running state, but is saved
+	   so that a state carries the value it was taken with. */
 }
 
 void patinho_tbgen_device::device_reset()
