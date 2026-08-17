@@ -50,7 +50,6 @@ public:
 	auto buttons_read() { return m_buttons_read_cb.bind(); }
 	template <std::size_t DevNumber> auto iodev_read() { return m_iodev_read_cb[DevNumber].bind(); }
 	template <std::size_t DevNumber> auto iodev_write() { return m_iodev_write_cb[DevNumber].bind(); }
-	template <std::size_t DevNumber> auto iodev_status() { return m_iodev_status_cb[DevNumber].bind(); }
 	template <typename... T> void set_update_panel_cb(T &&... args) { m_update_panel_cb.set(std::forward<T>(args)...); }
 
 	void transfer_byte_from_external_device(uint8_t channel, uint8_t data);
@@ -99,9 +98,6 @@ protected:
 	/* 8-bit registers for receiving data from peripherals */
 	uint8_t m_iodev_incoming_byte[16];
 
-	/* 8-bit registers for sending data to peripherals */
-	uint8_t m_iodev_outgoing_byte[16];
-
 	int m_flags;
 	// V = "Vai um" (Carry flag)
 	// T = "Transbordo" (Overflow flag)
@@ -117,7 +113,7 @@ protected:
 
 	// device_execute_interface overrides
 	virtual uint32_t execute_min_cycles() const noexcept override { return 1; }
-	virtual uint32_t execute_max_cycles() const noexcept override { return 2; }
+	virtual uint32_t execute_max_cycles() const noexcept override { return 3; }
 
 	// device_memory_interface overrides
 	virtual space_config_vector memory_space_config() const override;
@@ -132,7 +128,6 @@ private:
 	devcb_read16 m_buttons_read_cb;
 	devcb_read8::array<16> m_iodev_read_cb;
 	devcb_write8::array<16> m_iodev_write_cb;
-	devcb_read8::array<16> m_iodev_status_cb;
 	uint8_t m_mode;
 };
 
