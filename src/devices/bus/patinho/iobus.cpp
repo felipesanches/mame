@@ -46,7 +46,7 @@ device_patinho_io_card_interface::device_patinho_io_card_interface(const machine
 	, m_status(false)
 	, m_irq_request(false)
 	, m_irq_enable(false)
-	, m_irq_set_cond(false)
+	, m_irq_latch(false)
 {
 }
 
@@ -79,7 +79,7 @@ void device_patinho_io_card_interface::interface_post_start()
 	device().save_item(NAME(m_status));
 	device().save_item(NAME(m_irq_request));
 	device().save_item(NAME(m_irq_enable));
-	device().save_item(NAME(m_irq_set_cond));
+	device().save_item(NAME(m_irq_latch));
 }
 
 void patinho_io_bus_device::device_start()
@@ -113,7 +113,7 @@ void device_patinho_io_card_interface::card_reset()
 	m_status = false;        // "desligado" = busy, per page 12.17
 	m_irq_request = false;
 	m_irq_enable = false;
-	m_irq_set_cond = false;
+	m_irq_latch = false;
 	control_w(0);
 	status_w(0);
 }
@@ -147,38 +147,36 @@ void device_patinho_io_card_interface::set_status(bool ready)
 	update_irq_request();
 }
 
-/* Page 12.15 of the July 1977 assembler manual, on the request flip-flop:
-   "ESTADO ligado liga o PEDIDO automaticamente se for permitido.  ESTADO
-   desligado nao altera a situacao do PEDIDO."  Page A.11 adds that FNC /n4 is
-   its only reset.
+/* Page 12.15 of the July 1977 assembler manual: "ESTADO ligado liga o PEDIDO
+   automaticamente se for permitido.  ESTADO desligado nao altera a situacao do
+   PEDIDO"; page A.11 gives FNC /n4 as its only reset.  PEDIDO is therefore a
+   latch with a level-sensitive set input: while (ESTADO AND PERMITE) holds,
+   "FNC /n4" cannot clear the request, which is why page 12.11 tells the
+   programmer to clear ESTADO first.  An edge-triggered model would hide that;
+   (latch OR set_cond) reproduces both orderings.
 
-   DESIGN DECISION -- we latch on the RISING EDGE of (ESTADO AND PERMITE)
-   rather than on its level.  No surviving program discriminates the two (see
-   notas/mame/interrupcao.md), and the edge is the safer reading: a
-   level-sensitive set would make "FNC /n4" a no-op whenever the device is
-   still ready.  This rule IS exercised: the optical tape reader raises its
-   request exactly this way ("FNC /E6" then "FNC /E5" in the ncfim routine of
-   FITA#011), so the cross-check in teste_interrupcao.lua has something real to
-   test.  The synthesiser time base deliberately does not use it: there ESTADO
-   is a clock-source selector and the request comes from the tick. */
+   A card whose PEDIDO is not derived from ESTADO overrides irq_from_status():
+   on the synthesiser time base, ESTADO selects which end of the cable makes
+   the clock and the request comes from the tick. */
 void device_patinho_io_card_interface::update_irq_request()
 {
-	bool const set_cond = m_status && m_irq_enable;
+	bool const set_cond = irq_from_status() && m_status && m_irq_enable;
 
-	if (set_cond && !m_irq_set_cond)
+	if (set_cond)
+		m_irq_latch = true;
+
+	bool const request = m_irq_latch || set_cond;
+	if (request != m_irq_request)
 	{
-		m_irq_request = true;
+		m_irq_request = request;
 		m_bus->update_int();
 	}
-	m_irq_set_cond = set_cond;
 }
 
 void device_patinho_io_card_interface::set_irq_request(bool state)
 {
-	if (state == m_irq_request)
-		return;
-	m_irq_request = state;
-	m_bus->update_int();
+	m_irq_latch = state;
+	update_irq_request();
 }
 
 // The seven commands standardised by the LSD interfaces, chapter 13 of the
@@ -196,10 +194,11 @@ void device_patinho_io_card_interface::do_func(uint8_t cmd)
 	case 0x1: set_status(false); break;             // ESTADO = busy
 	case 0x2: set_status(true); break;              // ESTADO = ready
 	case 0x4:                                       // limpa PEDIDO
-		// Deliberately does NOT call update_irq_request(): the edge tracker
-		// already holds the current product, so there is no spurious re-arming.
-		m_irq_request = false;
-		m_bus->update_int();
+		// Clears the latch and then re-derives, so that a request whose set
+		// input is still asserted comes straight back -- which is exactly what
+		// page 12.11 warns the programmer about.
+		m_irq_latch = false;
+		update_irq_request();
 		break;
 	case 0x5:                                       // permite interrupcao
 		m_irq_enable = true;

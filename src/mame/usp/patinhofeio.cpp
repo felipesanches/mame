@@ -49,6 +49,10 @@ protected:
 
 	void update_panel(uint8_t ACC, uint8_t opcode, uint8_t mem_data, uint16_t mem_addr, uint16_t PC, uint8_t FLAGS, uint16_t RC, uint8_t mode);
 
+	// The PREPARACAO button also clears the flip-flops of every interface
+	// board (page 12.17 and page A.11), and those live on the bus.
+	void preparacao_w(int state) { if (state) m_iobus->reset_bus(); }
+
 	required_device<patinho_feio_cpu_device> m_maincpu;
 	required_device<patinho_io_bus_device> m_iobus;
 	optional_device_array<patinho_io_slot_device, 15> m_ioslot; // channels /1 to /F
@@ -255,6 +259,15 @@ void patinho_feio_state::patinho_feio(machine_config &config)
 	m_maincpu->io_data_r().set(m_iobus, FUNC(patinho_io_bus_device::data_r));
 	m_maincpu->io_data_w().set(m_iobus, FUNC(patinho_io_bus_device::data_w));
 	m_maincpu->io_skip()  .set(m_iobus, FUNC(patinho_io_bus_device::skip_r));
+
+	/* One interrupt line for the whole machine: chapter 11 gives it a single
+	   level, and page 12.16 draws the sixteen PEDIDO flip-flops reaching it
+	   through one OR gate. Nothing to arbitrate, so nothing to configure. */
+	m_iobus->int_handler().set_inputline(m_maincpu, patinho_feio_cpu_device::IRQ_LINE);
+
+	/* PREPARACAO clears flip-flops all over the machine, and four of the six
+	   page A.11 lists live in the interface boards, not in the processor. */
+	m_maincpu->preparacao().set(FUNC(patinho_feio_state::preparacao_w));
 
 	/* The equipment the machine came with, in the channels chapter 12 gives
 	   them. Any of these can be moved, removed or replaced from the MAME UI

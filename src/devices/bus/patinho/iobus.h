@@ -164,6 +164,12 @@ protected:
 	// "SALTA canal=4, func=3" of the synthesiser time base.
 	virtual bool skip_cond(uint8_t cmd) const { return false; }
 
+	// Page 12.15: on a standard interface board "ESTADO ligado liga o PEDIDO
+	// automaticamente se for permitido".  Return false on a board that does
+	// not work that way -- the synthesiser time base, where ESTADO selects the
+	// clock source and the request comes from the tick.
+	virtual bool irq_from_status() const { return true; }
+
 	// PREPARACAO.  A card that overrides it must call the base first.
 	virtual void card_reset();
 
@@ -180,8 +186,9 @@ protected:
 	void set_control(bool state);
 	void set_status(bool ready);
 
-	void set_irq_request(bool state);   // for cards whose PEDIDO is not
-	                                    // derived from (ESTADO AND PERMITE)
+	// Drives the PEDIDO latch directly.  For cards that override
+	// irq_from_status() this is the only way their request moves.
+	void set_irq_request(bool state);
 	bool irq_enable() const { return m_irq_enable; }
 
 	// A byte came in from the outside world.  Page 12.15: "Quando o
@@ -204,7 +211,8 @@ private:
 	bool m_status;       // flip-flop de ESTADO, true = "ready"
 	bool m_irq_request;  // flip-flop de PEDIDO de interrupcao
 	bool m_irq_enable;   // flip-flop de PERMITE/IMPEDE
-	bool m_irq_set_cond; // previous (ESTADO AND PERMITE), for edge detection
+	bool m_irq_latch;    // the PEDIDO latch proper; the effective request
+	                     // is (m_irq_latch OR the level-sensitive set input)
 };
 
 DECLARE_DEVICE_TYPE(PATINHO_IO_BUS,  patinho_io_bus_device)

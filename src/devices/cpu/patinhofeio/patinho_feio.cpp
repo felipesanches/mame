@@ -85,6 +85,7 @@ patinho_feio_cpu_device::patinho_feio_cpu_device(const machine_config &mconfig, 
 	, m_icount(0)
 	, m_rc_read_cb(*this, 0)
 	, m_buttons_read_cb(*this, 0)
+	, m_preparacao_cb(*this)
 	, m_io_func_cb(*this)
 	, m_io_data_r_cb(*this, 0)
 	, m_io_data_w_cb(*this)
@@ -126,6 +127,10 @@ void patinho_feio_cpu_device::device_start()
 	save_item(NAME(m_run));
 	save_item(NAME(m_wait_for_interrupt));
 	save_item(NAME(m_interrupts_enabled));
+	save_item(NAME(m_not_in_interrupt));
+	save_item(NAME(m_panel_interrupt));
+	save_item(NAME(m_pul_delay));
+	save_item(NAME(m_int_line));
 	save_item(NAME(m_scheduled_IND_bit_reset));
 	save_item(NAME(m_indirect_addressing));
 	save_item(NAME(m_mode));
@@ -156,7 +161,13 @@ void patinho_feio_cpu_device::device_reset()
 	m_flags = 0;
 	m_run = false;
 	m_wait_for_interrupt = false;
-	m_interrupts_enabled = false;
+	// Page 12.17 and page A.11, on what the PREPARACAO button leaves behind:
+	// "PERMITE/INIBE: ligado (permite)" and "NAO ESTA/ESTA: ligado (nao esta)".
+	// This used to come up inhibited, which no page of the manual asks for.
+	m_interrupts_enabled = true;
+	m_not_in_interrupt = true;
+	m_panel_interrupt = false;
+	m_pul_delay = false;
 	m_scheduled_IND_bit_reset = false;
 	m_indirect_addressing = false;
 	m_addr = 0;
@@ -166,6 +177,53 @@ void patinho_feio_cpu_device::device_reset()
 	m_update_panel_cb(ACC, m_opcode, READ_BYTE_PATINHO(m_addr), m_addr, PC, FLAGS, RC, m_mode);
 }
 
+/* The I/O bus drives this: the OR of the sixteen PEDIDO flip-flops.  There is
+   exactly one line, because chapter 11 gives the machine one interrupt level. */
+void patinho_feio_cpu_device::execute_set_input(int inputnum, int state)
+{
+	if (inputnum == IRQ_LINE)
+		m_int_line = (state != CLEAR_LINE);
+}
+
+/* Acceptance rule, drawn on page 12.16 and in words on page 12.14: aceito =
+   (OR of the sixteen PEDIDO flip-flops OR panel button) AND PERMITE/INIBE AND
+   NAO ESTA/ESTA.  The per-device PERMITE/IMPEDE is not part of it: page A.12
+   puts it inside the interface board, gating whether that device's PEDIDO can
+   be set at all.  There is no priority encoder; the program chooses the
+   service order through its "SAL /n4" tests (page 12.12). */
+bool patinho_feio_cpu_device::interrupt_accepted() const
+{
+	return (m_int_line || m_panel_interrupt)
+			&& m_interrupts_enabled && m_not_in_interrupt && !m_pul_delay;
+}
+
+/* Interrupt acceptance is held off for one instruction after PUL.  This is an
+   inference, not documented.  Chapter 11 makes PUL "equivalente a PLA 2 +
+   termina interrupcao", so the machine passes through /002, while page 12.12
+   expects a new interrupt to be accepted immediately after PUL.  Both hold
+   only if acceptance waits for the return jump at /002 to execute: otherwise
+   the hardware writes /002 into ERI and every later return lands on a
+   "PLA /002" pointing at itself.  The interrupt sequencing of the control
+   unit in Fregni (1972) would confirm or refute it. */
+void patinho_feio_cpu_device::take_interrupt()
+{
+	/* Page 12.9: "havera um desvio para a posicao 4 da memoria, onde deve
+	   haver uma rotina para tratamento da interrupcao".  ERI at /002-/003
+	   holds the 12-bit return address, so the high nibble of /002 is zero --
+	   the PLA opcode -- and the pair reads back as "PLA <return>". */
+	WRITE_BYTE_PATINHO(0x002, (PC >> 8) & 0x0F);
+	WRITE_BYTE_PATINHO(0x003, PC & 0xFF);
+
+	m_not_in_interrupt = false;   // page 12.17: the CPU clears it on accepting
+	m_panel_interrupt = false;    // page A.11, item 3, for the panel button
+	PC = 0x004;
+
+	// An ESP is over.  PARE is not: it never gets here, because the caller
+	// only asks while running or while waiting.
+	m_run = true;
+	m_wait_for_interrupt = false;
+}
+
 /* execute instructions on this CPU until icount expires */
 void patinho_feio_cpu_device::execute_run() {
 	do {
@@ -173,6 +231,36 @@ void patinho_feio_cpu_device::execute_run() {
 		m_ext = READ_ACC_EXTENSION_REG();
 		m_idx = READ_INDEX_REG();
 		m_update_panel_cb(ACC, READ_BYTE_PATINHO(PC), READ_BYTE_PATINHO(m_addr), m_addr, PC, FLAGS, RC, m_mode);
+
+		/* The panel INTERRUPCAO button is a flip-flop of its own (page A.11),
+		   so it has to be sampled while the processor is running too, not only
+		   in the stopped branch below where the other buttons are read. */
+		if (!m_buttons_read_cb.isunset())
+		{
+			uint16_t const b = m_buttons_read_cb(0);
+
+			/* The panel INTERRUPCAO button is a flip-flop of its own (page
+			   A.11), so it has to be sampled while the processor is running
+			   too, not only in the stopped branch below. */
+			if (b & BUTTON_INTERRUPCAO)
+				m_panel_interrupt = true;
+
+			/* PREPARACAO likewise: it is the reset button, and a reset button
+			   that only works on an already-stopped machine would be of little
+			   use.  It used to be read only in the stopped branch. */
+			if (b & BUTTON_PREPARACAO)
+			{
+				device_reset();
+				m_preparacao_cb(1);
+				m_preparacao_cb(0);
+			}
+		}
+
+		/* ESP waits for an interrupt; PARE does not accept one ("Para a
+		   maquina (nao aceita interrupcao)"), and neither do the panel modes.
+		   Hence the guard rather than a bare interrupt_accepted(). */
+		if ((m_run || m_wait_for_interrupt) && interrupt_accepted())
+			take_interrupt();
 
 		if (!m_run){
 			debugger_wait_hook();
@@ -194,12 +282,19 @@ void patinho_feio_cpu_device::execute_run() {
 				if (buttons & BUTTON_ARMAZENAMENTO) m_mode = DATA_STORE_MODE;
 				if (buttons & BUTTON_CICLO_UNICO) m_mode = CYCLE_STEP_MODE;
 				if (buttons & BUTTON_INSTRUCAO_UNICA) m_mode = INSTRUCTION_STEP_MODE;
-				if (buttons & BUTTON_PREPARACAO) device_reset();
+				// BUTTON_PREPARACAO is handled at the top of the loop, so that
+				// it works whether the machine is running or stopped.
 			}
 			m_icount = 0;   /* if processor is stopped, just burn cycles */
 		} else {
 			debugger_instruction_hook(PC);
+			bool const had_grace = m_pul_delay;
 			execute_instruction();
+			// The grace lasts exactly one instruction. Testing the flag saved
+			// before the instruction ran is what keeps a PUL from clearing the
+			// grace it has just asked for.
+			if (had_grace)
+				m_pul_delay = false;
 			m_icount --;
 		}
 	}
@@ -400,10 +495,14 @@ void patinho_feio_cpu_device::execute_instruction()
 			}
 			return;
 		case 0x98:
-			//PUL="Pula para /002 a limpa estado de interrupcao"
-			//     Jump to address /002 and disables interrupts
+			//PUL="Pula para /002 e limpa estado de interrupcao"
+			//     Jumping to /002 executes the ERI return address, laid out
+			//     as "PLA <retorno>" (see take_interrupt).
+			//     Page 12.17: PUL restores NAO ESTA/ESTA only; PERMITE/INIBE
+			//     is moved by PERM and INIB alone (page A.11).
 			PC = 0x002;
-			m_interrupts_enabled = false;
+			m_not_in_interrupt = true;
+			m_pul_delay = true;   // see take_interrupt(), "ONE INSTRUCTION OF GRACE"
 			return;
 		case 0x99:
 			//TRE="Troca conteudos de ACC e EXT"
