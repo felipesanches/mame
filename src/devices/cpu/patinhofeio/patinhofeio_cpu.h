@@ -21,11 +21,6 @@ enum
 	DATA_VIEW_MODE
 };
 
-#define IODEV_READY true
-#define IODEV_BUSY false
-#define REQUEST true
-#define NO_REQUEST false
-
 #define BUTTON_NORMAL                (1 << 0)  /* normal CPU execution */
 #define BUTTON_CICLO_UNICO           (1 << 1)  /* single-cycle step */
 #define BUTTON_INSTRUCAO_UNICA       (1 << 2)  /* single-instruction step */
@@ -48,17 +43,16 @@ public:
 
 	auto rc_read() { return m_rc_read_cb.bind(); }
 	auto buttons_read() { return m_buttons_read_cb.bind(); }
-	template <std::size_t DevNumber> auto iodev_read() { return m_iodev_read_cb[DevNumber].bind(); }
-	template <std::size_t DevNumber> auto iodev_write() { return m_iodev_write_cb[DevNumber].bind(); }
+	/* In all four the offset is (channel << 4) | command: the channel is the
+	   low nibble of the instruction, the command the low nibble of its second
+	   word.  Which card answers is decided at run time by the slot. */
+	auto io_func()   { return m_io_func_cb.bind(); }    // FNC  /nc
+	auto io_data_r() { return m_io_data_r_cb.bind(); }  // ENTR /nc
+	auto io_data_w() { return m_io_data_w_cb.bind(); }  // SAI  /nc
+	auto io_skip()   { return m_io_skip_cb.bind(); }    // SAL  /nc
 	template <typename... T> void set_update_panel_cb(T &&... args) { m_update_panel_cb.set(std::forward<T>(args)...); }
 
-	void transfer_byte_from_external_device(uint8_t channel, uint8_t data);
-	void set_iodev_status(uint8_t channel, bool status) { m_iodev_status[channel] = status; }
 
-	/* The CONTROL flip-flop is how a program tells a peripheral to start
-	   working: "FNC /n6" turns it on and sets STATUS to busy. A device needs to
-	   see it in order to know it has been asked for something. */
-	bool iodev_control(uint8_t channel) const { return m_iodev_control[channel]; }
 
 	void prog_8bit(address_map &map) ATTR_COLD;
 protected:
@@ -92,11 +86,7 @@ protected:
 	bool m_interrupts_enabled;
 	bool m_scheduled_IND_bit_reset;
 	bool m_indirect_addressing;
-	bool m_iodev_control[16];
-	bool m_iodev_status[16];
 
-	/* 8-bit registers for receiving data from peripherals */
-	uint8_t m_iodev_incoming_byte[16];
 
 	int m_flags;
 	// V = "Vai um" (Carry flag)
@@ -126,8 +116,10 @@ private:
 	uint16_t read_panel_keys_register();
 	devcb_read16 m_rc_read_cb;
 	devcb_read16 m_buttons_read_cb;
-	devcb_read8::array<16> m_iodev_read_cb;
-	devcb_write8::array<16> m_iodev_write_cb;
+	devcb_write8 m_io_func_cb;
+	devcb_read8  m_io_data_r_cb;
+	devcb_write8 m_io_data_w_cb;
+	devcb_read8  m_io_skip_cb;
 	uint8_t m_mode;
 };
 
