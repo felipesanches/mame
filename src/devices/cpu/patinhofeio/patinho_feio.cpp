@@ -31,6 +31,23 @@
 #define ADDRESS_MASK_4K    0xFFF
 #define INCREMENT_PC_4K    (PC = (PC+1) & ADDRESS_MASK_4K)
 
+/* The "instrucoes curtas do grupo 2" (0x90-0x97) skip the whole next
+   instruction, which may be two words long (July 1977 assembler manual:
+   "Podem resultar em saltos (CI <- CI + 2)").  Skipping a single word
+   lands inside a long instruction and executes its operand as an opcode. */
+#define SKIP_NEXT_INSTRUCTION  { INCREMENT_PC_4K; INCREMENT_PC_4K; }
+
+/* Both flags are defined in chapter 2 of the July 1977 assembler manual: V
+   ("vai-um") is "o vai-um na ultima soma realizada (bit mais significativo)",
+   the carry out of bit 7; T ("transbordo") is signed overflow, illustrated
+   there with 60 + 70 = 130, outside the range of a signed byte. */
+void patinho_feio_cpu_device::update_addition_flags(uint8_t operand_a, uint8_t operand_b){
+	uint16_t const result = operand_a + operand_b;
+
+	set_flag(V, result > 0xFF);
+	set_flag(T, BIT((operand_a ^ result) & (operand_b ^ result), 7));
+}
+
 void patinho_feio_cpu_device::set_flag(uint8_t flag, bool state){
 	if (state){
 		FLAGS |= flag;
@@ -93,18 +110,10 @@ void patinho_feio_cpu_device::device_start()
 	m_program = &space(AS_PROGRAM);
 	m_update_panel_cb.resolve_safe();
 
-//TODO: implement handling of these special purpose registers
-//      which are also mapped to the first few main memory positions:
-//
-//      ERI: "Endereco de Retorno de Interrupcao"
-//           "Interrupt Return Address"
-//           stored at addresses 002 and 003
-//
-//      ETI: "inicio de uma rotina de tratamento de interrupcao (se houver)"
-//           "start of an interrupt service routine (if any)"
-//           stored at address 004 (and 005 as well?)
-//
-// It seems that the general purpose memory starts at address 006.
+//TODO: handle the special purpose registers also mapped to the first main
+//      memory positions: ERI ("Endereco de Retorno de Interrupcao") at 002
+//      and 003, ETI ("inicio de uma rotina de tratamento de interrupcao")
+//      at 004 (and 005?).  General purpose memory appears to start at 006.
 
 	save_item(NAME(m_pc));
 	save_item(NAME(m_acc));
@@ -219,9 +228,9 @@ void patinho_feio_cpu_device::execute_instruction()
 		case 0xD8:
 			//SOMI="Soma Imediato":
 			//     Add an immediate into the accumulator
-			set_flag(V, ((((int16_t) ACC) + ((int16_t) READ_BYTE_PATINHO(PC))) >> 8));
-			set_flag(T, ((((int8_t) (ACC & 0x7F)) + ((int8_t) (READ_BYTE_PATINHO(PC) & 0x7F))) >> 7) == V);
-			ACC += READ_BYTE_PATINHO(PC);
+			value = READ_BYTE_PATINHO(PC);
+			update_addition_flags(ACC, value);
+			ACC += value;
 			INCREMENT_PC_4K;
 			return;
 		case 0xDA:
@@ -326,14 +335,14 @@ void patinho_feio_cpu_device::execute_instruction()
 			//ST 0 = "Se T=0, Pula"
 			//       If T is zero, skip the next instruction
 			if ((FLAGS & T) == 0)
-				INCREMENT_PC_4K; //skip
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 			return;
 		case 0x91:
 			//STM 0 = "Se T=0, Pula e muda"
 			//        If T is zero, skip the next instruction
 			//        and toggle T.
 			if ((FLAGS & T) == 0){
-				INCREMENT_PC_4K; //skip
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 				FLAGS |= T; //set T=1
 			}
 			return;
@@ -341,14 +350,14 @@ void patinho_feio_cpu_device::execute_instruction()
 			//ST 1 = "Se T=1, Pula"
 			//       If T is one, skip the next instruction
 			if ((FLAGS & T) == T)
-				INCREMENT_PC_4K; //skip
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 			return;
 		case 0x93:
 			//STM 1 = "Se T=1, Pula e muda"
 			//        If T is one, skip the next instruction
 			//        and toggle T.
 			if ((FLAGS & T) == T){
-				INCREMENT_PC_4K; //skip
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 				FLAGS &= ~T; //set T=0
 			}
 			return;
@@ -356,29 +365,29 @@ void patinho_feio_cpu_device::execute_instruction()
 			//SV 0 = "Se V=0, Pula"
 			//       If V is zero, skip the next instruction
 			if ((FLAGS & V) == 0)
-				INCREMENT_PC_4K; //skip
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 			return;
 		case 0x95:
 			//SVM 0 = "Se V=0, Pula e muda"
 			//        If V is zero, skip the next instruction
 			//        and toggle V.
 			if ((FLAGS & V) == 0){
-				INCREMENT_PC_4K; //skip
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 				FLAGS |= V; //set V=1
 			}
 			return;
 		case 0x96:
 			//SV 1 = "Se V=1, Pula"
 			//       If V is one, skip the next instruction
-			if ((FLAGS & V) == 1)
-				INCREMENT_PC_4K; //skip
+			if ((FLAGS & V) == V)
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 			return;
 		case 0x97:
 			//SVM 1 = "Se V=1, Pula e muda"
 			//        If V is one, skip the next instruction
 			//        and toggle V.
-			if ((FLAGS & V) == 1){
-				INCREMENT_PC_4K; //skip
+			if ((FLAGS & V) == V){
+				SKIP_NEXT_INSTRUCTION; //skip the whole next instruction
 				FLAGS &= ~V; //set V=0
 			}
 			return;
@@ -574,8 +583,9 @@ void patinho_feio_cpu_device::execute_instruction()
 			//SOM = "Soma": Add a value from a given memory position into the accumulator
 			compute_effective_address((m_opcode & 0x0F) << 8 | READ_BYTE_PATINHO(PC));
 			INCREMENT_PC_4K;
-			ACC += READ_BYTE_PATINHO(m_addr);
-			//TODO: update V and T flags
+			value = READ_BYTE_PATINHO(m_addr);
+			update_addition_flags(ACC, value);
+			ACC += value;
 			return;
 		case 0x70:
 			//SOMX = "Soma indexada": Add a value from a given indexed memory position into the accumulator
@@ -583,8 +593,9 @@ void patinho_feio_cpu_device::execute_instruction()
 			INCREMENT_PC_4K;
 			m_idx = READ_INDEX_REG();
 			compute_effective_address(m_idx + tmp);
-			ACC += READ_BYTE_PATINHO(m_addr);
-			//TODO: update V and T flags
+			value = READ_BYTE_PATINHO(m_addr);
+			update_addition_flags(ACC, value);
+			ACC += value;
 			return;
 		case 0xA0:
 			//PLAN = "Pula se ACC negativo": Jump to a given address if ACC is negative

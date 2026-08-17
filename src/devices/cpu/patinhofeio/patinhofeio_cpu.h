@@ -121,6 +121,7 @@ private:
 	void execute_instruction();
 	void compute_effective_address(unsigned int addr);
 	void set_flag(uint8_t flag, bool state);
+	void update_addition_flags(uint8_t operand_a, uint8_t operand_b);
 	uint16_t read_panel_keys_register();
 	devcb_read16 m_rc_read_cb;
 	devcb_read16 m_buttons_read_cb;
