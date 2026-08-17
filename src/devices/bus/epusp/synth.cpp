@@ -13,6 +13,9 @@
 
 #include "speaker.h"
 
+#include "epusp_synth.lh"
+
+#include <bit>
 #include <cmath>
 
 #define LOG_CMD    (1U << 1)   // every command that arrives
@@ -29,6 +32,9 @@ epusp_synth_device::epusp_synth_device(const machine_config &mconfig, const char
 	, device_sound_interface(mconfig, *this)
 	, device_epusp_synth_port_interface(mconfig, *this)
 	, m_s1(*this, "S1")
+	, m_pgrf_amostra(*this, "AM%u", 0U)
+	, m_tecl_modo(*this, "TECL")
+	, m_tecl_transp(*this, "TRANSP")
 	, m_tape(*this, "tape")
 {
 	std::fill(std::begin(m_timbre), std::end(m_timbre), 0);
@@ -48,8 +54,13 @@ epusp_synth_device::epusp_synth_device(const machine_config &mconfig, const char
    switched to BLOQUEIA keeps its waveform regardless of the computer's
    commands, so no document settles which of the two happened. */
 static INPUT_PORTS_START(epusp_synth)
+	/* PORT_TOGGLE is what lets a layout item bound to this field turn the
+	   knob: frame_update() answers set_value(1) with select_next_setting()
+	   only on a toggle field (src/emu/ioport.cpp).  A toggle CONFNAME folds
+	   its value into the port default and reports no digital bit of its own,
+	   so read() is unchanged; same pattern as atari/a2600.cpp. */
 	PORT_START("S1")
-	PORT_CONFNAME(0x0f, 1, "Selecao de timbre (AUTO/MANUAL + PGRF/M1-M7)")
+	PORT_CONFNAME(0x0f, 1, "Selecao de timbre (AUTO/MANUAL + PGRF/M1-M7)") PORT_TOGGLE
 	PORT_CONFSETTING(0, "AUTO (o computador escolhe)")
 	PORT_CONFSETTING(1, "MANUAL: PGRF (painel grafico)")
 	PORT_CONFSETTING(2, "MANUAL: M1")
@@ -59,6 +70,167 @@ static INPUT_PORTS_START(epusp_synth)
 	PORT_CONFSETTING(6, "MANUAL: M5")
 	PORT_CONFSETTING(7, "MANUAL: M6")
 	PORT_CONFSETTING(8, "MANUAL: M7")
+
+	/* The graphic panel (PGRF): sixteen samples of four bits each.
+	   Chapter 3: "Conjunto de 16 chaves deslizantes de 16 posicoes cada uma
+	   no qual se desenha meio ciclo de uma forma de onda impar" -- one
+	   control here per slider.  Chapter 11 counts the same panel from the
+	   circuit side, "4 grupos de 16 chaves de selecao de timbres", which is
+	   64 signals and not 64 switches: one sixteen-position slider emits four
+	   bits, one per bit plane.
+
+	   The sixteen are half a cycle and feed store 0 only;
+	   sound_stream_update() plays them forwards and then negated, sample 0
+	   first, the same ordering commands 1 to 8 use.  The default of 15 on
+	   every slider is the all-maximum half cycle, i.e. a square: a declared
+	   choice, since the tapes select this store without ever writing it.  The
+	   values are saved in the cfg file, so a hand-drawn waveform survives
+	   between sessions. */
+	/* Samples are numbered 0 to 15, as the front panel prints under each
+	   slider and as every index here means: m_store[s][k], the _n below, bit
+	   15-k of a bit plane. */
+#define PORT_PGRF_AMOSTRA(_n, _rotulo) \
+	PORT_START("AM" #_n) \
+	PORT_ADJUSTER(15, "PGRF: amostra " _rotulo " (de 16)") PORT_MINMAX(0, 15) \
+	PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(epusp_synth_device::pgrf_alterado), _n)
+
+	PORT_PGRF_AMOSTRA(0,  " 0")
+	PORT_PGRF_AMOSTRA(1,  " 1")
+	PORT_PGRF_AMOSTRA(2,  " 2")
+	PORT_PGRF_AMOSTRA(3,  " 3")
+	PORT_PGRF_AMOSTRA(4,  " 4")
+	PORT_PGRF_AMOSTRA(5,  " 5")
+	PORT_PGRF_AMOSTRA(6,  " 6")
+	PORT_PGRF_AMOSTRA(7,  " 7")
+	PORT_PGRF_AMOSTRA(8,  " 8")
+	PORT_PGRF_AMOSTRA(9,  " 9")
+	PORT_PGRF_AMOSTRA(10, "10")
+	PORT_PGRF_AMOSTRA(11, "11")
+	PORT_PGRF_AMOSTRA(12, "12")
+	PORT_PGRF_AMOSTRA(13, "13")
+	PORT_PGRF_AMOSTRA(14, "14")
+	PORT_PGRF_AMOSTRA(15, "15")
+
+#undef PORT_PGRF_AMOSTRA
+
+	/* The seven TRANSFERE switches.  Chapter 11: "Um timbre programado
+	   manualmente nesta entrada pode ser transferido (manualmente) para uma
+	   de 7 memorias (numeradas de 1 a 7) pelos comandos TRANSFERE", and a bit
+	   unit's parts list counts "7 chaves de transferencia".  Source is the
+	   panel, destination M1 to M7; the panel is never a destination, which is
+	   also why command_w() refuses GRTMB,0.  Momentary and not toggles: the
+	   chapter calls them commands, and the transfer happens on the press. */
+	PORT_START("TRANSF")
+	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("TRANSFERE 1 (painel -> M1)")
+		PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(epusp_synth_device::transfere), 1)
+	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("TRANSFERE 2 (painel -> M2)")
+		PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(epusp_synth_device::transfere), 2)
+	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("TRANSFERE 3 (painel -> M3)")
+		PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(epusp_synth_device::transfere), 3)
+	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("TRANSFERE 4 (painel -> M4)")
+		PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(epusp_synth_device::transfere), 4)
+	PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("TRANSFERE 5 (painel -> M5)")
+		PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(epusp_synth_device::transfere), 5)
+	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("TRANSFERE 6 (painel -> M6)")
+		PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(epusp_synth_device::transfere), 6)
+	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("TRANSFERE 7 (painel -> M7)")
+		PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(epusp_synth_device::transfere), 7)
+
+	/* The keyboard of chapter 6 and its two switches from chapter 3.  "Chave
+	   manual--automatico" decides who supplies the note and the gate: the 49
+	   keys, or the computer's commands 0 and 11 -- chapter 3, on CHV,
+	   "0 Volts para 'nota silenciosa' e 5 Volts para 'nota'".  The default is
+	   AUTOMATICO because every surviving tape is the computer playing. */
+	PORT_START("TECL")
+	PORT_CONFNAME(0x01, 0x01, "Teclado: chave manual-automatico") PORT_TOGGLE
+		PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(epusp_synth_device::teclado_alterado), 0)
+	PORT_CONFSETTING(0x00, "MANUAL (as 49 teclas mandam)")
+	PORT_CONFSETTING(0x01, "AUTOMATICO (o computador manda)")
+
+	/* "Chave de 7 posicoes para transposicao de oitavas" (chapter 3).  With
+	   49 keys and seven positions twelve semitones apart the reachable codes
+	   are n = 12p + k, k = 0..48, p = 0..6: 0 to 120, the 121 values
+	   chapter 3 counts for the manual position, topping out at 16.3516 x 2^10
+	   = 16 743.9 Hz ("16 744,0 Hz" there).  Default position 2 makes the key
+	   MAME names C2 sound 16.3516 x 2^2 = 65.4 Hz, so label and pitch
+	   agree. */
+	PORT_START("TRANSP")
+	PORT_CONFNAME(0x07, 2, "Teclado: transposicao de oitavas") PORT_TOGGLE
+		PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(epusp_synth_device::teclado_alterado), 0)
+	PORT_CONFSETTING(0, "1 -- do0 (16,35 Hz) a do4 (261,6 Hz)")
+	PORT_CONFSETTING(1, "2 -- do1 (32,7 Hz) a do5 (523,3 Hz)")
+	PORT_CONFSETTING(2, "3 -- do2 (65,4 Hz) a do6 (1046,5 Hz)")
+	PORT_CONFSETTING(3, "4 -- do3 (130,8 Hz) a do7 (2093,0 Hz)")
+	PORT_CONFSETTING(4, "5 -- do4 (261,6 Hz) a do8 (4186,0 Hz)")
+	PORT_CONFSETTING(5, "6 -- do5 (523,3 Hz) a do9 (8372,0 Hz)")
+	PORT_CONFSETTING(6, "7 -- do6 (1046,5 Hz) a do10 (16744,0 Hz)")
+
+	/* "Manual de 49 teclas" (chapter 3), C2 to C6 in the General MIDI naming
+	   MAME uses, which also makes them playable from a real keyboard through
+	   -midiin.  The parameter is the key index k = 0..48; the pitch byte comes
+	   from it and the transposition switch in recalcula_nota_do_teclado(). */
+#define PORT_TECLA(_mascara, _k, _nota) \
+	PORT_BIT(_mascara, IP_ACTIVE_HIGH, IPT_OTHER) _nota \
+		PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(epusp_synth_device::tecla), _k)
+
+	PORT_START("TECL0")
+	PORT_TECLA(0x0001,  0, PORT_GM_C2)
+	PORT_TECLA(0x0002,  1, PORT_GM_CS2)
+	PORT_TECLA(0x0004,  2, PORT_GM_D2)
+	PORT_TECLA(0x0008,  3, PORT_GM_DS2)
+	PORT_TECLA(0x0010,  4, PORT_GM_E2)
+	PORT_TECLA(0x0020,  5, PORT_GM_F2)
+	PORT_TECLA(0x0040,  6, PORT_GM_FS2)
+	PORT_TECLA(0x0080,  7, PORT_GM_G2)
+	PORT_TECLA(0x0100,  8, PORT_GM_GS2)
+	PORT_TECLA(0x0200,  9, PORT_GM_A2)
+	PORT_TECLA(0x0400, 10, PORT_GM_AS2)
+	PORT_TECLA(0x0800, 11, PORT_GM_B2)
+	PORT_TECLA(0x1000, 12, PORT_GM_C3)
+	PORT_TECLA(0x2000, 13, PORT_GM_CS3)
+	PORT_TECLA(0x4000, 14, PORT_GM_D3)
+	PORT_TECLA(0x8000, 15, PORT_GM_DS3)
+
+	PORT_START("TECL1")
+	PORT_TECLA(0x0001, 16, PORT_GM_E3)
+	PORT_TECLA(0x0002, 17, PORT_GM_F3)
+	PORT_TECLA(0x0004, 18, PORT_GM_FS3)
+	PORT_TECLA(0x0008, 19, PORT_GM_G3)
+	PORT_TECLA(0x0010, 20, PORT_GM_GS3)
+	PORT_TECLA(0x0020, 21, PORT_GM_A3)
+	PORT_TECLA(0x0040, 22, PORT_GM_AS3)
+	PORT_TECLA(0x0080, 23, PORT_GM_B3)
+	PORT_TECLA(0x0100, 24, PORT_GM_C4)
+	PORT_TECLA(0x0200, 25, PORT_GM_CS4)
+	PORT_TECLA(0x0400, 26, PORT_GM_D4)
+	PORT_TECLA(0x0800, 27, PORT_GM_DS4)
+	PORT_TECLA(0x1000, 28, PORT_GM_E4)
+	PORT_TECLA(0x2000, 29, PORT_GM_F4)
+	PORT_TECLA(0x4000, 30, PORT_GM_FS4)
+	PORT_TECLA(0x8000, 31, PORT_GM_G4)
+
+	PORT_START("TECL2")
+	PORT_TECLA(0x0001, 32, PORT_GM_GS4)
+	PORT_TECLA(0x0002, 33, PORT_GM_A4)
+	PORT_TECLA(0x0004, 34, PORT_GM_AS4)
+	PORT_TECLA(0x0008, 35, PORT_GM_B4)
+	PORT_TECLA(0x0010, 36, PORT_GM_C5)
+	PORT_TECLA(0x0020, 37, PORT_GM_CS5)
+	PORT_TECLA(0x0040, 38, PORT_GM_D5)
+	PORT_TECLA(0x0080, 39, PORT_GM_DS5)
+	PORT_TECLA(0x0100, 40, PORT_GM_E5)
+	PORT_TECLA(0x0200, 41, PORT_GM_F5)
+	PORT_TECLA(0x0400, 42, PORT_GM_FS5)
+	PORT_TECLA(0x0800, 43, PORT_GM_G5)
+	PORT_TECLA(0x1000, 44, PORT_GM_GS5)
+	PORT_TECLA(0x2000, 45, PORT_GM_A5)
+	PORT_TECLA(0x4000, 46, PORT_GM_AS5)
+	PORT_TECLA(0x8000, 47, PORT_GM_B5)
+
+	PORT_START("TECL3")
+	PORT_TECLA(0x0001, 48, PORT_GM_C6)
+
+#undef PORT_TECLA
 INPUT_PORTS_END
 
 ioport_constructor epusp_synth_device::device_input_ports() const
@@ -93,6 +265,13 @@ void epusp_synth_device::device_add_mconfig(machine_config &config)
 	m_tape->set_create_opts(&tape_opts);
 	m_tape->set_default_state(CASSETTE_STOPPED);
 	m_tape->set_interface("patinho_tape");
+
+	/* A device layout, which is why it lives in src/emu/layout and not
+	   src/mame/layout: it belongs to the instrument and must follow it into
+	   whatever machine it is plugged into.  MAME names the view after this
+	   device's tag, so with the instrument on channel /6 it appears as
+	   "io6:duplex:port:synth Painel do sintetizador". */
+	config.set_default_layout(layout_epusp_synth);
 }
 
 /* Which store reaches the output right now.  On AUTO the computer's last
@@ -105,6 +284,131 @@ unsigned epusp_synth_device::selected_store() const
 	if (pos == S1_AUTO)
 		return (m_auto_select < STORES) ? m_auto_select : PGRF;
 	return std::min<unsigned>(pos - 1, STORES - 1);
+}
+
+/* The only writer of store 0.  Reads the sixteen sliders into m_store[PGRF],
+   scaled to 0..1 as unpack() scales the computer's planes (0..15 out of a
+   unipolar converter).  No mean is subtracted: the sixteen are half a cycle,
+   so the period is odd by construction and its mean is exactly zero.  Also
+   called from device_reset(): the change handlers only fire on a change, so a
+   waveform restored from the cfg file would not otherwise reach the store. */
+void epusp_synth_device::redesenha_pgrf()
+{
+	for (unsigned k = 0; k < AMOSTRAS; k++)
+		m_store[PGRF][k] = double(m_pgrf_amostra[k]->read() & 0x0F) / 15.0;
+}
+
+INPUT_CHANGED_MEMBER(epusp_synth_device::pgrf_alterado)
+{
+	m_stream->update();
+	redesenha_pgrf();
+	LOGMASKED(LOG_TIMBRE, "PGRF: amostra %u = %u\n", param + 1, newval);
+}
+
+/* TRANSFERE n: the panel into memory n, on the press.  Chapter 11 -- the
+   source is the panel, the destination M1 to M7, never the panel itself. */
+INPUT_CHANGED_MEMBER(epusp_synth_device::transfere)
+{
+	if (!newval)
+		return;   // acts on the press, not on the release
+
+	unsigned const n = param;
+	if (n == PGRF || n >= STORES)
+		return;   // cannot happen from the port list; cheap to keep true
+
+	m_stream->update();
+	redesenha_pgrf();
+	std::copy(std::begin(m_store[PGRF]), std::end(m_store[PGRF]), std::begin(m_store[n]));
+	LOGMASKED(LOG_TIMBRE, "TRANSFERE %u: painel grafico -> M%u\n", n, n);
+}
+
+/* Chapter 3 gives the keyboard's outputs as frf (a square at 32x the note)
+   and CHV (0 V with no key down, 5 V otherwise), and chapter 9 shows the
+   computer's note interface driving the same octave dividers, so here the
+   keyboard is a second source for the pitch byte and the gate.  Monophonic,
+   last key wins, and on release the highest key still held takes over: a
+   declared choice, as chapters 3 and 6 say nothing about the rule.  L and D,
+   the narrow start- and end-of-note pulses of chapter 3, and VBR are not
+   emitted -- their only consumers are the chapter 7 envelope generators,
+   which are not modelled. */
+INPUT_CHANGED_MEMBER(epusp_synth_device::tecla)
+{
+	unsigned const k = param;
+	if (k >= TECLAS)
+		return;
+
+	m_stream->update();
+
+	uint64_t const bit = uint64_t(1) << k;
+	if (newval)
+	{
+		m_teclas_apertadas |= bit;
+		m_tecla_atual = int32_t(k);
+		m_tecl_gate = true;
+	}
+	else
+	{
+		m_teclas_apertadas &= ~bit;
+		if (m_tecla_atual == int32_t(k))
+		{
+			/* The voice's own key went up.  Hand it to the highest key still
+			   held, or drop the gate if the hands left the manual. */
+			if (m_teclas_apertadas)
+			{
+				m_tecla_atual = int32_t(std::bit_width(m_teclas_apertadas)) - 1;
+			}
+			else
+			{
+				m_tecl_gate = false;   // this is where D would fire
+			}
+		}
+	}
+
+	recalcula_nota_do_teclado();
+	LOGMASKED(LOG_NOTE, "teclado: tecla %u %s -> /%02X, CHV=%d\n",
+			k, newval ? "apertada" : "solta", m_tecl_pitch, m_tecl_gate ? 1 : 0);
+}
+
+/* The manual-automatico switch and the octave transposition.  Both change what
+   the keyboard is saying without any key moving, so both have to push the sound
+   stream up to now before they take effect. */
+INPUT_CHANGED_MEMBER(epusp_synth_device::teclado_alterado)
+{
+	m_stream->update();
+	recalcula_nota_do_teclado();
+}
+
+/* The pitch byte a key produces is n = 12 * transposicao + tecla encoded as
+   ((n / 12) << 4) | (n % 12) -- the same octave-in-the-high-nibble,
+   semitone-in-the-low-nibble code commands 0 and 11 carry, because on the
+   instrument they reach the same dividers.  n runs 0 to 120, the 121 values
+   chapter 3 counts for the manual position. */
+void epusp_synth_device::recalcula_nota_do_teclado()
+{
+	if (m_tecla_atual < 0)
+		return;   // no key has ever been pressed; keep the last byte
+
+	unsigned const n = 12 * (m_tecl_transp->read() & 0x07) + unsigned(m_tecla_atual);
+	m_tecl_pitch = uint8_t(((n / 12) << 4) | (n % 12));
+}
+
+bool epusp_synth_device::teclado_manda() const
+{
+	return !(m_tecl_modo->read() & 0x01);   // 0 = MANUAL, 1 = AUTOMATICO
+}
+
+/* Which source the note and the gate come from.  The intensity does NOT switch
+   with them: INT is D/A 1, a control voltage into the gain-controlled
+   amplifier, and on the real instrument it stays wherever the computer or the
+   front-panel attenuators left it while the keyboard plays. */
+uint8_t epusp_synth_device::nota_corrente() const
+{
+	return teclado_manda() ? m_tecl_pitch : m_pitch;
+}
+
+bool epusp_synth_device::chaveamento_corrente() const
+{
+	return teclado_manda() ? m_tecl_gate : m_gate;
 }
 
 /* Chapter 3 puts the scale between "o do de 16,35 Hz" and "o si de
@@ -164,6 +468,10 @@ void epusp_synth_device::device_start()
 	save_item(NAME(m_computer_half));
 	save_item(NAME(m_store));
 	save_item(NAME(m_auto_select));
+	save_item(NAME(m_teclas_apertadas));
+	save_item(NAME(m_tecla_atual));
+	save_item(NAME(m_tecl_gate));
+	save_item(NAME(m_tecl_pitch));
 	save_item(NAME(m_phase));
 	save_item(NAME(m_sync_scan));
 	save_item(NAME(m_sync_written));
@@ -284,28 +592,33 @@ void epusp_synth_device::device_reset()
 	   left at, and those settings did not survive. */
 	m_intensity = 0xFF;
 
-	/* A SQUARE AS THE DEFAULT WAVEFORM, in every store, and the reason
-	   matters more now than it did.
+	/* Every store comes up holding a square -- the first half cycle all at
+	   maximum, whose odd extension is the square wave.  A declared choice:
+	   FITA#023 selects PGRF with "LETMB,0" for most of the piece and the
+	   hand-set panel drawing is not on the tape, and FITA#015, the
+	   Bachianinha, sends no TIMBRE command at all, so it played with whatever
+	   the previous session had left in the stores.  Both would be silent from
+	   a zero store.
 
-	   Position 0 is PGRF, the GRAPHIC PANEL: sixteen sliding switches the
-	   composer set BY HAND.  FITA#023 selects it with "LETMB,0" for most of
-	   the piece, and that drawing is not on the tape -- the one thing needed
-	   to reproduce the piece exactly is the one thing no tape can carry.
-
-	   FITA#015, the Bachianinha, sends no TIMBRE command at all (test C1.4 of
-	   verificar.py), so on the real instrument it played with whatever was
-	   left in the stores from the previous session.
-
-	   Both cases would be silent from an all-zero store, and silence with no
-	   error is the worst failure mode this project has.  So every store comes
-	   up holding a square -- the first half cycle all at maximum, whose odd
-	   extension is the square.  It is a modelling choice, declared, not a
-	   reading. */
+	   Store 0 comes from the sliders instead, via redesenha_pgrf(); their
+	   default of 15 is the same square.  Reading the ports here is required:
+	   MAME loads the cfg file before the soft reset and PORT_CHANGED_MEMBER
+	   only fires on a change, so a restored waveform would otherwise never
+	   reach the store. */
 	static const uint8_t QUADRADA[8] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 	std::copy(std::begin(QUADRADA), std::end(QUADRADA), std::begin(m_timbre));
 	unpack(m_timbre, m_computer_half);
 	for (auto &s : m_store)
 		std::copy(std::begin(m_computer_half), std::end(m_computer_half), std::begin(s));
+	redesenha_pgrf();
+
+	/* The keyboard comes up with no key down and no note ever played.  The
+	   pitch byte stays 0 until a key is pressed, which is the bottom C -- but
+	   it is never heard, because the gate is what decides. */
+	m_teclas_apertadas = 0;
+	m_tecla_atual = -1;
+	m_tecl_gate = false;
+	m_tecl_pitch = 0;
 
 	m_auto_select = PGRF;
 	m_phase = 0.0;
@@ -401,8 +714,12 @@ void epusp_synth_device::sound_stream_update(sound_stream &stream)
 	   every update: returning early while the note is off would leave the
 	   tape neither heard nor rewritten during the rests, punching holes in
 	   voice 1 on the second pass. */
-	double const f = frequency(m_pitch);
-	bool const soando = m_gate && m_intensity != 0
+	/* WHO IS PLAYING: the computer, or the 49 keys.  The manual-automatico
+	   switch of chapter 3 decides, and on the real instrument it is a selector
+	   in front of the same octave dividers -- so downstream of here there is no
+	   difference at all between the two sources. */
+	double const f = frequency(nota_corrente());
+	bool const soando = chaveamento_corrente() && m_intensity != 0
 			&& f > 0.0 && f < stream.sample_rate() / 2.0;
 
 	if (!soando)

@@ -112,6 +112,98 @@
     was write-protected in 1977 is likewise unrecorded; they default to
     writable here, which is what a tape issuing GRTMB evidently assumes.
 
+    THE FRONT PANEL, added 2026-08-16: the drawing that no tape could carry
+
+    Until now the only thing a user could turn on this instrument was S1.  The
+    PGRF waveform -- the very thing FITA#023 plays for most of its length, and
+    the very thing that did not survive -- was a hardcoded square.  Three
+    controls of the real machine are now here, and each one is a decision worth
+    stating rather than a schematic being copied.
+
+    1. THE GRAPHIC PANEL: SIXTEEN SLIDERS OF SIXTEEN POSITIONS.
+
+       Chapter 11 counts the real control exactly: "16 chaves de entrada" per
+       BIT UNIT, and there are four bit units -- that is 4 x 16 = 64 toggle
+       switches, one per bit of one sample, arranged as four bit planes.  What
+       is modelled here is SIXTEEN SLIDERS, one per sample, each with sixteen
+       positions carrying the four bits of that sample.
+
+       That is not the real control and is not claimed to be: it is a usability
+       choice made by the project owner, in full knowledge of the 64 switches.
+       The information content is identical -- 16 samples x 4 bits either way --
+       and the reason for the swap is in the name of the thing.  PGRF is the
+       PAINEL GRAFICO, and chapter 3 says what happens at it: "Conjunto de 16
+       chaves deslizantes de 16 posicoes cada uma no qual se desenha MEIO CICLO
+       de uma forma de onda IMPAR".  A row of sixteen cursor positions DRAWS the
+       waveform; a matrix of 64 on/off switches spells it out in binary.  The
+       chapter-3 wording is itself evidence that at least one revision of the
+       instrument had sliding switches, one per sample.
+
+       These sixteen are HALF A CYCLE, exactly as everything else in this file:
+       they feed store 0 and nothing else, and sound_stream_update() extends
+       them oddly as before.  Nothing about that logic changed.
+
+       The MAME idiom is one IPT_ADJUSTER per sample (see fixfreq.cpp and
+       paia/fatman.cpp).  Two consequences that matter here:
+         - the values are saved in cfg/patinho.cfg, so a waveform drawn by hand
+           SURVIVES BETWEEN SESSIONS.  That is precisely the thing the paper
+           tape could not carry;
+         - every adjuster appears in Tab -> Slider Controls with no layout and
+           no plugin, so the panel is usable even with -noplugins.
+
+    2. THE SEVEN "TRANSFERE" SWITCHES.
+
+       Chapter 11: "Um timbre programado manualmente nesta entrada pode ser
+       transferido (manualmente) para uma de 7 memorias (numeradas de 1 a 7)
+       pelos comandos TRANSFERE", and its parts list has "7 chaves de
+       transferencia" per bit unit.  So they copy THE PANEL into memory n --
+       they are the manual twin of GRTMB, which copies the COMPUTER's store
+       (chapter 11's "8.a memoria", filled serially through en1/en0) into the
+       same memories.  Two sources, seven destinations, and the panel is never
+       a destination: it is a physical control and cannot be written.
+
+    3. THE 49-KEY MANUAL, from chapter 6 (schematics) and chapter 3 (function).
+
+       It is REALLY IMPLEMENTED and not a picture, because the signal path it
+       drives is the one this device already models.  Chapter 3 lists the
+       keyboard's outputs as frf (a square wave at 32x the note) and CHV (0 V
+       with no key down, 5 V with one), and chapter 9 labels the note interface
+       decoder output "(Ao teclado -- oitava mais alta)": the computer injects
+       into the SAME octave dividers the keys drive.  The manual-automatico
+       switch chooses WHO supplies note and gate; downstream is identical.  In
+       this device that means the keyboard is a second source for m_pitch and
+       m_gate, and nothing else.
+
+       THE CODE A KEY PRODUCES.  With 49 keys (k = 0..48) and the seven-position
+       octave transposition (p = 0..6, twelve semitones apart),
+
+           n = 12 * p + k,   pitch byte = ((n / 12) << 4) | (n % 12)
+
+       which spans n = 0..120 -- 121 values, and 121 is exactly what chapter 3
+       counts for the manual position ("entre 121 (manualmente) ou 120
+       (automaticamente) valores").  The top of that range is
+       16.3516 x 2^10 = 16 743.9 Hz, which is chapter 3's "16 744,0 Hz"; the
+       automatic position gets 120 because the computer's byte holds octave 0-9
+       and semitone 0-11, the same 120 that inventario_comandos.py measured
+       across the surviving tapes.  This arithmetic is a DERIVATION from two
+       numbers in chapter 3, not a sentence read off the page; it is checked by
+       scripts/sintetizador/teclado_121_valores.py in the PatinhoFeio
+       repository.
+
+       WHAT THE KEYBOARD HONESTLY DOES NOT DO, all three declared here:
+         - L and D, the note-start and note-end pulses, exist to fire the
+           envelopes of chapter 7, and no envelope is modelled.  They are not
+           generated, because generating a signal with nothing on the other end
+           would be decoration;
+         - VBR, the vibrato control voltage, is not modelled either;
+         - the monophonic priority rule is NOT DOCUMENTED ANYWHERE.  Last key
+           wins, and on release the highest key still held takes over.  Declared
+           choice, not a reading.
+
+    WHAT IS DELIBERATELY ABSENT: the general-purpose potentiometers of chapter
+    17 (they have no fixed function, and no analogue block is modelled that they
+    could feed) and any display of the resulting waveform.
+
 ***************************************************************************/
 #ifndef MAME_BUS_EPUSP_SYNTH_H
 #define MAME_BUS_EPUSP_SYNTH_H
@@ -150,6 +242,13 @@ public:
 	// The host's time base, offered for recording onto channel 1.
 	virtual void tick_w(int state) override;
 
+	// Front-panel controls.  All four are reached only from the input port
+	// definitions, but MAME needs them public for the delegates.
+	DECLARE_INPUT_CHANGED_MEMBER(pgrf_alterado);   // one of the sixteen sliders
+	DECLARE_INPUT_CHANGED_MEMBER(transfere);       // TRANSFERE n: panel -> Mn
+	DECLARE_INPUT_CHANGED_MEMBER(tecla);           // one of the 49 keys
+	DECLARE_INPUT_CHANGED_MEMBER(teclado_alterado); // manual/auto, transposition
+
 	// The eight selectable waveform stores: index 0 is PGRF, the graphic
 	// panel, and 1 to 7 are memories M1 to M7.
 	static constexpr unsigned STORES = 8;
@@ -157,6 +256,11 @@ public:
 
 	// S1 positions.  Nine of them: AUTO, then PGRF, then M1 to M7.
 	static constexpr unsigned S1_AUTO = 0;
+
+	// The sixteen samples of the graphic panel, and the "Manual de 49 teclas"
+	// of chapter 3.
+	static constexpr unsigned AMOSTRAS = 16;
+	static constexpr unsigned TECLAS = 49;
 
 	// Channel 0 is the audio, channel 1 the 1 kHz. Chapter 15: the frame sync
 	// is NOT recorded, "devido a dificuldades com a resposta em frequencia do
@@ -187,6 +291,19 @@ private:
 	// on AUTO and the computer's last LETMB names it.
 	unsigned selected_store() const;
 
+	// Copies the sixteen panel sliders into store 0.  The panel is a physical
+	// control, so this is the ONLY way store 0 is ever written.
+	void redesenha_pgrf();
+
+	// Turns the held key plus the transposition switch into a pitch byte.
+	void recalcula_nota_do_teclado();
+
+	// True when the manual-automatico switch of chapter 3 is on MANUAL, in
+	// which case the keys -- and not commands 0 and 11 -- supply note and gate.
+	bool teclado_manda() const;
+	uint8_t nota_corrente() const;
+	bool chaveamento_corrente() const;
+
 	// Sums the tape into the stream, and writes the sum back when recording.
 	void mix_tape(sound_stream &stream);
 	// Finds the next rising edge of the recovered 1 kHz and schedules it.
@@ -199,6 +316,11 @@ private:
 
 	sound_stream *m_stream = nullptr;
 	required_ioport m_s1;
+	// One adjuster per sample of the graphic panel; see the header comment for
+	// why sixteen sliders stand in for the real 64 switches.
+	required_ioport_array<AMOSTRAS> m_pgrf_amostra;
+	required_ioport m_tecl_modo;    // manual / automatico
+	required_ioport m_tecl_transp;  // seven-position octave transposition
 	required_device<cassette_image_device> m_tape;
 
 	emu_timer *m_sync_timer = nullptr;
@@ -223,6 +345,13 @@ private:
 
 	// Set by LETMB, used when S1 is on AUTO.
 	uint8_t m_auto_select = PGRF;
+
+	/* The keyboard's side of m_pitch/m_gate: the manual-automatico switch is
+	   a selector, so neither source erases the other. */
+	uint64_t m_teclas_apertadas = 0;  // bitmap of the 49 keys, bit k = key k
+	int32_t m_tecla_atual = -1;       // the key that owns the voice, -1 = none
+	bool m_tecl_gate = false;         // CHV, from the keys
+	uint8_t m_tecl_pitch = 0;         // the pitch byte those keys produce
 
 	// Phase in [0,1) over the WHOLE period, which is 32 steps: 16 samples
 	// forward, then the same 16 negated.  Fractional, so the period is not
