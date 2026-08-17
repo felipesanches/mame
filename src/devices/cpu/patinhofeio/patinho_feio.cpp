@@ -17,8 +17,15 @@
 #define V 0x01 // V = "Vai um" (Carry)
 #define T 0x02 // T = "Transbordo" (Overflow)
 
-#define READ_BYTE_PATINHO(A) (m_program->read_byte(A))
-#define WRITE_BYTE_PATINHO(A,V) (m_program->write_byte(A,V))
+/* Two ways in to the same core, and the difference between them is the
+   MEMORIA lever.  PATINHO is what the running program uses and the protection
+   applies to it; PANEL is what the operator's own hands do and the protection
+   does not.  Which is which is argued over memory_is_protected() below. */
+#define READ_BYTE_PATINHO(A) (program_read_byte(A))
+#define WRITE_BYTE_PATINHO(A,V) (program_write_byte(A,V))
+
+#define READ_BYTE_PANEL(A) (m_program->read_byte(A))
+#define WRITE_BYTE_PANEL(A,V) (m_program->write_byte(A,V))
 
 #define READ_WORD_PATINHO(A) (READ_BYTE_PATINHO(A+1)*256 + READ_BYTE_PATINHO(A))
 
@@ -68,6 +75,35 @@ void patinho_feio_cpu_device::compute_effective_address(unsigned int addr){
 		if (m_addr & 0x1000)
 			compute_effective_address(m_addr & 0xFFF);
 	}
+}
+
+/* Page 16.12 of the July 1977 assembler manual: "A area protegida comeca na
+   posicao /F80 e vai ate o fim da memoria (/FFF)."  It holds the absolute
+   loader.  Protection blocks reads as well as writes -- page 16.11: "nada
+   pode ser gravado ou lido nesta area, e consequentemente, o programa nela
+   armazenado nao pode ser executado" -- and the load procedure on page 16.12
+   must DESPROTEGER before the fetch at /F80 will run, although the loader
+   itself never writes above /F7F.  Protection binds only the running program
+   (chapter 3: "nada pode ser armazenado por PROGRAMAS NORMAIS EM EXECUCAO"),
+   not the panel, which page 16.11 uses to key the "micro-pre-carregador"
+   back in; ARMAZENAMENTO and EXPOSICAO therefore reach core with the lever
+   in either position.  Returning zero for a refused read is an inference; it
+   yields the documented behaviour, a jump into the protected area fetching
+   /00, which is PLA /000. */
+bool patinho_feio_cpu_device::memory_is_protected(offs_t addr) const {
+	return m_memory_protected && (addr >= 0xF80);
+}
+
+uint8_t patinho_feio_cpu_device::program_read_byte(offs_t addr) {
+	if (memory_is_protected(addr))
+		return 0x00;
+	return m_program->read_byte(addr);
+}
+
+void patinho_feio_cpu_device::program_write_byte(offs_t addr, uint8_t data) {
+	if (memory_is_protected(addr))
+		return;
+	m_program->write_byte(addr, data);
 }
 
 DEFINE_DEVICE_TYPE(PATO_FEIO_CPU, patinho_feio_cpu_device, "pato_feio_cpu", "Patinho Feio CPU")
@@ -129,6 +165,7 @@ void patinho_feio_cpu_device::device_start()
 	save_item(NAME(m_interrupts_enabled));
 	save_item(NAME(m_not_in_interrupt));
 	save_item(NAME(m_panel_interrupt));
+	save_item(NAME(m_memory_protected));
 	save_item(NAME(m_pul_delay));
 	save_item(NAME(m_int_line));
 	save_item(NAME(m_scheduled_IND_bit_reset));
@@ -183,7 +220,7 @@ void patinho_feio_cpu_device::device_reset()
 	m_mode = ADDRESSING_MODE;
 	m_prev_buttons = 0;
 
-	m_update_panel_cb(ACC, m_opcode, READ_BYTE_PATINHO(m_addr), m_addr, PC, FLAGS, RC, m_mode);
+	m_update_panel_cb(ACC, m_opcode, READ_BYTE_PANEL(m_addr), m_addr, PC, FLAGS, RC, m_mode);
 }
 
 /* The I/O bus drives this: the OR of the sixteen PEDIDO flip-flops.  There is
@@ -239,7 +276,10 @@ void patinho_feio_cpu_device::execute_run() {
 		read_panel_keys_register();
 		m_ext = READ_ACC_EXTENSION_REG();
 		m_idx = READ_INDEX_REG();
-		m_update_panel_cb(ACC, READ_BYTE_PATINHO(PC), READ_BYTE_PATINHO(m_addr), m_addr, PC, FLAGS, RC, m_mode);
+		/* The lamps are the operator looking at the panel, so they show what is
+		   really in core even in the protected area: same reason ARMAZENAMENTO
+		   and EXPOSICAO are not blocked (see memory_is_protected()). */
+		m_update_panel_cb(ACC, READ_BYTE_PANEL(PC), READ_BYTE_PANEL(m_addr), m_addr, PC, FLAGS, RC, m_mode);
 
 		/* The panel INTERRUPCAO button is a flip-flop of its own (page A.11),
 		   so it has to be sampled while the processor is running too, not only
@@ -247,6 +287,12 @@ void patinho_feio_cpu_device::execute_run() {
 		if (!m_buttons_read_cb.isunset())
 		{
 			uint16_t const b = m_buttons_read_cb(0);
+
+			/* Sample the MEMORIA lever once per pass, before anything can
+			   touch core.  It is a lever: it holds whatever position the
+			   operator left it in, and 0 is PROTEGIDA (page 16.12 has the
+			   operator unprotecting after switching the machine on). */
+			m_memory_protected = !(b & BUTTON_MEMORIA_LIBERADA);
 
 			/* The panel INTERRUPCAO button is a flip-flop of its own (page
 			   A.11), so it has to be sampled while the processor is running
@@ -290,7 +336,7 @@ void patinho_feio_cpu_device::execute_run() {
 							   SEQUENTIAL advances it by one, so a block can
 							   be keyed in without re-entering the address.
 							   Twelve-bit register, so /FFF wraps to /000. */
-							WRITE_BYTE_PATINHO(PC, RC & 0xFF);
+							WRITE_BYTE_PANEL(PC, RC & 0xFF);
 							if (buttons & BUTTON_TIPO_DE_ENDERECAMENTO)
 								PC = (PC + 1) & 0xFFF;
 							break; //TODO: we also need RE (address register, instead of using PC directly)
