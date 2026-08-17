@@ -11,6 +11,9 @@
 #include "emu.h"
 #include "synth.h"
 
+#include "bus/midi/midi.h"
+#include "bus/midi/midiinport.h"
+
 #include "speaker.h"
 
 #include "epusp_synth.lh"
@@ -21,6 +24,7 @@
 #define LOG_CMD    (1U << 1)   // every command that arrives
 #define LOG_NOTE   (1U << 2)   // only the notes, with the frequency
 #define LOG_TIMBRE (1U << 3)   // timbre loads, and whether S1 can hear them
+#define LOG_MIDI   (1U << 4)   // bytes arriving from the host MIDI controller
 
 #define VERBOSE (0)
 #include "logmacro.h"
@@ -30,11 +34,13 @@ DEFINE_DEVICE_TYPE(EPUSP_SYNTH, epusp_synth_device, "epusp_synth", "EPUSP sound 
 epusp_synth_device::epusp_synth_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: device_t(mconfig, EPUSP_SYNTH, tag, owner, clock)
 	, device_sound_interface(mconfig, *this)
+	, device_serial_interface(mconfig, *this)
 	, device_epusp_synth_port_interface(mconfig, *this)
 	, m_s1(*this, "S1")
 	, m_pgrf_amostra(*this, "AM%u", 0U)
 	, m_tecl_modo(*this, "TECL")
 	, m_tecl_transp(*this, "TRANSP")
+	, m_tecl_porta(*this, "TECL%u", 0U)
 	, m_tape(*this, "tape")
 {
 	std::fill(std::begin(m_timbre), std::end(m_timbre), 0);
@@ -233,9 +239,18 @@ static INPUT_PORTS_START(epusp_synth)
 	PORT_CONFSETTING(6, "7 -- do6 (1046,5 Hz) a do10 (16744,0 Hz)")
 
 	/* "Manual de 49 teclas" (chapter 3), C2 to C6 in the General MIDI naming
-	   MAME uses, which also makes them playable from a real keyboard through
-	   -midiin.  The parameter is the key index k = 0..48; the pitch byte comes
-	   from it and the transposition switch in recalcula_nota_do_teclado(). */
+	   MAME uses.  The parameter is the key index k = 0..48; the pitch byte
+	   comes from it and the transposition switch in
+	   recalcula_nota_do_teclado().
+
+	   PORT_GM_xx ONLY NAMES THE FIELD.  This comment used to claim the naming
+	   was also what made the keys playable through -midiin; it is not.
+	   ioport_configurer::field_set_gm_note() calls field_set_name() and
+	   nothing else, and says so in its own comment ("Only sets the name for
+	   now").  A host controller reaches these contacts through the receiver
+	   built in device_add_mconfig(), which is a separate piece of work.  What
+	   the naming does buy is that the note numbers line up: the first key is
+	   C2 = 36, so midi_byte() maps note n to contact n - 36. */
 #define PORT_TECLA(_mascara, _k, _nota) \
 	PORT_BIT(_mascara, IP_ACTIVE_HIGH, IPT_OTHER) _nota \
 		PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(epusp_synth_device::tecla), _k)
@@ -371,6 +386,48 @@ void epusp_synth_device::device_add_mconfig(machine_config &config)
 	   The panel draws the PGRF waveform, which is the whole point of it: the
 	   sixteen sliders are the half cycle, and their heights are the drawing. */
 	config.set_default_layout(layout_epusp_synth);
+
+	/* AND A WAY FOR A HOST MIDI CONTROLLER TO REACH THE 49 CONTACTS.
+
+	   THIS IS AN INPUT DEVICE OF THE EMULATOR, NOT A SOCKET OF THE
+	   INSTRUMENT.  Nobody says the Patinho Feio had a PC keyboard, and yet
+	   PARTIDA is pressed with one; a USB MIDI controller is the same kind of
+	   thing, and it can do exactly what a finger can do and nothing more.  The
+	   emulated instrument still has 49 key contacts and no MIDI socket: this
+	   is host plumbing that closes and opens those contacts, ending in
+	   aciona_tecla(), the same function the PC keyboard and the mouse end in,
+	   so the octave transposition switch and the manual-automatico switch
+	   apply unchanged.
+
+	   FIXED, NOT PLUGGABLE, AND THE REASON MATTERS.  bus/midi is the only
+	   vocabulary MAME has for a host MIDI source, and its midi_port_device is
+	   a slot.  Writing it the usual way -- MIDI_PORT(config, "kbdmidi",
+	   midiin_slot, "midiin"), which is what esq5505.cpp and the KN5000 driver
+	   both write -- would advertise a MIDI socket in "-listslots patinho" and
+	   invent a "-io6:duplex:port:synth:kbdmidi" option, and that would be a
+	   lie about 1975 hardware.  option_set() marks the slot fixed; every place
+	   that offers slots to the user skips fixed slots (clifront.cpp -listslots,
+	   emuopts.cpp slot options, ui/slotopt.cpp), so nothing is advertised and
+	   no option is created.  The IMAGE option "-midiin" is unaffected, because
+	   images are enumerated separately -- and that is the right name for it:
+	   the choice of an input SOURCE, like -joystickprovider, not a device of
+	   the machine.
+
+	   The residual tension, said out loud rather than hidden: the port object
+	   still exists, so "-listdevices" and the debugger show it.  Hence the tag
+	   "kbdmidi" instead of the customary "mdin", which would read as a panel
+	   socket, and hence the display name.
+
+	   The rxd handler carries BITS, not bytes -- midi_port hands over a serial
+	   line state.  There is no UART anywhere near this instrument, because its
+	   keyboard is a set of contacts and not a serial device, so the byte
+	   assembly is done by this device's own device_serial_interface at MIDI's
+	   31250 bps 8N1.  That deserializer models nothing: it is part of the
+	   input path, like the code that turns a USB HID report into a key press. */
+	midi_port_device &kbdmidi(MIDI_PORT(config, "kbdmidi"));
+	kbdmidi.option_set("midiin", MIDIIN_PORT);
+	kbdmidi.set_display_name("Entrada MIDI do hospedeiro (toca as 49 teclas)");
+	kbdmidi.rxd_handler().set(*this, FUNC(epusp_synth_device::midi_rxd_w));
 }
 
 /* Which store reaches the output right now.  On AUTO the computer's last
@@ -452,14 +509,33 @@ INPUT_CHANGED_MEMBER(epusp_synth_device::transfere)
    modelled either. */
 INPUT_CHANGED_MEMBER(epusp_synth_device::tecla)
 {
-	unsigned const k = param;
+	aciona_tecla(param, newval != 0);
+}
+
+/* THE CONTACT ITSELF, reached by every way of playing the instrument: a key of
+   the PC keyboard, a click on the layout, and a note from a host MIDI
+   controller.  There is deliberately no second path -- if MIDI could do
+   anything a finger cannot, it would stop being input and start being a
+   modification of the machine.
+
+   IDEMPOTENT.  Asking for the state the contact is already in returns without
+   touching the sound stream, which is what lets the MIDI path do two things at
+   once: act immediately (so the note sounds at the right sample) and push the
+   ioport field (so the key lights up on the layout).  The field's own change
+   handler then arrives a frame later saying the same thing, and lands here as
+   a no-op. */
+void epusp_synth_device::aciona_tecla(unsigned k, bool apertada)
+{
 	if (k >= TECLAS)
+		return;
+
+	uint64_t const bit = uint64_t(1) << k;
+	if (bool(m_teclas_apertadas & bit) == apertada)
 		return;
 
 	m_stream->update();
 
-	uint64_t const bit = uint64_t(1) << k;
-	if (newval)
+	if (apertada)
 	{
 		m_teclas_apertadas |= bit;
 		m_tecla_atual = int32_t(k);
@@ -485,7 +561,79 @@ INPUT_CHANGED_MEMBER(epusp_synth_device::tecla)
 
 	recalcula_nota_do_teclado();
 	LOGMASKED(LOG_NOTE, "teclado: tecla %u %s -> /%02X, CHV=%d\n",
-			k, newval ? "apertada" : "solta", m_tecl_pitch, m_tecl_gate ? 1 : 0);
+			k, apertada ? "apertada" : "solta", m_tecl_pitch, m_tecl_gate ? 1 : 0);
+}
+
+/* THE HOST MIDI RECEIVER.
+
+   A byte at a time, assembled by this device's device_serial_interface from
+   the bits midi_port delivers.  What comes out the far end is a call to
+   aciona_tecla(), and a push on the very ioport field a PC key presses.
+
+   WHAT IS ACCEPTED: note-on and note-off, on any channel, for the 49 notes the
+   instrument has contacts for (C2 = 36 to C6 = 84).  Running status is
+   honoured, because controllers use it and a stream that dropped it would lose
+   notes.  Real-time bytes (>= 0xF8) are ignored without disturbing running
+   status, as the standard requires; system-common bytes clear it.
+
+   WHAT IS THROWN AWAY, AND WHY IT IS NOT MODESTY: velocity, channel and
+   after-touch.  Chapter 3 gives this keyboard exactly two outputs, frf and a
+   gate CHV that is 0 V or 5 V, so a contact has nothing to do with any of that
+   information.  A note-on with velocity 1 and one with velocity 127 must sound
+   identical, and they do -- the velocity byte is read for one purpose only,
+   the universal note-on-velocity-0 spelling of a release.  Notes outside the
+   49 are dropped rather than folded into the range: the instrument has no
+   contact there, and inventing one would be inventing a key.
+
+   The seven-position octave transposition switch is what moves this 49-note
+   window up and down, exactly as it does for a finger.  A controller with more
+   keys does not get more instrument. */
+void epusp_synth_device::midi_byte(uint8_t b)
+{
+	LOGMASKED(LOG_MIDI, "midi: %02X\n", b);
+
+	if (BIT(b, 7))
+	{
+		if (b >= 0xF8)
+			return;                                // real time: no effect on running status
+		m_midi_status = (b < 0xF0) ? b : 0;        // system common clears running status
+		m_midi_tem_nota = false;
+		return;
+	}
+
+	uint8_t const cmd = m_midi_status & 0xF0;      // the channel nibble is dropped on purpose
+	if (cmd != 0x90 && cmd != 0x80)
+		return;                                    // only note-on and note-off
+
+	if (!m_midi_tem_nota)
+	{
+		m_midi_nota = b;
+		m_midi_tem_nota = true;
+		return;
+	}
+
+	uint8_t const nota = m_midi_nota;
+	bool const apertada = (cmd == 0x90) && (b != 0);   // b is the velocity, and this is its ONLY use
+	m_midi_tem_nota = false;                           // ready for the next note in running status
+
+	if ((nota < MIDI_NOTA_BASE) || (nota >= MIDI_NOTA_BASE + TECLAS))
+		return;                                    // no contact there
+
+	unsigned const k = nota - MIDI_NOTA_BASE;
+	aciona_tecla(k, apertada);
+
+	/* And push the same field the PC keyboard presses, so the key moves on the
+	   layout too.  set_value() is an override ORed with the physical input
+	   (ioport.cpp: "curstate = m_digital_value || seq_pressed"), so a key held
+	   by hand is not released by a MIDI note-off of the same key. */
+	if (ioport_field *const campo = m_tecl_porta[k / 16]->field(ioport_value(1) << (k % 16)))
+		campo->set_value(apertada ? 1 : 0);
+}
+
+void epusp_synth_device::rcv_complete()
+{
+	receive_register_extract();
+	midi_byte(get_received_char());
 }
 
 /* The manual-automatico switch and the octave transposition.  Both change what
@@ -805,6 +953,23 @@ void epusp_synth_device::device_reset()
 	m_tecla_atual = -1;
 	m_tecl_gate = false;
 	m_tecl_pitch = 0;
+
+	/* The host MIDI input path.  MIDI is 31250 bps 8N1, and the line idles
+	   HIGH -- rx_w(1) here is not decoration: the receiver arms on a 1 -> 0
+	   edge, and its shift register comes up all zeros, so without telling it
+	   the idle level once the FIRST byte of the session would be swallowed
+	   while it hunted for a start bit.  (The KN5000 bridge this follows has
+	   that flaw; it loses its first byte.)
+
+	   Nothing here can produce a byte on its own.  With no MIDI source
+	   selected the port never drives rxd, no edge ever arrives, and this
+	   receiver stays asleep for the whole session. */
+	set_data_frame(1, 8, PARITY_NONE, STOP_BITS_1);
+	set_rate(31250);
+	rx_w(1);
+	m_midi_status = 0;
+	m_midi_nota = 0;
+	m_midi_tem_nota = false;
 
 	m_auto_select = PGRF;
 	m_phase = 0.0;
