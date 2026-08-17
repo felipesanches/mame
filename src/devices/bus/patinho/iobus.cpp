@@ -25,6 +25,7 @@ patinho_io_bus_device::patinho_io_bus_device(const machine_config &mconfig, cons
 	: device_t(mconfig, PATINHO_IO_BUS, tag, owner, clock)
 	, m_int_handler(*this)
 	, m_tx_handler(*this)
+	, m_tick_handler(*this)
 	, m_int_state(false)
 {
 	std::fill(std::begin(m_card), std::end(m_card), nullptr);
@@ -329,5 +330,14 @@ void patinho_io_bus_device::update_int()
 	{
 		m_int_state = pending;
 		m_int_handler(pending ? ASSERT_LINE : CLEAR_LINE);
+	}
+}
+
+void patinho_io_bus_device::ext_sync_w(int state)
+{
+	for (device_patinho_io_card_interface *card : m_card)
+	{
+		if (card)
+			card->ext_sync_w(state);
 	}
 }
