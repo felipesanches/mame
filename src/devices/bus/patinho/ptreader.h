@@ -35,6 +35,8 @@ public:
 protected:
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
+	virtual void device_pre_save() override ATTR_COLD;
+	virtual void device_post_load() override ATTR_COLD;
 
 	// device_patinho_io_card_interface implementation
 	virtual void control_w(int state) override;
@@ -45,8 +47,19 @@ protected:
 private:
 	TIMER_CALLBACK_MEMBER(step);
 
+	/* Not saved: m_step_timer is topology, allocated unconditionally in
+	   device_start(), and its period/expiry/enable are saved by the scheduler
+	   itself (emu_timer::register_save() in src/emu/schedule.cpp), so the reel
+	   resumes at 300 Hz after a load.  m_bus and m_channel are topology too. */
+
 	emu_timer *m_step_timer = nullptr;
 	bool m_skip_feed = false;
+
+	/* The reading head position lives in device_image_interface's host file
+	   position, which MAME's image layer does not register for save states;
+	   without the pre_save/post_load pair a state loaded mid-roll would read
+	   frames from the wrong offset.  Mirrored here so save_item() can see it. */
+	u64 m_read_pos = 0;
 };
 
 DECLARE_DEVICE_TYPE(PATINHO_PTREADER, patinho_ptreader_device)

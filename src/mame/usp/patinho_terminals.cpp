@@ -38,6 +38,12 @@ void patinho_terminal_device::device_add_mconfig(machine_config &config)
 	m_teleprinter->set_keyboard_callback(FUNC(patinho_terminal_device::keyboard_input));
 }
 
+/* No save_item() of its own: the flip-flops are registered for every board by
+   interface_post_start() in iobus.cpp, generic_terminal_device saves the
+   character buffer and cursor position, and m_char_time is configuration.
+   The character reaches the teleprinter before m_print_timer is armed, so the
+   timer only governs when the interface stops being busy, and nothing is lost
+   by saving mid-character. */
 void patinho_terminal_device::device_start()
 {
 	m_print_timer = timer_alloc(FUNC(patinho_terminal_device::print_done), this);

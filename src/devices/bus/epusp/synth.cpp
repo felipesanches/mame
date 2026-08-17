@@ -575,6 +575,34 @@ void epusp_synth_device::device_start()
 	save_item(NAME(m_sync_scan));
 	save_item(NAME(m_sync_written));
 	save_item(NAME(m_sync_level));
+
+	/* device_serial_interface saves the bits of the byte in flight, but not
+	   the bytes this parser has already assembled.  Without these three, a
+	   state loaded in the middle of a message comes back with no running
+	   status and no pending note number: the next note in running status is
+	   dropped, and a velocity byte can be taken for a note number, sounding a
+	   note nobody played. */
+	save_item(NAME(m_midi_status));
+	save_item(NAME(m_midi_nota));
+	save_item(NAME(m_midi_tem_nota));
+
+	/* Not registered here, and why: m_stream and the two timers are pointers
+	   whose owners save themselves (sound_stream in src/emu/disound.cpp; each
+	   timer's period, expiry and enabled flag in emu_timer::register_save()).
+	   Both timers are allocated unconditionally here with named FUNC()s,
+	   which is what makes the saved index mean the same thing on reload, and
+	   mix_tape() re-arms m_sync_timer whenever it finds it disabled with the
+	   tape moving.  m_tape is a finder, and cassette_image_device saves its
+	   own state, position included.
+
+	   The ioport finders are absent because MAME puts no ioport in a save
+	   state: they are live host input, and their settings persist in the cfg
+	   file instead.  So after a load the sound follows the saved
+	   m_store[PGRF] while the sliders still show their current positions, and
+	   the first slider moved calls redesenha_pgrf(), replacing the restored
+	   drawing.  The tape samples are a host file and are not in the state
+	   either, so a rewind or re-record between save and load leaves the sync
+	   timer pointing at an edge that is no longer there. */
 }
 
 /* Where the tape head is, in seconds.  cassette_image_device keeps the
