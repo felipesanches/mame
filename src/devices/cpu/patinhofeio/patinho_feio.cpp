@@ -159,6 +159,39 @@ void patinho_feio_cpu_device::device_start()
 	save_item(NAME(m_mode));
 	save_item(NAME(m_prev_buttons));
 
+	/* WHAT IS NOT REGISTERED ABOVE, so that nobody has to work it out again:
+
+	     the 4096 words of core   the internal RAM is a memory share, and
+	                              memory_manager::allocate_memory() puts every
+	                              allocated block in the save state by itself
+	                              (save_memory() in src/emu/emumem.cpp).  Adding
+	                              a save_pointer() here would register it twice.
+
+	     m_icount                 a time-slice counter.  It only has a meaning
+	                              inside execute_run(), and a save state is
+	                              taken between time slices, never inside one.
+	                              What does survive a slice --  the suspend
+	                              flags, the total cycle count, the local time
+	                              and the state of the input lines -- is
+	                              registered by device_execute_interface
+	                              (src/emu/diexec.cpp).
+
+	     m_address_mask           declared and never used: not one read and not
+	                              one write in this file.  Saving a dead member
+	                              would freeze it into the state file format.
+
+	     m_program                resolved in device_start() from the address
+	                              space; m_program_config is configuration.
+
+	     m_update_panel_cb and    delegates, rebuilt when the machine is put
+	     the seven devcb_*        together.
+
+	   The front panel switches are not here either, and cannot be: MAME does
+	   not save ioports at all (there is no save_item anywhere in
+	   src/emu/ioport.cpp).  They are live input from the host, which is why
+	   m_prev_buttons -- the EDGE DETECTOR over them, which is emulated state --
+	   has to be saved even though the buttons themselves are not. */
+
 	// Register state for debugger
 	state_add( PATINHO_FEIO_CI,         "CI",       m_pc         ).mask(0xFFF);
 	state_add( PATINHO_FEIO_RC,         "RC",       m_rc         ).mask(0xFFF);

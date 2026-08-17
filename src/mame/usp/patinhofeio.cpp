@@ -71,6 +71,7 @@ public:
 	void patinho_feio(machine_config &config) ATTR_COLD;
 
 protected:
+	virtual void machine_start() override ATTR_COLD;
 	virtual void machine_reset() override ATTR_COLD;
 
 	// device_nvram_interface -- the core memory (see the note above the class)
@@ -118,6 +119,63 @@ private:
 	uint8_t m_prev_FLAGS = 0;
 	uint16_t m_prev_RC = 0;
 };
+
+
+/* THE SEVEN SHADOW COPIES OF THE PANEL, AND WHY THEY MUST BE SAVED.
+
+   update_panel() only writes a lamp whose bit changed, and keeps m_prev_* as
+   the record of what each lamp is currently showing.  The whole thing rests on
+   one invariant: after every call, lamp == m_prev_*.
+
+   That makes them look like cache rather than state, and there is a tempting
+   argument for leaving them out of the save -- "the lamps keep showing the live
+   session's values, and m_prev_* will match them".  IT IS WRONG, and the
+   measurement that settles it is in MAME's own source: output values ARE part
+   of a save state.  running_machine::start() calls output().register_save()
+   (src/emu/machine.cpp, right after start_all_devices()), and
+   output_manager::presave()/postload() (src/emu/output.cpp) copy every output
+   item out to the state file and back again.
+
+   So after a load the lamps hold the SAVED values.  Leave m_prev_* out and they
+   hold the LIVE ones, the invariant is broken, and any lamp whose live shadow
+   happens to agree with the incoming value is never rewritten again -- it stays
+   wrong for the rest of the session, silently, with no error anywhere.  Saving
+   them restores both halves of the pair together and the invariant holds
+   exactly as it did at the moment of the save.  No repaint and no post-load
+   hook is needed, which is the point: the pair is consistent by construction.
+
+   m_mode_button is not shadowed -- update_panel() rewrites all six every call
+   -- so it takes care of itself either way. */
+
+void patinho_feio_state::machine_start()
+{
+	save_item(NAME(m_prev_ACC));
+	save_item(NAME(m_prev_opcode));
+	save_item(NAME(m_prev_mem_data));
+	save_item(NAME(m_prev_mem_addr));
+	save_item(NAME(m_prev_PC));
+	save_item(NAME(m_prev_FLAGS));
+	save_item(NAME(m_prev_RC));
+
+	/* NOT REGISTERED HERE:
+
+	     the 4096 words of core   a memory share, saved by the memory manager
+	                              (see the comment in the CPU's device_start()).
+	                              The nvram interface above is a different
+	                              mechanism for a different purpose -- it makes
+	                              core survive between SESSIONS, the way ferrite
+	                              did between power cycles.
+
+	     the eight output_finders  the values behind them are saved by
+	                              output_manager::register_save(); the finders
+	                              themselves are topology.
+
+	     m_conf                   an ioport, and a configuration one at that.
+	                              MAME saves no ioports.
+
+	     m_maincpu, m_iobus,      device finders -- topology.
+	     m_ioslot                                                      */
+}
 
 
 void patinho_feio_state::init_patinho_feio()
@@ -524,5 +582,25 @@ ROM_END
 
 } // anonymous namespace
 
+/* MACHINE_SUPPORTS_SAVE, added 2026-08-16, is a CLAIM and here is what backs it.
+
+   Every device of this machine now registers the state it owns: the processor
+   (19 members plus the core memory, which the memory manager saves by itself),
+   the I/O bus and the five flip-flops chapter 12 gives to every interface board,
+   the tape reader -- including the position of its reading head, which needed a
+   pre_save/post_load pair because MAME's image layer does not save file
+   positions -- the time base generator, the duplex boards, the terminals, and
+   the synthesiser, host MIDI parser included.  The seven panel shadows above
+   were the last thing missing.
+
+   WHAT THE FLAG STILL DOES NOT PROMISE, said out loud rather than left to be
+   discovered: the CONTENTS of a mounted image are host files and travel with no
+   save state.  Rewind, remount or re-record the cassette between saving and
+   loading and the synthesiser's sync timer points at an edge that is no longer
+   where it was; change the paper tape roll and the restored head position means
+   something else.  That is true of every MAME driver with an image device, and
+   it is the reason the head position is saved at all -- so that at least the
+   part that CAN be restored is. */
+
 //    YEAR  NAME     PARENT  COMPAT  MACHINE       INPUT         CLASS               INIT               COMPANY                                           FULLNAME         FLAGS
-COMP( 1972, patinho, 0,      0,      patinho_feio, patinho_feio, patinho_feio_state, init_patinho_feio, "Escola Politecnica - Universidade de Sao Paulo", "Patinho Feio" , MACHINE_NO_SOUND_HW | MACHINE_NOT_WORKING )
+COMP( 1972, patinho, 0,      0,      patinho_feio, patinho_feio, patinho_feio_state, init_patinho_feio, "Escola Politecnica - Universidade de Sao Paulo", "Patinho Feio" , MACHINE_NO_SOUND_HW | MACHINE_NOT_WORKING | MACHINE_SUPPORTS_SAVE )

@@ -35,6 +35,26 @@ void patinho_tbgen_device::device_start()
 	save_item(NAME(m_frame_ticks));
 	save_item(NAME(m_ext_sync));
 	save_item(NAME(m_external));
+	/* THE TICK COUNTER IS A MEASURING INSTRUMENT, so it is saved too.  It
+	   drives one LOGMASKED line today, but it is the counter that revealed the
+	   overdub bug (see the comment in bus/epusp/synth.cpp about it): an
+	   instrument that goes back to zero when a state is loaded lies about the
+	   next measurement it is used for. */
+	save_item(NAME(m_ext_ticks));
+
+	/* NOT SAVED:
+
+	     m_tick_timer  pointer; the timer's own state (period, expiry, whether
+	                   it is armed at all) is saved by the scheduler, so the
+	                   oscillator comes back running -- or, if the state was
+	                   taken in external mode where ext_sync_w() had reset it,
+	                   comes back stopped, which is equally correct.  The tape
+	                   re-arms nothing: in external mode the tape IS the clock.
+
+	   Also note m_frame_ticks above: it is configuration rather than running
+	   state (set_frame_ticks() is never called), and saving it is harmless.  It
+	   is registered because a future sweep could make it settable, and a saved
+	   state taken during such a sweep must carry the value it was taken with. */
 }
 
 void patinho_tbgen_device::device_reset()

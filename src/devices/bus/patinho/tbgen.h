@@ -99,8 +99,8 @@ private:
 	unsigned m_frame_count = 0;  // ticks since the last frame pulse
 	unsigned m_frame_ticks = 100;
 	bool m_external = false;     // FNC /42 chose the tape; FNC /41 the crystal
-	bool m_ext_sync = false;
-	uint32_t m_ext_ticks = 0;   // quantos tiques vieram da fita     // last level seen on the recovered 1 kHz
+	bool m_ext_sync = false;     // last level seen on the recovered 1 kHz
+	uint32_t m_ext_ticks = 0;    // how many ticks have arrived from the tape
 };
 
 DECLARE_DEVICE_TYPE(PATINHO_TBGEN, patinho_tbgen_device)

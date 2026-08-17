@@ -34,6 +34,11 @@ void epusp_synth_port_device::device_config_complete()
 	m_dev = get_card_device();
 }
 
+/* NO save_item HERE, AND THAT IS THE WHOLE STORY OF THIS DEVICE'S STATE: it has
+   none.  m_dev is resolved in device_config_complete() and m_sync_handler is a
+   callback -- both are topology, identical on either side of a save state.  This
+   connector is wire, not register: everything that travels through it is state
+   of the board on one end or the instrument on the other. */
 void epusp_synth_port_device::device_start()
 {
 }

@@ -32,6 +32,34 @@ void patinho_ptreader_device::device_start()
 	m_step_timer = timer_alloc(FUNC(patinho_ptreader_device::step), this);
 
 	save_item(NAME(m_skip_feed));
+	save_item(NAME(m_read_pos));
+
+	// The five flip-flops of chapter 12 (DADO, CONTROLE, ESTADO, PEDIDO,
+	// PERMITE) are registered once for every board by
+	// device_patinho_io_card_interface::interface_pre_start(), so that no card
+	// can forget them.
+}
+
+/* THE READING HEAD, saved by hand because nobody else saves it.
+
+   device_image_interface holds an open host file and does not register its
+   position with the save state machinery.  So the position is fetched here on
+   the way out and pushed back on the way in.  Without this pair the tape is the
+   only part of the machine that would not travel with the state: everything
+   else -- core, registers, the five flip-flops, the step timer -- would come
+   back to the saved instant while the head stayed at the live one. */
+void patinho_ptreader_device::device_pre_save()
+{
+	if (is_loaded())
+		m_read_pos = ftell();
+}
+
+void patinho_ptreader_device::device_post_load()
+{
+	// A state saved with a roll mounted can be loaded with none, or with a
+	// different one; seeking a file that is not there would be fatal.
+	if (is_loaded())
+		fseek(m_read_pos, SEEK_SET);
 }
 
 void patinho_ptreader_device::device_reset()
