@@ -21,11 +21,25 @@ DEFINE_DEVICE_TYPE(PATINHO_DUPLEX, patinho_duplex_device, "patinho_duplex", "Pat
 patinho_duplex_device::patinho_duplex_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: device_t(mconfig, PATINHO_DUPLEX, tag, owner, clock)
 	, device_patinho_io_card_interface(mconfig, *this)
-	, m_tx_handler(*this)
+	, m_port(*this, "port")
 	// 8 bit-times at the 9600 Hz shift clock of page 29's receiving interface.
 	// See the long note in func_w(), case 0x4.
 	, m_tx_time(attotime::from_hz(9600) * 8)
 {
+}
+
+/* Chapter 12 of the July 1977 manual: the two duplex addresses exist "para
+   possibilitar a ligacao entre o Patinho Feio e outros computadores".  Empty
+   by default -- see duplex.h.  The cable to the instrument carries three lines
+   to one connector (chapter 15 of the synthesiser manual, pins 1 to 3 of the
+   "INTF. REC."): this board's (command, data) pair, plus the time base and the
+   tape-recovered sync of the /4 board, which are modelled as backplane lines
+   because where the harness forked is not documented. */
+void patinho_duplex_device::device_add_mconfig(machine_config &config)
+{
+	EPUSP_SYNTH_PORT(config, m_port, epusp_synth_devices, nullptr);
+	m_port->set_display_name("External connector");
+	m_port->sync_handler().set(FUNC(patinho_duplex_device::ext_sync_in));
 }
 
 void patinho_duplex_device::device_start()
@@ -126,8 +140,7 @@ void patinho_duplex_device::data_w(uint8_t cmd, uint8_t data)
 		uint16_t const pair = (uint16_t(reg()) << 8) | second;
 
 		LOGMASKED(LOG_TX, "MANDA DADOS: /%02X /%02X\n", reg(), second);
-		m_tx_handler(pair);   // for anything wired straight to this card
-		bus().tx_w(pair);     // and for the machine-level cable
+		m_port->command_w(pair);   // out of the connector, if anything is on it
 
 		set_status(false);              // busy: "SAL /61" waits on this
 		m_tx_timer->adjust(m_tx_time);
@@ -144,4 +157,20 @@ TIMER_CALLBACK_MEMBER(patinho_duplex_device::tx_done)
 {
 	// The interface is free again, which is what "SAL /61" is waiting to see.
 	set_status(true);
+}
+
+// Down the cable: the tick another board is generating.  Harmless when the
+// connector is empty, which is the usual case.
+void patinho_duplex_device::tick_w(int state)
+{
+	m_port->tick_w(state);
+}
+
+/* Back up the cable: the 1 kHz time base the instrument recovered from a tape,
+   for whichever board asked for an external one -- "AVISA QUE O SINTETIZADOR
+   MANDA" in the executor -- which is not this one.  This card cannot tell
+   which channel wants it, so it puts the line on the backplane. */
+void patinho_duplex_device::ext_sync_in(int state)
+{
+	bus().ext_sync_w(state);
 }

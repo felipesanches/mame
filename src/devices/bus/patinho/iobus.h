@@ -43,30 +43,17 @@ public:
 	// interrupt discovery routine tests "SAL /n4".
 	auto int_handler() { return m_int_handler.bind(); }
 
-	/* The cable that leaves a peripheral for something that is not on the bus.
-	   The synthesiser is the case that exists: it is not on a channel of its
-	   own -- it hangs off the pair of duplex boards, and every transfer is a
-	   (command, data) pair from chapter 5 of its manual.
-
-	   It lives on the bus rather than on the card because the card sits in a
-	   user-configurable slot, and a machine_config cannot bind to a device
-	   that may or may not be plugged in. High byte = the register of the
-	   channel that sent it, low byte = the register of its neighbour. */
-	auto tx_handler() { return m_tx_handler.bind(); }
-	void tx_w(uint16_t pair) { m_tx_handler(pair); }
-
-	/* The external time base line of the backplane.  The tape recorder's
-	   recovered 1 kHz arrives through the synthesiser and is offered to every
-	   card; only the one that asked for an external clock does anything with
-	   it.  Broadcast rather than point-to-point because the bus has no
-	   business knowing which channel holds a time base generator. */
-	void ext_sync_w(int state);
-
-	/* The other direction: a card's own time base, offered to whatever is
-	   recording it.  The time base generator pulses this on every internal
-	   tick so the 1 kHz reaches the tape while voice 1 is being laid down. */
-	auto tick_handler() { return m_tick_handler.bind(); }
-	void tick_w(int state) { m_tick_handler(state); }
+	/* Two time base lines, neither of them belonging to the CPU: the tick a
+	   time base generator card produces, and a tick arriving from outside the
+	   machine.  Both are broadcast to every card; a card with no use for them
+	   ignores them.  In the one documented case the generator sits on channel
+	   /4 while the cable to the synthesiser leaves the duplex boards of /6 and
+	   /7 (chapter 15 of the synthesiser manual: pins 1, 2 and 3 of the "INTF.
+	   REC." carry the tick out, the recovered 1 kHz back and the frame pulse),
+	   but no document describes the computer end.  The broadcast is therefore a
+	   modelling choice; the real fork was probably in the cable. */
+	void tick_w(int state);      // a card's own time base, for whoever records it
+	void ext_sync_w(int state);  // a time base recovered outside the machine
 
 	// ---- CPU side --------------------------------------------------------
 	// In all four entry points the offset is (channel << 4) | command, the
@@ -84,8 +71,7 @@ public:
 
 	// ---- card side -------------------------------------------------------
 	// Used by cards that are one half of a two board peripheral, the way the
-	// second 8 bit duplex interface is chained to the first one by "FNC /7A",
-	// and by the duplex card when it looks for the synthesiser time base.
+	// second 8 bit duplex interface is chained to the first one by "FNC /7A".
 	device_patinho_io_card_interface *card(unsigned channel) const
 	{ return (channel < CHANNELS) ? m_card[channel] : nullptr; }
 
@@ -98,8 +84,6 @@ private:
 	void update_int();
 
 	devcb_write_line m_int_handler;
-	devcb_write16 m_tx_handler;
-	devcb_write_line m_tick_handler;
 	device_patinho_io_card_interface *m_card[CHANNELS];
 	bool m_int_state;
 };
@@ -205,6 +189,11 @@ protected:
 
 	// The backplane's external time base. Ignored by cards that do not use it.
 	virtual void ext_sync_w(int state) { }
+
+	// The time base another board is generating.  A card with a cable to
+	// something that wants to be clocked by the computer -- the synthesiser,
+	// which lays the tick onto its tape as a sync track -- passes it on.
+	virtual void tick_w(int state) { }
 
 	// PREPARACAO.  A card that overrides it must call the base first.
 	virtual void card_reset();
