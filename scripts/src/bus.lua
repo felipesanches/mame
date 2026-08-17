@@ -2223,6 +2223,21 @@ end
 
 ---------------------------------------------------
 --
+--@src/devices/bus/epusp/epusp.h,BUSES["EPUSP"] = true
+---------------------------------------------------
+
+if BUSES["EPUSP"] then
+	files {
+		MAME_DIR .. "src/devices/bus/epusp/epusp.cpp",
+		MAME_DIR .. "src/devices/bus/epusp/epusp.h",
+		MAME_DIR .. "src/devices/bus/epusp/synth.cpp",
+		MAME_DIR .. "src/devices/bus/epusp/synth.h",
+	}
+end
+
+
+---------------------------------------------------
+--
 --@src/devices/bus/fmt_scsi/fmt_scsi.h,BUSES["FMT_SCSI"] = true
 ---------------------------------------------------
 

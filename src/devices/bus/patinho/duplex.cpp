@@ -21,11 +21,32 @@ DEFINE_DEVICE_TYPE(PATINHO_DUPLEX, patinho_duplex_device, "patinho_duplex", "Pat
 patinho_duplex_device::patinho_duplex_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: device_t(mconfig, PATINHO_DUPLEX, tag, owner, clock)
 	, device_patinho_io_card_interface(mconfig, *this)
-	, m_tx_handler(*this)
+	, m_port(*this, "port")
 	// 8 bit-times at the 9600 Hz shift clock of page 29's receiving interface.
 	// See the long note in func_w(), case 0x4.
 	, m_tx_time(attotime::from_hz(9600) * 8)
 {
+}
+
+/* THE EXTERNAL CONNECTOR OF THE BOARD.
+
+   Chapter 12 of the July 1977 manual is the authority for it existing at all:
+   the two duplex addresses are there "para possibilitar a ligacao entre o
+   Patinho Feio e outros computadores".  Empty by default -- see duplex.h.
+
+   The instrument that plugs in gets three wires: the (command, data) pair
+   this board sends, the time base of whichever board is generating one, and a
+   way back for the time base it recovers from a tape.  Only the first of the
+   three is this board's own; the other two are the /4 board's, and they are
+   here because the cable to the instrument carried all of them to the same
+   connector (chapter 15 of the synthesiser manual, pins 1 to 3 of the
+   "INTF. REC.").  Where the harness forked on the computer side is not
+   documented, so it is modelled as two backplane lines: iobus.h says why. */
+void patinho_duplex_device::device_add_mconfig(machine_config &config)
+{
+	EPUSP_SYNTH_PORT(config, m_port, epusp_synth_devices, nullptr);
+	m_port->set_display_name("External connector");
+	m_port->sync_handler().set(FUNC(patinho_duplex_device::ext_sync_in));
 }
 
 void patinho_duplex_device::device_start()
@@ -155,8 +176,7 @@ void patinho_duplex_device::data_w(uint8_t cmd, uint8_t data)
 		uint16_t const pair = (uint16_t(reg()) << 8) | second;
 
 		LOGMASKED(LOG_TX, "MANDA DADOS: /%02X /%02X\n", reg(), second);
-		m_tx_handler(pair);   // for anything wired straight to this card
-		bus().tx_w(pair);     // and for the machine-level cable
+		m_port->command_w(pair);   // out of the connector, if anything is on it
 
 		set_status(false);              // busy: "SAL /61" waits on this
 		m_tx_timer->adjust(m_tx_time);
@@ -173,4 +193,21 @@ TIMER_CALLBACK_MEMBER(patinho_duplex_device::tx_done)
 {
 	// The interface is free again, which is what "SAL /61" is waiting to see.
 	set_status(true);
+}
+
+// Down the cable: the tick another board is generating.  Harmless when the
+// connector is empty, which is the usual case.
+void patinho_duplex_device::tick_w(int state)
+{
+	m_port->tick_w(state);
+}
+
+/* And back up it: the 1 kHz the instrument recovered from a tape, on its way
+   to whichever board asked for an external time base -- "AVISA QUE O
+   SINTETIZADOR MANDA", in the executor's words, and that board is not this
+   one.  This card does not know which channel it is, so it puts the line on
+   the backplane and lets the interested board pick it up. */
+void patinho_duplex_device::ext_sync_in(int state)
+{
+	bus().ext_sync_w(state);
 }

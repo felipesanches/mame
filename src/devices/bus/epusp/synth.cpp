@@ -4,12 +4,14 @@
 
     Sound synthesiser of the EPUSP, by Guido Stolfi -- first stage
 
-    See epusp_synth.h for the command set and where it comes from.
+    See synth.h for the command set and where it comes from.
 
 ***************************************************************************/
 
 #include "emu.h"
-#include "epusp_synth.h"
+#include "synth.h"
+
+#include "speaker.h"
 
 #include <cmath>
 
@@ -25,9 +27,9 @@ DEFINE_DEVICE_TYPE(EPUSP_SYNTH, epusp_synth_device, "epusp_synth", "EPUSP sound 
 epusp_synth_device::epusp_synth_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: device_t(mconfig, EPUSP_SYNTH, tag, owner, clock)
 	, device_sound_interface(mconfig, *this)
+	, device_epusp_synth_port_interface(mconfig, *this)
 	, m_s1(*this, "S1")
-	, m_tape(*this, finder_base::DUMMY_TAG)
-	, m_sync_handler(*this)
+	, m_tape(*this, "tape")
 {
 	std::fill(std::begin(m_timbre), std::end(m_timbre), 0);
 	std::fill(std::begin(m_computer_half), std::end(m_computer_half), 0.0);
@@ -79,6 +81,56 @@ INPUT_PORTS_END
 ioport_constructor epusp_synth_device::device_input_ports() const
 {
 	return INPUT_PORTS_NAME(epusp_synth);
+}
+
+/* THE INSTRUMENT BRINGS ITS OWN LOUDSPEAKER AND ITS OWN TAPE RECORDER.
+
+   Both used to be built by the Patinho Feio driver, which then handed the tag
+   of the recorder back to this device -- so a host machine had to know that
+   this instrument records to tape, and had to spell that plumbing out before
+   it could sound a note.  That is exactly the coupling this port exists to
+   remove: everything that belongs to the instrument is built here, and a host
+   configures a connector and three wires.
+
+   TWO CONSEQUENCES A USER WILL NOTICE, both of them correct and neither of
+   them obvious:
+
+     - with the port empty there is no speaker in the machine at all, so a
+       recorded WAV has fewer channels than it used to.  A machine with no
+       instrument attached genuinely has nothing to listen to.
+
+     - the tape recorder's media option ("-cassette") only exists when the
+       port is filled, because the image device only exists then.  Asking for
+       a cassette without attaching the instrument -- that is, "-cassette
+       tape.wav" with no "-io6:duplex:port synth" -- fails with 'unknown
+       option', which is a loud failure and the right one: there is nothing to
+       put the tape into.
+
+       (This paragraph said "-synthport \"\"" until 2026-08-16.  That option
+       belonged to the machine-level connector this driver used to have, and
+       which never existed in the real computer; the instrument now hangs off
+       the duplex board it was actually cabled to.  See epusp.h.)
+
+   THE RECORDER'S TWO CHANNELS: 0 is the audio, 1 is the 1 kHz sync tone.
+   Chapter 15 of the synthesiser manual is explicit that the frame sync is NOT
+   recorded, "devido a dificuldades com a resposta em frequencia do gravador",
+   so channel 1 carries ticks and nothing else. */
+void epusp_synth_device::device_add_mconfig(machine_config &config)
+{
+	SPEAKER(config, "speaker").front_center();
+	add_route(ALL_OUTPUTS, "speaker", 1.0);
+
+	static cassette_image::Options const tape_opts
+	{
+		2,        // channels: audio and sync
+		16,       // bits per sample
+		44100     // sample frequency
+	};
+	CASSETTE(config, m_tape);
+	m_tape->set_formats(cassette_default_formats);
+	m_tape->set_create_opts(&tape_opts);
+	m_tape->set_default_state(CASSETTE_STOPPED);
+	m_tape->set_interface("patinho_tape");
 }
 
 /* Which store reaches the output right now.  On AUTO the computer's last
@@ -199,7 +251,7 @@ bool epusp_synth_device::tape_moving() const
    sync track is.  Pointing it at channel 1 does two jobs at once: it writes the
    tone for us, and it stops its own update() from painting channel 0 -- which
    it would otherwise fill with silence and wipe the audio we are recording. */
-void epusp_synth_device::tape_tick_w(int state)
+void epusp_synth_device::tick_w(int state)
 {
 	if (!m_tape || !m_tape->exists())
 		return;
@@ -278,8 +330,8 @@ void epusp_synth_device::schedule_next_sync()
 
 TIMER_CALLBACK_MEMBER(epusp_synth_device::sync_edge)
 {
-	m_sync_handler(1);
-	m_sync_handler(0);
+	output_sync(1);
+	output_sync(0);
 
 	/* THE SYNC TRACK PASSES THROUGH on an overdub, and it has to.
 
@@ -289,7 +341,7 @@ TIMER_CALLBACK_MEMBER(epusp_synth_device::sync_edge)
 	   the tape would come back with the audio of both voices and no way to
 	   record a third.  Re-recording each recovered edge keeps the track alive,
 	   which is what a real sync system does with it anyway. */
-	tape_tick_w(1);
+	tick_w(1);
 	m_sync_scan += 0.0002;   // sai da borda que acabou de disparar
 	schedule_next_sync();
 }

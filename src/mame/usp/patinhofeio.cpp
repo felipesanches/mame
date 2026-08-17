@@ -6,11 +6,6 @@
 
 #include "emu.h"
 
-#include "epusp_synth.h"
-
-#include "imagedev/cassette.h"
-#include "sound/spkrdev.h"
-#include "speaker.h"
 #include "patinho_terminals.h"
 
 #include "bus/patinho/iobus.h"
@@ -31,8 +26,6 @@ public:
 		: driver_device(mconfig, type, tag)
 		, m_maincpu(*this, "maincpu")
 		, m_iobus(*this, "iobus")
-		, m_synth(*this, "synth")
-		, m_tape(*this, "tape")
 		, m_ioslot(*this, "io%x", 1U)
 		, m_mode_button(*this, "MODE_BUTTON%u", 0U)
 		, m_output_acc(*this, "acc%u", 0U)
@@ -64,8 +57,6 @@ protected:
 
 	required_device<patinho_feio_cpu_device> m_maincpu;
 	required_device<patinho_io_bus_device> m_iobus;
-	required_device<epusp_synth_device> m_synth;
-	required_device<cassette_image_device> m_tape;
 	optional_device_array<patinho_io_slot_device, 15> m_ioslot; // channels /1 to /F
 
 private:
@@ -258,6 +249,7 @@ INPUT_PORTS_END
 static void patinho_io_devices(device_slot_interface &device)
 {
 	device.option_add("decwriter", PATINHO_DECWRITER); // DECwriter, historically /A
+	                                                   // (not a default: see below)
 	device.option_add("tty",       PATINHO_TTY);       // Teletype ASR33, historically /B
 	device.option_add("ptreader",  PATINHO_PTREADER);  // HP-2737-A, historically /E
 	device.option_add("tbgen",     PATINHO_TBGEN);     // synthesiser time base, /4
@@ -294,58 +286,61 @@ void patinho_feio_state::patinho_feio(machine_config &config)
 	m_maincpu->preparacao().set(FUNC(patinho_feio_state::preparacao_w));
 
 	/* The equipment the machine came with, in the channels chapter 12 gives
-	   them. Any of these can be moved, removed or replaced from the MAME UI
-	   or from the command line: "-ioa tty", "-ioe \"\"", and so on. */
+	   them -- with ONE deliberate omission, /A.  Any of these can be moved,
+	   removed or replaced from the MAME UI or from the command line:
+	   "-ioa decwriter", "-ioe \"\"", and so on.
+
+	   /A COMES UP EMPTY, AND THAT IS NOT WHAT THE MACHINE LOOKED LIKE.
+
+	   Chapter 12 lists BOTH printing terminals: a DECwriter on /A and a
+	   Teletype ASR33 on /B.  The real Patinho Feio had the two of them.  What
+	   follows is a convenience of operation, not a claim about history:
+	   driving the machine with two printing terminals at once is redundant for
+	   anyone who is not reproducing the 1977 installation, and every surviving
+	   program prints on /B.  Guido Stolfi's synthesiser executor is the case we
+	   can check byte by byte -- it addresses channels /1 /3 /4 /5 /6 /7 /9 /B
+	   /D /E /F and never /A, and its ".ERRO" diagnostic goes out of "SAI /B0"
+	   at /0D9, on the Teletype.  Removing the DECwriter changes nothing it
+	   prints; that was measured, not assumed, with
+	   PatinhoFeio/scripts/executor/saida_do_teleimpressor.lua.
+
+	   So whoever wants the machine as it was asks for it, in one word:
+
+	       ./mame patinho -ioa decwriter
+
+	   and the card is still in the slot's option list for the UI to offer. */
 	static char const *const dflt[16] =
 	{
 		nullptr, nullptr, nullptr, nullptr,       // /0 /1 /2 /3
 		"tbgen", nullptr, "duplex", "duplex",     // /4 /5 /6 /7
-		nullptr, nullptr, "decwriter", "tty",     // /8 /9 /A /B
+		nullptr, nullptr, nullptr, "tty",         // /8 /9 /A(*) /B
 		nullptr, nullptr, "ptreader", nullptr     // /C /D /E /F
-	};
+	};                                            // (*) chapter 12: DECwriter
 
 	for (unsigned ch = 1; ch < patinho_io_bus_device::CHANNELS; ch++)
 		PATINHO_IO_SLOT(config, m_ioslot[ch - 1], ch, m_iobus, patinho_io_devices, dflt[ch]);
 
-	/* The synthesiser hangs off the coupled duplex boards: chapter 5 of its
-	   manual is a list of (command, data) pairs, and those are exactly what
-	   "MANDA DADOS" sends. It is wired to whatever sits in channel /6, which
-	   is where the executor addresses the pair. */
-	SPEAKER(config, "mono").front_center();
-	EPUSP_SYNTH(config, m_synth).add_route(ALL_OUTPUTS, "mono", 1.0);
-	m_iobus->tx_handler().set(m_synth, FUNC(epusp_synth_device::command_w));
+	/* AND NOTHING ELSE.  THE SYNTHESISER IS NOT WIRED HERE.
 
-	/* THE TAPE RECORDER, which is how the pieces were actually made.
+	   It never was part of this computer: chapter 12 lists what each channel
+	   held, and /6 and /7 hold general-purpose 8-bit duplex boards -- the same
+	   board type twice, described as being there "para possibilitar a ligacao
+	   entre o Patinho Feio e outros computadores".  Guido Stolfi's executor
+	   couples that pair and sends the instrument a (command, data) pair, which
+	   is the command set of chapter 5 of the synthesiser manual.
 
-	   Two channels, and they do different jobs: 0 is the audio, 1 is a 1 kHz
-	   tone.  Voice 1 is recorded with the computer's own oscillator running
-	   the music, laying the tone down as it goes; voices 2 and up play that
-	   tape back, take their time base from the recovered tone, and mix
-	   themselves into the audio channel.  That is overdubbing, and it is why
-	   the surviving scores come in "1a. VOZ" and "2a. VOZ" tapes.
+	   So the connector belongs to the duplex board, not to the machine, and
+	   the instrument is plugged into it like any other slot device:
 
-	   It hangs off the synthesiser and not off an I/O channel because that is
-	   where it hung: chapter 15 of the synthesiser manual, and the executor's
-	   own name for the mode, "AVISA QUE O SINTETIZADOR MANDA". */
-	static cassette_image::Options const tape_opts
-	{
-		2,        // channels: audio and sync
-		16,       // bits per sample
-		44100     // sample frequency
-	};
-	CASSETTE(config, m_tape);
-	m_tape->set_formats(cassette_default_formats);
-	m_tape->set_create_opts(&tape_opts);
-	m_tape->set_default_state(CASSETTE_STOPPED);
-	m_tape->set_interface("patinho_tape");
-	m_synth->set_tape(m_tape);
+	       ./mame patinho -io6:duplex:port synth
 
-	// The recovered 1 kHz reaches the backplane, where whichever card asked
-	// for an external time base picks it up.
-	m_synth->sync_handler().set(m_iobus, FUNC(patinho_io_bus_device::ext_sync_w));
-
-	// And the way back: the internal time base, offered to the tape.
-	m_iobus->tick_handler().set(m_synth, FUNC(epusp_synth_device::tape_tick_w));
+	   An earlier version of this driver had a "synthport" here, at machine
+	   level.  It isolated the two halves correctly but invented an interface
+	   the real computer did not have; the board's own connector is the one
+	   that existed.  See src/devices/bus/patinho/duplex.h for the executor's
+	   evidence and for what the documents do not decide, and iobus.h for the
+	   two time base lines, which belong to the /4 board and reach the same
+	   instrument. */
 
 	config.set_default_layout(layout_patinho);
 
