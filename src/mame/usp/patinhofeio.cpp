@@ -6,13 +6,11 @@
 
 #include "emu.h"
 
-#include "teleprinter.h"
+#include "patinho_terminals.h"
 
-#include "bus/generic/slot.h"
-#include "bus/generic/carts.h"
+#include "bus/patinho/iobus.h"
+#include "bus/patinho/ptreader.h"
 #include "cpu/patinhofeio/patinhofeio_cpu.h"
-
-#include "softlist.h"
 
 #include "patinho.lh"
 
@@ -25,8 +23,8 @@ public:
 	patinho_feio_state(const machine_config &mconfig, device_type type, const char *tag)
 		: driver_device(mconfig, type, tag)
 		, m_maincpu(*this, "maincpu")
-		, m_decwriter(*this, "decwriter")
-		, m_tty(*this, "teletype")
+		, m_iobus(*this, "iobus")
+		, m_ioslot(*this, "io%x", 1U)
 		, m_mode_button(*this, "MODE_BUTTON%u", 0U)
 		, m_output_acc(*this, "acc%u", 0U)
 		, m_output_opcode(*this, "opcode%u", 0U)
@@ -47,23 +45,13 @@ protected:
 	void load_tape(const char* name);
 	void load_raw_data(const char* name, unsigned int start_address, unsigned int data_length);
 
-	void decwriter_data_w(offs_t command, uint8_t data);
-	void decwriter_kbd_input(u8 data);
-	TIMER_CALLBACK_MEMBER(decwriter_callback);
 
-	void teletype_data_w(offs_t command, uint8_t data);
-	void teletype_kbd_input(u8 data);
-	TIMER_CALLBACK_MEMBER(teletype_callback);
-
-	TIMER_CALLBACK_MEMBER(papertape_reader_callback);
-
-	DECLARE_DEVICE_IMAGE_LOAD_MEMBER( tape_load );
 
 	void update_panel(uint8_t ACC, uint8_t opcode, uint8_t mem_data, uint16_t mem_addr, uint16_t PC, uint8_t FLAGS, uint16_t RC, uint8_t mode);
 
 	required_device<patinho_feio_cpu_device> m_maincpu;
-	required_device<teleprinter_device> m_decwriter;
-	required_device<teleprinter_device> m_tty;
+	required_device<patinho_io_bus_device> m_iobus;
+	optional_device_array<patinho_io_slot_device, 15> m_ioslot; // channels /1 to /F
 
 private:
 	output_finder<6> m_mode_button;
@@ -75,14 +63,7 @@ private:
 	output_finder<12> m_output_rc;
 	output_finder<2> m_output_flags;
 
-	uint8_t* paper_tape_data = nullptr;
-	uint32_t paper_tape_length = 0;
-	uint32_t paper_tape_address = 0;
-	std::vector<uint8_t> m_paper_tape_image; // backing store when not loaded from a softlist
-	emu_timer *m_papertape_timer = nullptr;
 
-	emu_timer *m_decwriter_timer = nullptr;
-	emu_timer *m_teletype_timer = nullptr;
 	uint8_t m_prev_ACC = 0;
 	uint8_t m_prev_opcode = 0;
 	uint8_t m_prev_mem_data = 0;
@@ -144,74 +125,11 @@ void patinho_feio_state::update_panel(uint8_t ACC, uint8_t opcode, uint8_t mem_d
 	m_prev_FLAGS = FLAGS;
 }
 
-void patinho_feio_state::decwriter_data_w(offs_t command, uint8_t data)
-{
-	if (command != 0)
-	{
-		logerror("DECwriter: unknown SAI command /%X\n", command);
-		return;
-	}
 
-	m_decwriter->write(data);
 
-	if (data == 0x0D){
-		m_decwriter_timer->adjust(attotime::from_hz(1/0.700)); //carriage return takes 700 msecs
-	} else {
-		m_decwriter_timer->adjust(attotime::from_hz(10)); //10 characters per second
-	}
-	m_decwriter_timer->enable(1); //start the timer
-}
 
-/*
-    timer callback to generate decwriter char print completion signal
-*/
-TIMER_CALLBACK_MEMBER(patinho_feio_state::decwriter_callback)
-{
-	m_maincpu->set_iodev_status(0xA, IODEV_READY);
-	m_decwriter_timer->enable(0); //stop the timer
-}
 
-void patinho_feio_state::decwriter_kbd_input(u8 data)
-{
-	m_maincpu->transfer_byte_from_external_device(0xA, ~data);
-}
 
-void patinho_feio_state::teletype_data_w(offs_t command, uint8_t data)
-{
-	if (command != 0)
-	{
-		logerror("Teletype: unknown SAI command /%X\n", command);
-		return;
-	}
-
-	m_tty->write(data);
-
-	/* Busy until the character has been printed -- it was setting READY here,
-	   which let a program's "SAL /B1" wait loop through on its first turn.
-	   The timer is what reports ready, as it already does for the DECwriter. */
-	m_teletype_timer->adjust(attotime::from_hz(10)); //10 characters per second
-	m_teletype_timer->enable(1); //start the timer
-}
-
-/*
-    timer callback to generate teletype char print completion signal
-*/
-TIMER_CALLBACK_MEMBER(patinho_feio_state::teletype_callback)
-{
-	m_maincpu->set_iodev_status(0xB, IODEV_READY);
-	m_teletype_timer->enable(0); //stop the timer
-}
-
-void patinho_feio_state::teletype_kbd_input(u8 data)
-{
-	//I figured out that the data is provided inverted (2's complement)
-	//based on a comment in the source code listing of the HEXAM program.
-	//It is not clear though, if all I/O devices complement the data when
-	//communicating with the computer, or if this behaviour is a particular
-	//characteristic of the teletype.
-
-	m_maincpu->transfer_byte_from_external_device(0xB, ~data);
-}
 
 /* The hardware does not perform this checking.
    This is implemented here only for debugging purposes.
@@ -246,29 +164,6 @@ void patinho_feio_state::load_raw_data(const char* name, unsigned int start_addr
 	memcpy(&RAM[start_address], data, data_length);
 }
 
-DEVICE_IMAGE_LOAD_MEMBER( patinho_feio_state::tape_load )
-{
-	if (image.loaded_through_softlist())
-	{
-		paper_tape_length = image.get_software_region_length("rom");
-		paper_tape_data = image.get_software_region("rom");
-	}
-	else
-	{
-		// A roll handed straight to -ptap, rather than picked from a software
-		// list. The image is copied because the loader's buffer does not
-		// outlive this call.
-		m_paper_tape_image.resize(image.length());
-		if (image.fread(m_paper_tape_image.data(), m_paper_tape_image.size()) != m_paper_tape_image.size())
-			return std::make_pair(image_error::UNSPECIFIED, "Error reading punched tape image");
-
-		paper_tape_data = m_paper_tape_image.data();
-		paper_tape_length = m_paper_tape_image.size();
-	}
-
-	paper_tape_address = 0;
-	return std::make_pair(std::error_condition(), std::string());
-}
 
 /* Optical punched tape reader, channel /E.
 
@@ -284,28 +179,8 @@ DEVICE_IMAGE_LOAD_MEMBER( patinho_feio_state::tape_load )
 
    So the timer only advances the tape while CONTROL is asserted; with the
    reel stopped it costs nothing but a poll. */
-TIMER_CALLBACK_MEMBER(patinho_feio_state::papertape_reader_callback)
-{
-	if (!m_maincpu->iodev_control(0xE))
-		return; // reel stopped: the program has not asked for a frame
-
-	if (!paper_tape_data || paper_tape_address >= paper_tape_length)
-		return; // no tape mounted, or the end of the roll has gone past the head
-
-	m_maincpu->transfer_byte_from_external_device(0xE, paper_tape_data[paper_tape_address++]);
-}
 
 void patinho_feio_state::machine_start(){
-	m_teletype_timer = timer_alloc(FUNC(patinho_feio_state::teletype_callback), this);
-	m_decwriter_timer = timer_alloc(FUNC(patinho_feio_state::decwriter_callback), this);
-
-	// HP-2737-A: 300 frames per second at most (doc 03, chapter 1)
-	m_papertape_timer = timer_alloc(FUNC(patinho_feio_state::papertape_reader_callback), this);
-	m_papertape_timer->adjust(attotime::from_hz(300), 0, attotime::from_hz(300));
-
-	save_item(NAME(paper_tape_address));
-	save_item(NAME(m_paper_tape_image));
-
 	// Copy some programs directly into RAM.
 	// This is a hack for setting up the computer
 	// while we don't support loading programs
@@ -362,6 +237,16 @@ static INPUT_PORTS_START( patinho_feio )
 	PORT_BIT(0x800, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MEMORIA (Liberada/Protegida)") PORT_CODE(KEYCODE_O) PORT_TOGGLE
 INPUT_PORTS_END
 
+/* What could be plugged into a channel. Chapter 12 of the July 1977 manual
+   lists the machine's equipment; the ones without a card yet are noted in the
+   project plan rather than silently missing. */
+static void patinho_io_devices(device_slot_interface &device)
+{
+	device.option_add("decwriter", PATINHO_DECWRITER); // DECwriter, historically /A
+	device.option_add("tty",       PATINHO_TTY);       // Teletype ASR33, historically /B
+	device.option_add("ptreader",  PATINHO_PTREADER);  // HP-2737-A, historically /E
+}
+
 void patinho_feio_state::patinho_feio(machine_config &config)
 {
 	/* basic machine hardware */
@@ -371,40 +256,30 @@ void patinho_feio_state::patinho_feio(machine_config &config)
 	m_maincpu->buttons_read().set_ioport("BUTTONS");
 	m_maincpu->set_update_panel_cb(FUNC(patinho_feio_state::update_panel));
 
-	/* Printer */
-//  m_maincpu->iodev_write<5>().set(FUNC(patinho_feio_state::printer_data_w));
+	/* I/O bus: sixteen channels, /0 to /F (assembler manual, chapter 12).
+	   Channel /0 is the front panel key register, which is wired in and input
+	   only, so the sockets are /1 to /F. Every I/O instruction is handed to
+	   the bus with the channel and the command packed into the offset. */
+	PATINHO_IO_BUS(config, m_iobus);
 
-	/* Papertape Puncher */
-//  m_maincpu->iodev_write<8>().set(FUNC(patinho_feio_state::papertape_punch_data_w));
+	m_maincpu->io_func()  .set(m_iobus, FUNC(patinho_io_bus_device::func_w));
+	m_maincpu->io_data_r().set(m_iobus, FUNC(patinho_io_bus_device::data_r));
+	m_maincpu->io_data_w().set(m_iobus, FUNC(patinho_io_bus_device::data_w));
+	m_maincpu->io_skip()  .set(m_iobus, FUNC(patinho_io_bus_device::skip_r));
 
-	/* Card Reader */
-//  m_maincpu->iodev_read<9>().set(FUNC(patinho_feio_state::cardreader_data_r));
+	/* The equipment the machine came with, in the channels chapter 12 gives
+	   them. Any of these can be moved, removed or replaced from the MAME UI
+	   or from the command line: "-ioa tty", "-ioe \"\"", and so on. */
+	static char const *const dflt[16] =
+	{
+		nullptr, nullptr, nullptr, nullptr,       // /0 /1 /2 /3
+		nullptr, nullptr, nullptr, nullptr,       // /4 /5 /6 /7
+		nullptr, nullptr, "decwriter", "tty",     // /8 /9 /A /B
+		nullptr, nullptr, "ptreader", nullptr     // /C /D /E /F
+	};
 
-	/* DECWRITER
-	   (max. speed: ?) */
-	m_maincpu->iodev_write<10>().set(FUNC(patinho_feio_state::decwriter_data_w));
-
-	/* Teleprinter
-	   TeleType ASR33
-	   (max. speed: 10 characters per second)
-	   with paper tape reading (and optionally punching) capabilities */
-	m_maincpu->iodev_write<11>().set(FUNC(patinho_feio_state::teletype_data_w));
-
-	/* Papertape Reader
-	   Hewlett-Packard HP-2737-A
-	   Optical Papertape Reader (max. speed: 300 characters per second) */
-//  m_maincpu->iodev_read<14>().set(FUNC(patinho_feio_state::papertapereader_data_r));
-
-	/* DECWRITER */
-	TELEPRINTER(config, m_decwriter);
-	m_decwriter->set_keyboard_callback(FUNC(patinho_feio_state::decwriter_kbd_input));
-
-	/* Teletype */
-	TELEPRINTER(config, m_tty, 1);
-	m_tty->set_keyboard_callback(FUNC(patinho_feio_state::teletype_kbd_input));
-
-	/* punched tape */
-	GENERIC_CARTSLOT(config, "cartslot", generic_plain_slot, "patinho_tape", "bin").set_device_load(FUNC(patinho_feio_state::tape_load));
+	for (unsigned ch = 1; ch < patinho_io_bus_device::CHANNELS; ch++)
+		PATINHO_IO_SLOT(config, m_ioslot[ch - 1], ch, m_iobus, patinho_io_devices, dflt[ch]);
 
 	config.set_default_layout(layout_patinho);
 

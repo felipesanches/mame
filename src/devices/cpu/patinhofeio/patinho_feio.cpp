@@ -42,6 +42,14 @@
    executes its operand as an opcode. */
 #define SKIP_NEXT_INSTRUCTION  { INCREMENT_PC_4K; INCREMENT_PC_4K; }
 
+/* Chapter 13 describes the I/O skips as "salta duas palavras se ...". That is
+   a different rule from the group-2 one above, even though on this machine
+   the two happen to move the counter by the same amount: one skips a fixed
+   number of words, the other skips whatever the next instruction is. Keeping
+   them apart means a future long instruction cannot silently break one of
+   them. */
+#define SKIP_TWO_WORDS  { INCREMENT_PC_4K; INCREMENT_PC_4K; }
+
 /* Both flags are defined in chapter 2 of the July 1977 assembler manual.
 
    V ("vai-um", carry): "o vai-um na ultima soma realizada (bit mais
@@ -92,8 +100,10 @@ patinho_feio_cpu_device::patinho_feio_cpu_device(const machine_config &mconfig, 
 	, m_icount(0)
 	, m_rc_read_cb(*this, 0)
 	, m_buttons_read_cb(*this, 0)
-	, m_iodev_read_cb(*this, 0)
-	, m_iodev_write_cb(*this)
+	, m_io_func_cb(*this)
+	, m_io_data_r_cb(*this, 0)
+	, m_io_data_w_cb(*this)
+	, m_io_skip_cb(*this, 0)
 {
 }
 
@@ -108,12 +118,6 @@ uint16_t patinho_feio_cpu_device::read_panel_keys_register(){
 	m_rc = m_rc_read_cb(0);
 
 	return m_rc;
-}
-
-void patinho_feio_cpu_device::transfer_byte_from_external_device(uint8_t channel, uint8_t data){
-	m_iodev_incoming_byte[channel] = data;
-	m_iodev_status[channel] = IODEV_READY;
-	m_iodev_control[channel] = NO_REQUEST;
 }
 
 void patinho_feio_cpu_device::device_start()
@@ -148,9 +152,6 @@ void patinho_feio_cpu_device::device_start()
 	save_item(NAME(m_scheduled_IND_bit_reset));
 	save_item(NAME(m_indirect_addressing));
 	save_item(NAME(m_mode));
-	save_item(NAME(m_iodev_control));
-	save_item(NAME(m_iodev_status));
-	save_item(NAME(m_iodev_incoming_byte));
 
 	// Register state for debugger
 	state_add( PATINHO_FEIO_CI,         "CI",       m_pc         ).mask(0xFFF);
@@ -185,12 +186,6 @@ void patinho_feio_cpu_device::device_reset()
 	m_opcode = 0;
 	m_mode = ADDRESSING_MODE;
 
-	/* Every peripheral comes up with its reel stopped, nothing to hand over
-	   and no data pending. Leaving these indeterminate meant a program could
-	   read a byte that no device ever sent. */
-	std::fill(std::begin(m_iodev_control), std::end(m_iodev_control), NO_REQUEST);
-	std::fill(std::begin(m_iodev_status), std::end(m_iodev_status), IODEV_BUSY);
-	std::fill(std::begin(m_iodev_incoming_byte), std::end(m_iodev_incoming_byte), 0);
 	m_update_panel_cb(ACC, m_opcode, READ_BYTE_PATINHO(m_addr), m_addr, PC, FLAGS, RC, m_mode);
 }
 
@@ -237,9 +232,8 @@ void patinho_feio_cpu_device::execute_run() {
 /* execute one instruction */
 void patinho_feio_cpu_device::execute_instruction()
 {
-	bool skip;
 	unsigned int tmp;
-	unsigned char value, channel, function;
+	unsigned char value;
 	m_opcode = READ_BYTE_PATINHO(PC);
 	INCREMENT_PC_4K;
 
@@ -649,156 +643,35 @@ void patinho_feio_cpu_device::execute_instruction()
 				PC = m_addr;
 			return;
 		case 0xC0:
-			//Executes I/O functions
-			//TODO: Implement-me!
+		{
+			/* I/O instructions. The second word carries the type in the high
+			   nibble and the command ("comando") in the low one; the channel is
+			   the low nibble of the first word. Both fields are in Fregni
+			   (1972), figure 4.4.
+
+			   Everything below this point used to live in the CPU: the status
+			   and control flip-flops of all sixteen channels, and the seven
+			   standard functions. Chapter 12 of the assembler manual says they
+			   belong to the interface boards, and that is where they are now.
+			   The processor only forwards. */
 			value = READ_BYTE_PATINHO(PC);
 			INCREMENT_PC_4K;
-			channel = m_opcode & 0x0F;
-			function = value & 0x0F;
-			switch(value & 0xF0){
-				case 0x10:
-					switch(function)
-					{
-						case 0:
-							// FNC /n0: Desliga flip-flop PERMITE/IMPEDE para
-							//          o dispositivo n (isto e, impede inter-
-							//          -rupcao do dispositivo n).
-							//
-							//          Turns off the interrupt ENABLE/DISABLE
-							//          flip-flop for channel n.
-							//TODO: Implement-me!
-							break;
-						case 1:
-							// FNC /n1: Desliga flip-flop de ESTADO do dispo-
-							//          -sitivo n ( ESTADO = "busy" ).
-							//
-							//          Turns off STATUS flip-flop for
-							//          channel n ( STATUS = "busy" ).
-							m_iodev_status[channel] = IODEV_BUSY;
-							break;
-						case 2:
-							// FNC /n2: Liga flip-flop de ESTADO do dispo-
-							//          -sitivo n ( ESTADO = "ready" ).
-							//
-							//          Turns on STATUS flip-flop for
-							//          channel n ( STATUS = "ready" ).
-							m_iodev_status[channel] = IODEV_READY;
-							break;
-						case 4:
-							// FNC /n4: Desliga flip-flop de PEDIDO de inter-
-							//          rupcao do  dispositivo n.
-							//
-							//          Turns off the interrupt REQUEST
-							//          flip-flop for channel n.
-							//TODO: Implement-me!
-							break;
-						case 5:
-							// FNC /n5: Liga flip-flop PERMITE/IMPEDE para  o
-							//          dispositivo n (isto e, permite inter-
-							//          -rupcao do dispositivo n).
-							//
-							//          Turns on the interrupt ENABLE/DISABLE
-							//          flip-flop for channel n.
-							//TODO: Implement-me!
-							break;
-						case 6:
-							// FNC /n6: Liga flip-flop de CONTROLE e  desliga
-							//          flip-flop de ESTADO (ESTADO = "BUSY")
-							//          do dispositivo n .
-							//
-							//          Turns on the CONTROL flip-flop and
-							//          turns off the STATUS flip-flop for
-							//          channel n ( STATUS = "BUSY").
-							m_iodev_control[channel] = REQUEST;
-							m_iodev_status[channel] = IODEV_BUSY;
-							break;
-						case 7:
-							// FNC /n7: Desliga flip-flop de CONTROLE do dis-
-							//          positivo n.
-							//
-							//          Turns off the CONTROL flip-flop for
-							//          for channel n.
-							m_iodev_control[channel] = NO_REQUEST;
-							break;
-						case 8:
-							// FNC /n8: So funciona na leitora de fita, ca-
-							//          nal /E. Ignora todos os "feed-fra-
-							//          -mes" ("bytes" nulos) da fita, ate' a
-							//          proxima perfuracao (1o "byte" nao
-							//          nulo).
-							//
-							//          Only works with the punched tape reader,
-							//          device on channel /E. Ignores all
-							//          "feed-frames" (null 'bytes') of the tape,
-							//          until the first punch (1st non-zero 'byte').
-							if (channel==0xE){
-								//TODO: Implement-me!
-							} else {
-								logerror("Function 8 of the /FNC instruction can only be used with "
-										"the papertape reader device at channel /E.\n");
-							}
-							break;
-						default:
-							logerror("Invalid function (#%d) specified in /FNC instruction.\n", function);
-					}
-					break;
-				case 0x20:
-					//SAL="Salta"
-					//    Skips a couple bytes if a condition is met
-					skip = false;
-					switch(function)
-					{
-						case 1:
-							skip = (m_iodev_status[channel] == IODEV_READY);
-							break;
-						case 2:
-							/* TODO:
-							skip = false;
-							if (! m_iodev_is_ok_cb[channel].isnull()
-							    && m_iodev_is_ok_cb[channel](0)) */
-								skip = true;
-							break;
-						case 4:
-							/*TODO:
-							skip =false;
-							if (! m_iodev_IRQ_cb[channel].isnull()
-							    && m_iodev_IRQ_cb[channel](0) == true)*/
-								skip = true;
-							break;
-					}
-
-					if (skip){
-						INCREMENT_PC_4K;
-						INCREMENT_PC_4K;
-					}
-					break;
-				case 0x40:
-					/* ENTR = "Input data from I/O device"
-					   Taking the byte out of the device's register ends the
-					   transfer, so CONTROL drops. */
-					ACC = m_iodev_incoming_byte[channel];
-					m_iodev_control[channel] = NO_REQUEST;
-					break;
-				case 0x80:
-					/* SAI = "Output data to I/O device"
-					   Chapter 12 of the July 1977 manual: "em toda saida: o
-					   dado (8 bits) passa do ACC para o registrador de 8 bits
-					   do dispositivo, e dai para o meio exterior". Handing the
-					   byte over starts the transfer, so CONTROL goes on and
-					   STATUS goes busy, exactly as "FNC /n6" would do.
-					   The command nibble travels as the devcb offset: the
-					   synthesizer executor issues SAI /62, /63 and /64 on one
-					   channel and they are three different operations. */
-					if (m_iodev_write_cb[channel].isunset()){
-						logerror("SAI /%X%X: no device on this channel\n", channel, function);
-					} else {
-						m_iodev_control[channel] = REQUEST;
-						m_iodev_status[channel] = IODEV_BUSY;
-						m_iodev_write_cb[channel](function, ACC);
-					}
-					break;
+			offs_t const sel = ((m_opcode & 0x0F) << 4) | (value & 0x0F);
+			switch (value & 0xF0)
+			{
+			case 0x10: m_io_func_cb(sel, 0); break;              // FNC
+			case 0x20:                                           // SAL
+				if (m_io_skip_cb(sel))
+					SKIP_TWO_WORDS;
+				break;
+			case 0x40: ACC = m_io_data_r_cb(sel); break;         // ENTR
+			case 0x80: m_io_data_w_cb(sel, ACC); break;          // SAI
+			default:
+				logerror("%03X: malformed I/O instruction /C%X %02X\n",
+						PC, m_opcode & 0x0F, value);
 			}
 			return;
+		}
 		case 0xE0:
 			//SUS = "Subtrai um ou Salta": Subtract one from the data in the given address
 			//                             or, if the data is zero, then simply skip a couple bytes.
