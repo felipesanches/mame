@@ -4,33 +4,35 @@
 
     8 bit duplex interface -- channels /6 and /7
 
-    Chapter 12 of the July 1977 assembler manual lists two of these:
+    Chapter 12 of the July 1977 assembler manual: "Os 2 enderecos 8-Bit duplex
+    sao para ligacao entre o PF e outros computadores".  General purpose
+    boards, older than the synthesiser; Guido Stolfi's executor pairs them so
+    that one transfer carries a command byte and a data byte at once.
 
-        /6   8-Bit duplex          E/S
-        /7   8-Bit duplex          E/S
+    "FNC /7A" ("MODO ACOPLADO") chains the two: afterwards the data
+    instructions all name channel /6 and a command bit picks the register
+    (executor tape FITA#011.txt):
 
-    and says "Os 2 enderecos 8-Bit duplex sao para ligacao entre o PF e outros
-    computadores".  They predate the synthesiser: they are general purpose
-    boards that Guido Stolfi's executor puts to a use of its own, pairing them
-    so that one transfer carries a command byte and a data byte at once.
+        SAI /62   "SAI NO CANAL 6 ( 8 BITS )"
+        SAI /63   "SAI NO CANAL 7 ( 8 BITS )"   -- names /6, lands in /7
+        SAI /64   "MANDA DADOS."
+        SAL /61   "WAIT - FOR - FLAG."
+        FNC /68   "MODO SERIE PARA CANAL 6"
+        FNC /78   "MODO SERIE PARA CANAL 7"
+        FNC /7A   "MODO ACOPLADO"
 
-    COUPLED MODE.  The two boards are chained by "FNC /7A", which the executor
-    calls "MODO ACOPLADO".  After that, every data instruction is addressed to
-    channel /6 and the second register is reached by a command bit rather than
-    by its own channel number:
+    Crossing to the neighbour's register is what patinho_io_bus_device::card()
+    is for.  The slot on this board is empty by default: /6 and /7 hold the
+    same board type, so a default would also fit an instrument to the slave.
 
-        SAI /62   "SAI NO CANAL 6 ( 8 BITS )"     FITA#011.txt line 150
-        SAI /63   "SAI NO CANAL 7 ( 8 BITS )"     line 156   <-- note the 7
-        SAI /64   "MANDA DADOS."                  line 158
-        SAL /61   "WAIT - FOR - FLAG."            line 160
-        FNC /68   "MODO SERIE PARA CANAL 6"       line 396
-        FNC /78   "MODO SERIE PARA CANAL 7"       line 398
-        FNC /7A   "MODO ACOPLADO"                 line 400
+    Inferred, not documented: the whole 16 bit pair leaves through the
+    connector of the board addressed by "MANDA DADOS" (no pin list survives
+    for this interface); and high byte = this board, low byte = the neighbour,
+    chapter 5 of the synthesiser manual having "uma palavra de comando de 8
+    bits ... e um dado de 8 bits" without saying which travels where.
 
-    "SAI /63" is the surprising one: the instruction names channel /6 and the
-    byte lands in the register of channel /7.  That is the whole point of the
-    coupling, and it is why this card needs to reach its neighbour -- which is
-    what patinho_io_bus_device::card() is for.
+    The time base lines come from the generator of channel /4, not from this
+    board; see patinho_io_bus_device::tick_w().
 
 ***************************************************************************/
 #ifndef MAME_BUS_PATINHO_DUPLEX_H
@@ -39,6 +41,8 @@
 #pragma once
 
 #include "iobus.h"
+
+#include "bus/epusp/epusp.h"
 
 
 // ======================> patinho_duplex_device
@@ -49,12 +53,6 @@ class patinho_duplex_device : public device_t,
 public:
 	patinho_duplex_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 
-	// One transfer, as it leaves the pair of boards: the high byte is the
-	// register of this channel and the low byte the register of the next one.
-	// For the synthesiser those are (command, data) -- chapter 5 of the
-	// synthesiser manual, "Comandos do Computador".
-	auto tx_handler() { return m_tx_handler.bind(); }
-
 	// How long "MANDA DADOS" keeps the interface busy.  NOT a documented
 	// figure: see the comment over data_w() in duplex.cpp.
 	void set_tx_time(attotime t) { m_tx_time = t; }
@@ -62,17 +60,24 @@ public:
 protected:
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
+	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
 
 	// device_patinho_io_card_interface implementation
 	virtual void func_w(uint8_t cmd) override;
 	virtual void data_w(uint8_t cmd, uint8_t data) override;
 	virtual void card_reset() override;
 
+	// The tick of whichever board is generating one, passed down the cable so
+	// that what is plugged in can record it.  It arrives over the backplane
+	// because it starts on another board; see iobus.h.
+	virtual void tick_w(int state) override;
+
 private:
 	TIMER_CALLBACK_MEMBER(tx_done);
 	patinho_duplex_device *partner() const;
+	void ext_sync_in(int state);
 
-	devcb_write16 m_tx_handler;
+	required_device<epusp_synth_port_device> m_port;
 	emu_timer *m_tx_timer = nullptr;
 	attotime m_tx_time;
 

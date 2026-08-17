@@ -113,54 +113,42 @@
     writable here, which is what a tape issuing GRTMB evidently assumes.
 
 ***************************************************************************/
-#ifndef MAME_USP_EPUSP_SYNTH_H
-#define MAME_USP_EPUSP_SYNTH_H
+#ifndef MAME_BUS_EPUSP_SYNTH_H
+#define MAME_BUS_EPUSP_SYNTH_H
 
 #pragma once
+
+#include "epusp.h"
 
 #include "imagedev/cassette.h"
 
 
 // ======================> epusp_synth_device
 
-class epusp_synth_device : public device_t, public device_sound_interface
+class epusp_synth_device : public device_t, public device_sound_interface, public device_epusp_synth_port_interface
 {
 public:
 	epusp_synth_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 
 	// One transfer from the coupled duplex boards: high byte = command
 	// register (channel /6), low byte = data register (channel /7).
-	void command_w(uint16_t pair);
+	virtual void command_w(uint16_t pair) override;
 
 	// Frequency of a pitch code, in Hz.  Public because the regression test
 	// wants to check it without going through the sound stream.
 	static double frequency(uint8_t code);
 
-	/* THE TAPE RECORDER, and why it hangs off the synthesiser.
+	/* The tape recorder hangs off the synthesiser, not off a computer
+	   channel, so it is a subdevice built in device_add_mconfig().  The
+	   pieces were overdubbed, kept in time by a two-channel tape: channel 0
+	   the audio, channel 1 a 1 kHz tone.  Voice 1 has the computer's
+	   oscillator run the music ("FNC /41", AVISA QUE A INTERFACE MANDA) and
+	   lays the 1 kHz onto channel 1; voice 2 plays the tape back, feeds the
+	   recovered 1 kHz to the time base generator ("FNC /42", AVISA QUE O
+	   SINTETIZADOR MANDA) and mixes into channel 0, slaved to voice 1. */
 
-	   Overdubbing is how the pieces were made: the first voice is recorded to
-	   an audio tape, and the following voices are played and recorded ON TOP
-	   while the tape runs.  Staying in time is the hard part, and the machine
-	   solves it with a two-channel tape:
-
-	       channel 0   the audio
-	       channel 1   a 1 kHz tone
-
-	   On voice 1 the computer's own oscillator runs the music ("FNC /41",
-	   AVISA QUE A INTERFACE MANDA) and the 1 kHz is laid onto channel 1.  On
-	   voice 2 the tape is played back, its 1 kHz recovered and fed to the time
-	   base generator ("FNC /42", AVISA QUE O SINTETIZADOR MANDA), and the new
-	   voice is mixed into channel 0 -- so the second voice is slaved to the
-	   first, however the tape drifted.
-
-	   The recorder connects to the SYNTHESISER, not to a computer channel,
-	   which is why it lives here.  "O sintetizador manda" is the manual's own
-	   name for that path. */
-	auto sync_handler() { return m_sync_handler.bind(); }
-	template <typename T> void set_tape(T &&tag) { m_tape.set_tag(std::forward<T>(tag)); }
-
-	// The time base generator's tick, offered for recording onto channel 1.
-	void tape_tick_w(int state);
+	// The host's time base, offered for recording onto channel 1.
+	virtual void tick_w(int state) override;
 
 	// The eight selectable waveform stores: index 0 is PGRF, the graphic
 	// panel, and 1 to 7 are memories M1 to M7.
@@ -185,6 +173,7 @@ public:
 protected:
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
+	virtual void device_add_mconfig(machine_config &config) override ATTR_COLD;
 	virtual ioport_constructor device_input_ports() const override ATTR_COLD;
 	virtual void sound_stream_update(sound_stream &stream) override;
 
@@ -210,8 +199,7 @@ private:
 
 	sound_stream *m_stream = nullptr;
 	required_ioport m_s1;
-	optional_device<cassette_image_device> m_tape;
-	devcb_write_line m_sync_handler;
+	required_device<cassette_image_device> m_tape;
 
 	emu_timer *m_sync_timer = nullptr;
 	emu_timer *m_sync_off_timer = nullptr;
@@ -244,4 +232,4 @@ private:
 
 DECLARE_DEVICE_TYPE(EPUSP_SYNTH, epusp_synth_device)
 
-#endif // MAME_USP_EPUSP_SYNTH_H
+#endif // MAME_BUS_EPUSP_SYNTH_H
