@@ -878,6 +878,11 @@ public:
 	// ADC
 	template<uint8_t Pin> auto adc_in() { return m_adc_in_cb[Pin].bind(); }
 
+	// SPI, at whole-byte granularity.  spi_out() is called with each byte the
+	// master shifts out; spi_in() supplies the byte shifted back in.
+	auto spi_out() { return m_spi_out_cb.bind(); }
+	auto spi_in() { return m_spi_in_cb.bind(); }
+
 protected:
 	avr8_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock, const device_type type, uint32_t address_mask, address_map_constructor internal_map);
 
@@ -980,6 +985,9 @@ protected:
 	// PORTB bit driven as MOSI.  The ATmega88/168/328/644 put SPI on PB3-PB5;
 	// the ATmega640/1280/2560 family puts it on PB0-PB3, so this is per-variant.
 	uint8_t m_spi_mosi_mask;
+
+	devcb_write8 m_spi_out_cb;
+	devcb_read8 m_spi_in_cb;
 
 	// timers
 	void gtccr_w(uint8_t data);
