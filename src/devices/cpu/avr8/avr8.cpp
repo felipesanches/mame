@@ -2443,6 +2443,10 @@ void avr8_device<NumTimers>::change_spcr(uint8_t data)
 
 	if (low_to_high & SPCR_SPE_MASK)
 	{
+		// SPR defaults to 0 (fosc/4), so a plain "SPCR = SPE | MSTR" changes no
+		// SPR bit and would otherwise leave the prescaler at its reset value of
+		// zero, i.e. a clock that never ticks.
+		spi_update_clock_rate();
 		enable_spi();
 	}
 	else if (high_to_low & SPCR_SPE_MASK)
