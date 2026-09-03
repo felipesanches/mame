@@ -957,6 +957,8 @@ protected:
 	void spsr_w(uint8_t data);
 	void spcr_w(uint8_t data);
 	void spdr_w(uint8_t data);
+	uint8_t spsr_r();
+	uint8_t spdr_r();
 
 	void spi_tick();
 	void enable_spi();
@@ -972,6 +974,8 @@ protected:
 	uint8_t m_spi_prescale;
 	uint8_t m_spi_prescale_count;
 	int8_t m_spi_prescale_countdown;
+	uint8_t m_spi_in;
+	bool m_spsr_read_with_spif;
 
 	// timers
 	void gtccr_w(uint8_t data);
