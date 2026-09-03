@@ -790,6 +790,7 @@ avr8_base_device::avr8_base_device(const machine_config &mconfig, const char *ta
 	, m_int_pending(0)
 	, m_int_inhibit(0)
 	, m_pc_bytes((addr_mask > 0xffff) ? 3 : 2)
+	, m_powered_up(false)
 {
 }
 
@@ -1066,6 +1067,7 @@ void avr8_base_device::device_start()
 	save_item(NAME(m_addr_mask));
 	save_item(NAME(m_int_pending));
 	save_item(NAME(m_int_inhibit));
+	save_item(NAME(m_powered_up));
 	save_item(NAME(m_opcycles));
 
 	// set our instruction counter
@@ -1165,6 +1167,14 @@ void avr8_base_device::device_reset()
 	{
 		m_r[i] = 0;
 	}
+
+	// MCUSR latches why the part was reset.  Firmware reads it to tell a cold
+	// start from a reset button, a brown-out or a watchdog time-out; Repetier,
+	// for one, skips its power-up homing sequence unless PORF alone is set.
+	// The first reset of a session is a power-on reset; later ones are what the
+	// reset button does.
+	m_r[MCUSR] = m_powered_up ? EXTRF : PORF;
+	m_powered_up = true;
 
 	m_int_pending = 0;
 	m_int_inhibit = 0;

@@ -582,6 +582,16 @@ protected:
 		ATMEGA2560_INT_USART3_TX
 	};
 
+	// MCUSR reset source flags
+	enum : uint8_t
+	{
+		PORF    = (1 << 0),
+		EXTRF   = (1 << 1),
+		BORF    = (1 << 2),
+		WDRF    = (1 << 3),
+		JTRF    = (1 << 4)
+	};
+
 	// lock bit masks
 	enum : uint8_t
 	{
@@ -715,6 +725,10 @@ protected:
 	// popped by RET/RETI.  Parts with more than 128 KiB of program memory have a
 	// 17-bit or wider PC and push three bytes; everything else pushes two.
 	uint8_t m_pc_bytes;
+
+	// false until the first reset has happened, so that a cold start can be
+	// told from a later reset when latching MCUSR
+	bool m_powered_up;
 
 	// other internal states
 	int m_icount;
