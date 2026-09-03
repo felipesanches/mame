@@ -788,6 +788,7 @@ avr8_base_device::avr8_base_device(const machine_config &mconfig, const char *ta
 	, m_pc(0)
 	, m_addr_mask((addr_mask << 1) | 1)
 	, m_interrupt_pending(false)
+	, m_pc_bytes((addr_mask > 0xffff) ? 3 : 2)
 {
 }
 
@@ -1264,6 +1265,27 @@ inline uint8_t avr8_base_device::pop()
 	m_r[SPL] = sp & 0x00ff;
 	m_r[SPH] = (sp >> 8) & 0x00ff;
 	return m_data->read_byte(sp);
+}
+
+// Return addresses are pushed low byte first.  Parts with more than 64K words
+// of program memory (only the ATmega2560/2561 among the variants modelled here)
+// have a 17-bit PC and push and pop a third byte.
+inline void avr8_base_device::push_pc(uint32_t word_addr)
+{
+	push(word_addr & 0x00ff);
+	push((word_addr >> 8) & 0x00ff);
+	if (m_pc_bytes > 2)
+		push((word_addr >> 16) & 0x00ff);
+}
+
+inline uint32_t avr8_base_device::pop_pc()
+{
+	uint32_t word_addr = 0;
+	if (m_pc_bytes > 2)
+		word_addr = uint32_t(pop()) << 16;
+	word_addr |= uint32_t(pop()) << 8;
+	word_addr |= pop();
+	return word_addr;
 }
 
 //**************************************************************************

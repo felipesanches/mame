@@ -636,6 +636,11 @@ protected:
 	uint32_t m_addr_mask;
 	bool m_interrupt_pending;
 
+	// number of bytes of return address pushed by CALL/ICALL/EICALL/RCALL and
+	// popped by RET/RETI.  Parts with more than 128 KiB of program memory have a
+	// 17-bit or wider PC and push three bytes; everything else pushes two.
+	uint8_t m_pc_bytes;
+
 	// other internal states
 	int m_icount;
 
@@ -649,6 +654,10 @@ protected:
 
 	// interrupts
 	void set_irq_line(uint16_t vector, int state);
+
+	// program counter stacking
+	inline void push_pc(uint32_t word_addr);
+	inline uint32_t pop_pc();
 
 	// ops
 	void populate_ops();
