@@ -16,7 +16,9 @@
     3d printers known to use this board:
     * TODO: list them all here
 
-    ATmega2560 at 16 MHz.  An ATmega32U2 running the stock LUFA usb-to-serial
+    ATmega2560 at 16 MHz, five A4982 stepper motor drivers whose current limits
+    are set by an AD5206 six-channel digital potentiometer on the SPI bus and
+    six endstop inputs.  An ATmega32U2 running the stock LUFA usb-to-serial
     firmware bridges USART0 to the host transparently, so this driver attaches
     an ordinary RS232 port instead.
 
@@ -30,6 +32,8 @@
 
 #include "cpu/avr8/avr8.h"
 
+#include "machine/a4982.h"
+#include "machine/ad5206.h"
 #include "machine/nvram.h"
 #include "bus/rs232/rs232.h"
 
@@ -42,6 +46,21 @@ namespace {
 * I/O devices                                        *
 \****************************************************/
 
+/*
+    Mechanics of the machine the board is bolted to.  Steps per millimetre
+    follow the firmware's Configuration.h: X and Y are GT2 belts on 16 tooth
+    pulleys (200 full steps x 16 microsteps / 32 mm), Z is a pair of M8 threaded
+    rods at 1.25 mm per turn, and the extruder's 650 steps/mm is the calibration
+    figure the machine shipped with.
+*/
+struct mm2_axis
+{
+	double steps_per_mm;
+	double travel_mm;       // from the MIN endstop to the MAX endstop
+	double overtravel_mm;   // how far past each switch the frame lets it go
+	double direction;       // +1 if a rising translator count moves the axis positive
+};
+
 class rambo_state : public driver_device
 {
 public:
@@ -49,24 +68,79 @@ public:
 		: driver_device(mconfig, type, tag)
 		, m_maincpu(*this, "maincpu")
 		, m_rs232(*this, "rs232")
+		, m_stepper(*this, "stepper%u", 0U)
+		, m_digipot(*this, "digipot")
 		, m_eeprom(*this, "eeprom")
 		, m_nvram(*this, "nvram")
+		, m_axis_out(*this, "axis_%u_um")
+		, m_endstop_out(*this, "endstop_%u")
+		, m_motor_out(*this, "motor_%u_on")
 	{
 	}
 
 	void rambo(machine_config &config);
 
+	// the five A4982 channels, in the order the firmware numbers them
+	enum : int { AXIS_X, AXIS_Y, AXIS_Z, AXIS_E0, AXIS_E1, AXIS_COUNT };
+
+	// the six endstops, in the order M119 reports them
+	enum : int { ES_X_MIN, ES_X_MAX, ES_Y_MIN, ES_Y_MAX, ES_Z_MIN, ES_Z_MAX, ES_COUNT };
+
 private:
 	virtual void machine_start() override ATTR_COLD;
+	virtual void machine_reset() override ATTR_COLD;
 
 	void rambo_prg_map(address_map &map) ATTR_COLD;
 	void rambo_data_map(address_map &map) ATTR_COLD;
 
+	// GPIO
+	uint8_t port_a_r();
+	uint8_t port_b_r();
+	uint8_t port_c_r();
+	void port_a_w(uint8_t data);
+	void port_c_w(uint8_t data);
+	void port_d_w(uint8_t data);
+	void port_g_w(uint8_t data);
+	void port_k_w(uint8_t data);
+	void port_l_w(uint8_t data);
+
+	// mechanics
+	template <int Axis> void step_taken(uint64_t position);
+	void update_endstops();
+	double axis_mm(int axis) const;
+
 	required_device<atmega2560_device> m_maincpu;
 	required_device<rs232_port_device> m_rs232;
+	required_device_array<a4982_device, AXIS_COUNT> m_stepper;
+	required_device<ad5206_device> m_digipot;
 	required_memory_region m_eeprom;
 	required_device<nvram_device> m_nvram;
+
+	output_finder<AXIS_COUNT> m_axis_out;
+	output_finder<ES_COUNT> m_endstop_out;
+	output_finder<AXIS_COUNT> m_motor_out;
+
+	// where the machine actually is, in microsteps from the MIN endstop.  Not
+	// the A4982's own count: the translator keeps stepping with the outputs off
+	// or the carriage against the frame, and so does a real one.
+	int64_t m_position[AXIS_COUNT]{};
+	int64_t m_last_translator[AXIS_COUNT]{};
+	uint8_t m_endstops = 0;
 };
+
+// The extruder motors are wired the other way round from the axis motors
+// (EXT0_INVERSE in Configuration.h): E0_DIR low pushes filament in, hence the
+// negative direction below.
+static constexpr mm2_axis AXES[rambo_state::AXIS_COUNT] = {
+	{  100.0, 200.0, 3.0, +1.0 },   // X, belt
+	{  100.0, 200.0, 3.0, +1.0 },   // Y, belt
+	{ 2560.0, 150.0, 2.0, +1.0 },   // Z, two M8 screws driven from one channel
+	{  650.0,   0.0, 0.0, -1.0 },   // E0, extruder
+	{  650.0,   0.0, 0.0, -1.0 }    // E1, not fitted
+};
+
+// Power-on pose: somewhere plausible mid-machine rather than on a switch.
+static constexpr double POWER_ON_POSE[3] = { 100.0, 100.0, 130.0 };
 
 /****************************************************\
 * Address maps                                       *
@@ -80,6 +154,156 @@ void rambo_state::rambo_prg_map(address_map &map)
 void rambo_state::rambo_data_map(address_map &map)
 {
 	map(0x0200, 0x21FF).ram();  /* ATMEGA2560 Internal SRAM */
+}
+
+/****************************************************\
+* Mechanics                                          *
+\****************************************************/
+
+// One accepted STEP edge.  The translator counts every edge even with the
+// output FETs off, so the tracked position follows it only while the axis can
+// actually turn, and is clamped to the travel the frame allows.
+template <int Axis>
+void rambo_state::step_taken(uint64_t position)
+{
+	const int64_t now = int64_t(position);
+	const int64_t delta = now - m_last_translator[Axis];
+	m_last_translator[Axis] = now;
+
+	if (!m_stepper[Axis]->outputs_enabled())
+		return;
+
+	m_position[Axis] += delta;
+
+	if (AXES[Axis].travel_mm > 0.0)
+	{
+		const int64_t low = int64_t(-AXES[Axis].overtravel_mm * AXES[Axis].steps_per_mm);
+		const int64_t high = int64_t((AXES[Axis].travel_mm + AXES[Axis].overtravel_mm) * AXES[Axis].steps_per_mm);
+		m_position[Axis] = std::clamp(m_position[Axis], low, high);
+	}
+
+	update_endstops();
+}
+
+double rambo_state::axis_mm(int axis) const
+{
+	return AXES[axis].direction * double(m_position[axis]) / AXES[axis].steps_per_mm;
+}
+
+/*
+    Normally-closed microswitches to ground with the AVR's internal pull-up, so
+    an untriggered endstop reads LOW and a pressed one HIGH; Configuration.h
+    leaves every ENDSTOP_*_INVERTING false.
+
+      X_MIN = PB6   Y_MIN = PB5   Z_MIN = PB4
+      X_MAX = PA2   Y_MAX = PA1   Z_MAX = PC7
+*/
+void rambo_state::update_endstops()
+{
+	// half a millimetre of switch travel, about what a KW11-3Z gives
+	static constexpr double TRIP = 0.5;
+
+	uint8_t state = 0;
+	for (int axis = AXIS_X; axis <= AXIS_Z; axis++)
+	{
+		const double mm = axis_mm(axis);
+		if (mm <= TRIP)
+			state |= 1 << (axis * 2);
+		if (mm >= AXES[axis].travel_mm - TRIP)
+			state |= 1 << (axis * 2 + 1);
+	}
+
+	if (state != m_endstops)
+	{
+		m_endstops = state;
+		for (int i = 0; i < ES_COUNT; i++)
+			m_endstop_out[i] = BIT(state, i);
+	}
+
+	for (int axis = 0; axis < AXIS_COUNT; axis++)
+	{
+		m_axis_out[axis] = int32_t(1000.0 * axis_mm(axis));
+		m_motor_out[axis] = m_stepper[axis]->outputs_enabled() ? 1 : 0;
+	}
+}
+
+uint8_t rambo_state::port_a_r()
+{
+	// PA1 = Y_MAX, PA2 = X_MAX
+	return (BIT(m_endstops, ES_Y_MAX) << 1) | (BIT(m_endstops, ES_X_MAX) << 2);
+}
+
+uint8_t rambo_state::port_b_r()
+{
+	// PB4 = Z_MIN, PB5 = Y_MIN, PB6 = X_MIN
+	return (BIT(m_endstops, ES_Z_MIN) << 4) | (BIT(m_endstops, ES_Y_MIN) << 5) | (BIT(m_endstops, ES_X_MIN) << 6);
+}
+
+uint8_t rambo_state::port_c_r()
+{
+	// PC7 = Z_MAX
+	return BIT(m_endstops, ES_Z_MAX) << 7;
+}
+
+/****************************************************\
+* GPIO                                               *
+\****************************************************/
+
+// PA4..PA7 are the four /ENABLE lines, active low
+void rambo_state::port_a_w(uint8_t data)
+{
+	m_stepper[AXIS_E0]->enable_w(BIT(data, 4));
+	m_stepper[AXIS_Z]->enable_w(BIT(data, 5));
+	m_stepper[AXIS_Y]->enable_w(BIT(data, 6));
+	m_stepper[AXIS_X]->enable_w(BIT(data, 7));
+	update_endstops();
+}
+
+// PC0..PC4 are the five STEP lines
+void rambo_state::port_c_w(uint8_t data)
+{
+	m_stepper[AXIS_X]->step_w(BIT(data, 0));
+	m_stepper[AXIS_Y]->step_w(BIT(data, 1));
+	m_stepper[AXIS_Z]->step_w(BIT(data, 2));
+	m_stepper[AXIS_E0]->step_w(BIT(data, 3));
+	m_stepper[AXIS_E1]->step_w(BIT(data, 4));
+}
+
+// PD7 is the digipot chip select
+void rambo_state::port_d_w(uint8_t data)
+{
+	m_digipot->cs_w(BIT(data, 7));
+}
+
+// PG0 = X_MS2, PG1 = X_MS1, PG2 = Y_MS2
+void rambo_state::port_g_w(uint8_t data)
+{
+	m_stepper[AXIS_X]->ms2_w(BIT(data, 0));
+	m_stepper[AXIS_X]->ms1_w(BIT(data, 1));
+	m_stepper[AXIS_Y]->ms2_w(BIT(data, 2));
+}
+
+// PK1 = E1_MS1, PK2 = E1_MS2, PK3 = E0_MS1, PK4 = E0_MS2,
+// PK5 = Z_MS2, PK6 = Z_MS1, PK7 = Y_MS1
+void rambo_state::port_k_w(uint8_t data)
+{
+	m_stepper[AXIS_E1]->ms1_w(BIT(data, 1));
+	m_stepper[AXIS_E1]->ms2_w(BIT(data, 2));
+	m_stepper[AXIS_E0]->ms1_w(BIT(data, 3));
+	m_stepper[AXIS_E0]->ms2_w(BIT(data, 4));
+	m_stepper[AXIS_Z]->ms2_w(BIT(data, 5));
+	m_stepper[AXIS_Z]->ms1_w(BIT(data, 6));
+	m_stepper[AXIS_Y]->ms1_w(BIT(data, 7));
+}
+
+// PL0 = Y_DIR, PL1 = X_DIR, PL2 = Z_DIR, PL6 = E0_DIR, PL7 = E1_DIR
+void rambo_state::port_l_w(uint8_t data)
+{
+	m_stepper[AXIS_Y]->dir_w(BIT(data, 0));
+	m_stepper[AXIS_X]->dir_w(BIT(data, 1));
+	m_stepper[AXIS_Z]->dir_w(BIT(data, 2));
+	m_stepper[AXIS_E0]->dir_w(BIT(data, 6));
+	m_stepper[AXIS_E1]->dir_w(BIT(data, 7));
 }
 
 // 115200 8N1, the firmware's own setting, so a terminal or null_modem needs no
@@ -98,9 +322,35 @@ DEVICE_INPUT_DEFAULTS_END
 
 void rambo_state::machine_start()
 {
+	m_axis_out.resolve();
+	m_endstop_out.resolve();
+	m_motor_out.resolve();
+
 	// the on-die EEPROM is where the firmware keeps its settings, so back the
 	// region with NVRAM
 	m_nvram->set_base(m_eeprom->base(), m_eeprom->bytes());
+
+	save_item(NAME(m_position));
+	save_item(NAME(m_last_translator));
+	save_item(NAME(m_endstops));
+}
+
+void rambo_state::machine_reset()
+{
+	for (int axis = 0; axis < AXIS_COUNT; axis++)
+	{
+		m_position[axis] = (axis < 3) ? int64_t(POWER_ON_POSE[axis] * AXES[axis].steps_per_mm) : 0;
+		m_last_translator[axis] = 0;
+	}
+
+	// The five /ENABLE lines are pulled to VCC through 100 kohm (RAMBo 1.1b R60,
+	// R59, R61, R62 and R63), so until the firmware drives PA3..PA7 the output
+	// FETs are off and every motor is unheld.
+	for (int axis = 0; axis < AXIS_COUNT; axis++)
+		m_stepper[axis]->enable_w(1);
+
+	m_endstops = 0xff;   // force update_endstops() to publish every output
+	update_endstops();
 }
 
 void rambo_state::rambo(machine_config &config)
@@ -123,6 +373,58 @@ void rambo_state::rambo(machine_config &config)
 	m_maincpu->set_high_fuses(0xd9);
 	m_maincpu->set_extended_fuses(0xfd);
 	m_maincpu->set_lock_bits(0x0f);
+
+	m_maincpu->gpio_in<atmega2560_device::GPIOA>().set(FUNC(rambo_state::port_a_r));
+	m_maincpu->gpio_in<atmega2560_device::GPIOB>().set(FUNC(rambo_state::port_b_r));
+	m_maincpu->gpio_in<atmega2560_device::GPIOC>().set(FUNC(rambo_state::port_c_r));
+
+	m_maincpu->gpio_out<atmega2560_device::GPIOA>().set(FUNC(rambo_state::port_a_w));
+	m_maincpu->gpio_out<atmega2560_device::GPIOC>().set(FUNC(rambo_state::port_c_w));
+	m_maincpu->gpio_out<atmega2560_device::GPIOD>().set(FUNC(rambo_state::port_d_w));
+	m_maincpu->gpio_out<atmega2560_device::GPIOG>().set(FUNC(rambo_state::port_g_w));
+	m_maincpu->gpio_out<atmega2560_device::GPIOK>().set(FUNC(rambo_state::port_k_w));
+	m_maincpu->gpio_out<atmega2560_device::GPIOL>().set(FUNC(rambo_state::port_l_w));
+
+	/*
+	    The digipot's six ladders are wired in parallel between a 3.3 kohm
+	    resistor from the 5 V rail and ground, so their A terminals sit at
+	    5 . (10k/6) / (3.3k + 10k/6) = 1.678 V, and a full-scale wiper gives
+	    1.678 / (8 . 0.1) = 2.10 A.  The firmware programs the four axes it uses
+	    from MOTOR_CURRENT in Configuration.h: 100, 100, 135 and 110 counts, or
+	    0.82, 0.82, 1.11 and 0.90 A.
+	*/
+	AD5206(config, m_digipot);
+	m_digipot->set_resistance(10000.0);
+	m_digipot->set_terminal_voltages(1.678, 0.0);
+	m_maincpu->spi_out().set(m_digipot, FUNC(ad5206_device::write));
+
+	for (int axis = 0; axis < AXIS_COUNT; axis++)
+	{
+		A4982(config, m_stepper[axis]);
+		m_stepper[axis]->set_sense_resistor(0.1);
+	}
+	m_stepper[AXIS_X]->step_cb().set(FUNC(rambo_state::step_taken<AXIS_X>));
+	m_stepper[AXIS_Y]->step_cb().set(FUNC(rambo_state::step_taken<AXIS_Y>));
+	m_stepper[AXIS_Z]->step_cb().set(FUNC(rambo_state::step_taken<AXIS_Z>));
+	m_stepper[AXIS_E0]->step_cb().set(FUNC(rambo_state::step_taken<AXIS_E0>));
+	m_stepper[AXIS_E1]->step_cb().set(FUNC(rambo_state::step_taken<AXIS_E1>));
+
+	// RDAC 5 and 6 feed X and Y, RDAC 4 feeds Z, RDAC 1 and 2 the two extruders
+	m_digipot->wiper_cb<4>().set([this] (uint8_t) {
+		m_stepper[AXIS_X]->set_vref(m_digipot->wiper_voltage(4));
+	});
+	m_digipot->wiper_cb<5>().set([this] (uint8_t) {
+		m_stepper[AXIS_Y]->set_vref(m_digipot->wiper_voltage(5));
+	});
+	m_digipot->wiper_cb<3>().set([this] (uint8_t) {
+		m_stepper[AXIS_Z]->set_vref(m_digipot->wiper_voltage(3));
+	});
+	m_digipot->wiper_cb<0>().set([this] (uint8_t) {
+		m_stepper[AXIS_E0]->set_vref(m_digipot->wiper_voltage(0));
+	});
+	m_digipot->wiper_cb<1>().set([this] (uint8_t) {
+		m_stepper[AXIS_E1]->set_vref(m_digipot->wiper_voltage(1));
+	});
 
 	/* The ATMEGA32U2 that bridges USART0 to USB is a transparent wire */
 	RS232_PORT(config, m_rs232, default_rs232_devices, nullptr);
