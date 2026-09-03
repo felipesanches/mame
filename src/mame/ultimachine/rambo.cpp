@@ -32,12 +32,15 @@
 #include "emu.h"
 
 #include "cpu/avr8/avr8.h"
+#include "mm2_stepper_sound.h"
 
 #include "machine/a4982.h"
 #include "machine/ad5206.h"
 #include "machine/nvram.h"
 #include "machine/rescap.h"
 #include "bus/rs232/rs232.h"
+
+#include "speaker.h"
 
 #include "metamaq2.lh"
 
@@ -78,6 +81,7 @@ public:
 		, m_digipot(*this, "digipot")
 		, m_eeprom(*this, "eeprom")
 		, m_nvram(*this, "nvram")
+		, m_motors(*this, "motors")
 		, m_axis_out(*this, "axis_%u_um")
 		, m_endstop_out(*this, "endstop_%u")
 		, m_temp_out(*this, "temp_%u_c")
@@ -121,6 +125,7 @@ private:
 	template <int Axis> void step_taken(uint64_t position);
 	void update_endstops();
 	double axis_mm(int axis) const;
+	TIMER_CALLBACK_MEMBER(view_tick);
 
 	// heaters
 	void pwm_level(int channel, int state);
@@ -134,6 +139,7 @@ private:
 	required_device<ad5206_device> m_digipot;
 	required_memory_region m_eeprom;
 	required_device<nvram_device> m_nvram;
+	required_device<mm2_stepper_sound_device> m_motors;
 
 	output_finder<AXIS_COUNT> m_axis_out;
 	output_finder<ES_COUNT> m_endstop_out;
@@ -158,6 +164,7 @@ private:
 	double m_adc_residue[2]{};   // carried between conversions, so oversampling works
 
 	emu_timer *m_thermal_timer = nullptr;
+	emu_timer *m_view_timer = nullptr;
 };
 
 // The extruder motors are wired the other way round from the axis motors
@@ -201,6 +208,10 @@ void rambo_state::step_taken(uint64_t position)
 	const int64_t now = int64_t(position);
 	const int64_t delta = now - m_last_translator[Axis];
 	m_last_translator[Axis] = now;
+
+	// the sound device is handed the two winding currents as of this microstep
+	// rather than the step rate
+	m_motors->step_edge(Axis, m_stepper[Axis]->coil_current(0), m_stepper[Axis]->coil_current(1));
 
 	if (!m_stepper[Axis]->outputs_enabled())
 		return;
@@ -417,6 +428,17 @@ TIMER_CALLBACK_MEMBER(rambo_state::thermal_tick)
 	}
 }
 
+TIMER_CALLBACK_MEMBER(rambo_state::view_tick)
+{
+	// A motor that is energised but not stepping still carries current and is
+	// audible, and an axis that has not moved emits no step edges at all, so the
+	// standing state is pushed here on the same 500 Hz tick.
+	for (int axis = 0; axis < AXIS_COUNT; axis++)
+		m_motors->set_holding(axis, m_stepper[axis]->outputs_enabled(),
+							  m_stepper[axis]->coil_current(0), m_stepper[axis]->coil_current(1),
+							  m_stepper[axis]->current_limit());
+}
+
 /*
     Each thermistor sits between its input pin and ground with a 4.7 kohm
     pull-up to the 5 V rail (RAMBo 1.1b R31 for the hot end, R38 for the bed):
@@ -510,6 +532,7 @@ void rambo_state::machine_start()
 	m_nvram->set_base(m_eeprom->base(), m_eeprom->bytes());
 
 	m_thermal_timer = timer_alloc(FUNC(rambo_state::thermal_tick), this);
+	m_view_timer = timer_alloc(FUNC(rambo_state::view_tick), this);
 
 	save_item(NAME(m_position));
 	save_item(NAME(m_last_translator));
@@ -548,6 +571,7 @@ void rambo_state::machine_reset()
 	m_temperature[0] = m_temperature[1] = 25.0;
 
 	m_thermal_timer->adjust(attotime::from_msec(100), 0, attotime::from_msec(100));
+	m_view_timer->adjust(attotime::from_msec(2), 0, attotime::from_msec(2));
 }
 
 void rambo_state::rambo(machine_config &config)
@@ -631,6 +655,9 @@ void rambo_state::rambo(machine_config &config)
 	m_maincpu->adc_in<0>().set([this]() { return thermistor_code(0); });
 	m_maincpu->adc_in<2>().set([this]() { return thermistor_code(1); });
 
+	SPEAKER(config, "mono").front_center();
+	MM2_STEPPER_SOUND(config, m_motors).add_route(ALL_OUTPUTS, "mono", 1.0);
+
 	config.set_default_layout(layout_metamaq2);
 
 	/* The ATMEGA32U2 that bridges USART0 to USB is a transparent wire */
@@ -710,4 +737,4 @@ ROM_END
 
 
 //   YEAR  NAME      PARENT  COMPAT  MACHINE  INPUT  CLASS        INIT        COMPANY        FULLNAME                            FLAGS
-COMP(2012, metamaq2, 0,      0,      rambo,   0,     rambo_state, empty_init, "Metamaquina", "Metamaquina 2 desktop 3d printer", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
+COMP(2012, metamaq2, 0,      0,      rambo,   0,     rambo_state, empty_init, "Metamaquina", "Metamaquina 2 desktop 3d printer", MACHINE_NOT_WORKING)
