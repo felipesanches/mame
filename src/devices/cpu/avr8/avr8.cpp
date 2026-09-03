@@ -751,6 +751,8 @@ atmega644_device::atmega644_device(const machine_config &mconfig, const char *ta
 atmega1280_device::atmega1280_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: avr8_device<6>(mconfig, tag, owner, clock, ATMEGA1280, 0xffff, address_map_constructor(FUNC(atmega1280_device::atmega1280_internal_map), this))
 {
+	// SPI is on PB0-PB3 on this family (SS, SCK, MOSI, MISO), not PB2-PB5
+	m_spi_mosi_mask = 1 << 2;
 }
 
 //-------------------------------------------------
@@ -760,6 +762,7 @@ atmega1280_device::atmega1280_device(const machine_config &mconfig, const char *
 atmega2560_device::atmega2560_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: avr8_device<6>(mconfig, tag, owner, clock, ATMEGA2560, 0x1ffff, address_map_constructor(FUNC(atmega2560_device::atmega2560_internal_map), this))
 {
+	m_spi_mosi_mask = 1 << 2;
 }
 
 //-------------------------------------------------
@@ -806,6 +809,7 @@ avr8_device<NumTimers>::avr8_device(const machine_config &mconfig, const char *t
 	, m_spi_prescale_count(0)
 	, m_spi_in(0)
 	, m_spsr_read_with_spif(false)
+	, m_spi_mosi_mask(PORTB_MOSI)
 {
 	// Fill in default callbacks
 	for (int i = 0; i < 8*4; i++)
@@ -1446,12 +1450,12 @@ const avr8_base_device::interrupt_condition avr8_base_device::s_mega2560_int_con
 template <int NumTimers>
 void avr8_device<NumTimers>::spi_tick()
 {
-	const uint8_t out_bit = (m_r[SPDR] & (1 << m_spi_prescale_countdown)) >> m_spi_prescale_countdown;
+	const uint8_t out_bit = BIT(m_r[SPDR], m_spi_prescale_countdown);
 	m_spi_prescale_countdown--;
-	const uint8_t data = (m_r[PORTB] &~ PORTB_MOSI) | (out_bit ? PORTB_MOSI : 0);
-	m_r[PORTB] = data;
-	m_gpio_out_cb[GPIOB](data);
-	m_r[PORTB] = (m_r[PORTB] &~ PORTB_MOSI) | (out_bit ? PORTB_MOSI : 0);
+
+	const uint8_t mosi = m_spi_mosi_mask;
+	m_r[PORTB] = (m_r[PORTB] & ~mosi) | (out_bit ? mosi : 0);
+	m_gpio_out_cb[GPIOB](m_r[PORTB]);
 
 	if (m_spi_prescale_countdown < 0)
 	{

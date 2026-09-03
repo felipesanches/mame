@@ -977,6 +977,10 @@ protected:
 	uint8_t m_spi_in;
 	bool m_spsr_read_with_spif;
 
+	// PORTB bit driven as MOSI.  The ATmega88/168/328/644 put SPI on PB3-PB5;
+	// the ATmega640/1280/2560 family puts it on PB0-PB3, so this is per-variant.
+	uint8_t m_spi_mosi_mask;
+
 	// timers
 	void gtccr_w(uint8_t data);
 
