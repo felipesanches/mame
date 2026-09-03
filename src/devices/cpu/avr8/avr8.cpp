@@ -815,7 +815,7 @@ avr8_device<NumTimers>::avr8_device(const machine_config &mconfig, const char *t
 	// Fill in the mode-specific callbacks
 	for (int i = 0; i < 8; i++)
 	{
-		for (int j = 1; j < 4; j++)
+		for (int j = 0; j < 4; j++)
 		{
 			switch (i)
 			{
