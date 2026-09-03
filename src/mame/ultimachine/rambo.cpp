@@ -39,6 +39,8 @@
 #include "machine/rescap.h"
 #include "bus/rs232/rs232.h"
 
+#include "metamaq2.lh"
+
 #include <cmath>
 
 
@@ -628,6 +630,8 @@ void rambo_state::rambo(machine_config &config)
 	// thermistor-defect check and puts the machine into dry-run mode.
 	m_maincpu->adc_in<0>().set([this]() { return thermistor_code(0); });
 	m_maincpu->adc_in<2>().set([this]() { return thermistor_code(1); });
+
+	config.set_default_layout(layout_metamaq2);
 
 	/* The ATMEGA32U2 that bridges USART0 to USB is a transparent wire */
 	RS232_PORT(config, m_rs232, default_rs232_devices, nullptr);
