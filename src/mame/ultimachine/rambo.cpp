@@ -11,14 +11,27 @@
     http://reprap.org/mediawiki/images/7/75/Rambo1-1-schematic.png
 
     3d printers currently supported by this driver:
-    * Metam??quina 2
+    * Metamáquina 2
 
     3d printers known to use this board:
     * TODO: list them all here
+
+    ATmega2560 at 16 MHz.  An ATmega32U2 running the stock LUFA usb-to-serial
+    firmware bridges USART0 to the host transparently, so this driver attaches
+    an ordinary RS232 port instead.
+
+    G-code over that link at 115200 8N1; the machine has no panel and no SD
+    card.  The firmware allows 200 ms between characters before it asks for the
+    line again (gcode.cpp, gcode_read_serial), so whatever is attached must send
+    a whole line at a time.
 */
 
 #include "emu.h"
+
 #include "cpu/avr8/avr8.h"
+
+#include "machine/nvram.h"
+#include "bus/rs232/rs232.h"
 
 
 namespace {
@@ -33,8 +46,11 @@ class rambo_state : public driver_device
 {
 public:
 	rambo_state(const machine_config &mconfig, device_type type, const char *tag)
-		: driver_device(mconfig, type, tag),
-		m_maincpu(*this, "maincpu")
+		: driver_device(mconfig, type, tag)
+		, m_maincpu(*this, "maincpu")
+		, m_rs232(*this, "rs232")
+		, m_eeprom(*this, "eeprom")
+		, m_nvram(*this, "nvram")
 	{
 	}
 
@@ -42,13 +58,14 @@ public:
 
 private:
 	virtual void machine_start() override ATTR_COLD;
-	virtual void machine_reset() override ATTR_COLD;
 
 	void rambo_prg_map(address_map &map) ATTR_COLD;
 	void rambo_data_map(address_map &map) ATTR_COLD;
 
-	uint8_t m_port_a = 0;
 	required_device<atmega2560_device> m_maincpu;
+	required_device<rs232_port_device> m_rs232;
+	required_memory_region m_eeprom;
+	required_device<nvram_device> m_nvram;
 };
 
 /****************************************************\
@@ -65,18 +82,25 @@ void rambo_state::rambo_data_map(address_map &map)
 	map(0x0200, 0x21FF).ram();  /* ATMEGA2560 Internal SRAM */
 }
 
+// 115200 8N1, the firmware's own setting, so a terminal or null_modem needs no
+// further configuration.
+static DEVICE_INPUT_DEFAULTS_START( host_serial )
+	DEVICE_INPUT_DEFAULTS( "RS232_RXBAUD", 0xff, RS232_BAUD_115200 )
+	DEVICE_INPUT_DEFAULTS( "RS232_TXBAUD", 0xff, RS232_BAUD_115200 )
+	DEVICE_INPUT_DEFAULTS( "RS232_DATABITS", 0xff, RS232_DATABITS_8 )
+	DEVICE_INPUT_DEFAULTS( "RS232_PARITY", 0xff, RS232_PARITY_NONE )
+	DEVICE_INPUT_DEFAULTS( "RS232_STOPBITS", 0xff, RS232_STOPBITS_1 )
+DEVICE_INPUT_DEFAULTS_END
+
 /****************************************************\
 * Machine definition                                 *
 \****************************************************/
 
 void rambo_state::machine_start()
 {
-	save_item(NAME(m_port_a));
-}
-
-void rambo_state::machine_reset()
-{
-	m_port_a = 0;
+	// the on-die EEPROM is where the firmware keeps its settings, so back the
+	// region with NVRAM
+	m_nvram->set_base(m_eeprom->base(), m_eeprom->bytes());
 }
 
 void rambo_state::rambo(machine_config &config)
@@ -85,19 +109,29 @@ void rambo_state::rambo(machine_config &config)
 	m_maincpu->set_addrmap(AS_PROGRAM, &rambo_state::rambo_prg_map);
 	m_maincpu->set_addrmap(AS_DATA, &rambo_state::rambo_data_map);
 	m_maincpu->set_eeprom_tag("eeprom");
-	m_maincpu->set_low_fuses(0xff);
-	m_maincpu->set_high_fuses(0xda);
-	m_maincpu->set_extended_fuses(0xf4);
-	m_maincpu->set_lock_bits(0x0f);
-	m_maincpu->gpio_in<atmega2560_device::GPIOA>().set([this]() { return m_port_a; });
-	m_maincpu->gpio_out<atmega2560_device::GPIOA>().set([this](uint8_t data) { m_port_a = data; });
+	NVRAM(config, m_nvram, nvram_device::DEFAULT_ALL_1);
 
-	/*TODO: Add an ATMEGA32U2 for USB-Serial communications */
-	/*TODO: Emulate the AD5206 digipot */
-	/*TODO: Emulate the A4982 stepper motor drivers and instantiate 5 of these here
-	        for controlling the X, Y, Z, E1 (and optionally E2) motors */
-	/*TODO: Simulate the heating elements */
-	/*TODO: Implement the thermistor measurements */
+	/*
+	    A factory RAMBo is fused low=0xFF high=0xD8 extended=0xFD lock=0x0F
+	    (ultimachine/RAMBo, ArduinoAddons/Arduino_1.x.x/rambo/boards.txt), which
+	    puts an 8 KiB boot section at 0x3E000 and clears BOOTRST.  No dump of the
+	    bootloader programmed into a Metamáquina 2 exists, so BOOTRST is left
+	    unprogrammed here and the application starts directly, as it does on a
+	    board whose bootloader has been erased.
+	*/
+	m_maincpu->set_low_fuses(0xff);
+	m_maincpu->set_high_fuses(0xd9);
+	m_maincpu->set_extended_fuses(0xfd);
+	m_maincpu->set_lock_bits(0x0f);
+
+	/* The ATMEGA32U2 that bridges USART0 to USB is a transparent wire */
+	RS232_PORT(config, m_rs232, default_rs232_devices, nullptr);
+	m_rs232->set_option_device_input_defaults("terminal", DEVICE_INPUT_DEFAULTS_NAME(host_serial));
+	m_rs232->set_option_device_input_defaults("null_modem", DEVICE_INPUT_DEFAULTS_NAME(host_serial));
+	m_rs232->set_option_device_input_defaults("pty", DEVICE_INPUT_DEFAULTS_NAME(host_serial));
+	m_maincpu->txd<0>().set(m_rs232, FUNC(rs232_port_device::write_txd));
+	m_rs232->rxd_handler().set(m_maincpu, FUNC(atmega2560_device::rxd_w<0>));
+
 }
 
 ROM_START( metamaq2 )
@@ -117,7 +151,7 @@ ROM_START( metamaq2 )
 	ROMX_LOAD("repetier-fw-metamaquina2-2013-06-25.bin", 0x0000, 0x10076, CRC(e7e4db38) SHA1(0c307bb0a0ee4e9d38253936e7030d0efb3c1845), ROM_BIOS(2))
 
 	ROM_SYSTEM_BIOS( 3, "20130709", "July 9th, 2013" )
-	/* SOURCE(https://github.com/Metamaquina/Repetier-Firmware/tree/MM2_2013_07_09) */
+	/* the tag this was built from is missing from the firmware repository */
 	ROMX_LOAD("repetier-fw-metamaquina2-2013-07-09.bin", 0x0000, 0x10078, CRC(9a45509f) SHA1(3a2e6516b45cc0ea1aef039335b02208847aaebf), ROM_BIOS(3))
 
 	ROM_SYSTEM_BIOS( 4, "20130712", "July 12th, 2013" )
@@ -152,13 +186,12 @@ ROM_START( metamaq2 )
 	/* SOURCE(https://github.com/Metamaquina/Repetier-Firmware/tree/MM2_2013_10_15) */
 	ROMX_LOAD("repetier-fw-metamaquina2-2013-10-15.bin", 0x0000, 0x102c8, CRC(520134bd) SHA1(dfe2251aad06972f237eb4920ce14ccb32da5af0), ROM_BIOS(11))
 
-	/*Arduino MEGA bootloader */
-	/* This is marked as a BAD_DUMP because we're not sure this is the bootloader we're actually using.
-	   This is inherited from the Replicator 1 driver.
-	   A proper dump would be good.
-	   Also, it is not clear whether there's any difference in the bootloader
-	   between the ATMEGA1280 and the ATMEGA2560 MCUs */
-	ROM_LOAD( "atmegaboot_168_atmega1280.bin", 0x3f000, 0x0f16, BAD_DUMP CRC(c041f8db) SHA1(d995ebf360a264cccacec65f6dc0c2257a3a9224) )
+	/*
+	    The boot section is undumped.  A real RAMBo carries
+	    stk500boot_v2_mega2560, but the only copies available are vendor build
+	    artefacts rather than a dump read off a factory-programmed part, so
+	    nothing is loaded here.
+	*/
 
 	/* on-die 4kbyte eeprom */
 	ROM_REGION( 0x1000, "eeprom", ROMREGION_ERASEFF )
