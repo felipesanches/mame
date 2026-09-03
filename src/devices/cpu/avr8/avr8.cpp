@@ -1169,6 +1169,8 @@ void avr8_base_device::device_reset()
 template <int NumTimers>
 void avr8_device<NumTimers>::device_reset()
 {
+	avr8_base_device::device_reset();
+
 	m_adc_sample = 0;
 	m_adc_result = 0;
 	m_adc_data = 0;
