@@ -641,6 +641,11 @@ protected:
 	// instead of being silently dropped.
 	uint32_t m_int_pending;
 
+	// number of instructions for which interrupts are inhibited.  The AVR
+	// always executes one more instruction after SEI, RETI or a write to SREG
+	// that sets I, before an interrupt can be serviced.
+	uint8_t m_int_inhibit;
+
 	// number of bytes of return address pushed by CALL/ICALL/EICALL/RCALL and
 	// popped by RET/RETI.  Parts with more than 128 KiB of program memory have a
 	// 17-bit or wider PC and push three bytes; everything else pushes two.

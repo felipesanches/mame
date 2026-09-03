@@ -788,6 +788,7 @@ avr8_base_device::avr8_base_device(const machine_config &mconfig, const char *ta
 	, m_pc(0)
 	, m_addr_mask((addr_mask << 1) | 1)
 	, m_int_pending(0)
+	, m_int_inhibit(0)
 	, m_pc_bytes((addr_mask > 0xffff) ? 3 : 2)
 {
 }
@@ -1064,6 +1065,7 @@ void avr8_base_device::device_start()
 	// Misc.
 	save_item(NAME(m_addr_mask));
 	save_item(NAME(m_int_pending));
+	save_item(NAME(m_int_inhibit));
 	save_item(NAME(m_opcycles));
 
 	// set our instruction counter
@@ -1165,6 +1167,7 @@ void avr8_base_device::device_reset()
 	}
 
 	m_int_pending = 0;
+	m_int_inhibit = 0;
 }
 
 template <int NumTimers>
@@ -3450,8 +3453,11 @@ void avr8_device<NumTimers>::execute_run()
 {
 	while (m_icount > 0)
 	{
-		// Interrupts are serviced between instructions.
-		if (m_int_pending && BIT(m_r[SREG], SREG_I))
+		// Interrupts are serviced between instructions.  m_int_inhibit covers the
+		// AVR rule that one more instruction always executes after SEI or RETI.
+		if (m_int_inhibit)
+			m_int_inhibit--;
+		else if (m_int_pending && BIT(m_r[SREG], SREG_I))
 			take_interrupt();
 
 		m_pc &= m_addr_mask;
