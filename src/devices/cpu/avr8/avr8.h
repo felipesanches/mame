@@ -31,7 +31,7 @@ public:
 	void set_lock_bits(uint8_t byte);
 
 	// public interfaces
-	virtual void update_interrupt(int source);
+	void update_interrupt(int source);
 
 	// GPIO
 	enum gpio_t : int
@@ -634,7 +634,12 @@ protected:
 
 	// internal CPU state
 	uint32_t m_addr_mask;
-	bool m_interrupt_pending;
+
+	// pending-interrupt bitmask, one bit per INTIDX_* source.  A source stays
+	// pending until its handler is actually entered, so an interrupt raised
+	// while SREG.I is clear is taken as soon as software re-enables interrupts
+	// instead of being silently dropped.
+	uint32_t m_int_pending;
 
 	// number of bytes of return address pushed by CALL/ICALL/EICALL/RCALL and
 	// popped by RET/RETI.  Parts with more than 128 KiB of program memory have a
@@ -653,7 +658,10 @@ protected:
 	void unimplemented_opcode(uint32_t op);
 
 	// interrupts
-	void set_irq_line(uint16_t vector, int state);
+	virtual const interrupt_condition *int_conditions() const { return s_int_conditions; }
+	virtual unsigned int_vector_scale() const { return 1; }
+	void set_int_pending(int source, bool state);
+	void take_interrupt();
 
 	// program counter stacking
 	inline void push_pc(uint32_t word_addr);
@@ -1121,8 +1129,11 @@ public:
 	// construction/destruction
 	atmega168_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
-	virtual void update_interrupt(int source) override;
 	void atmega168_internal_map(address_map &map) ATTR_COLD;
+
+protected:
+	virtual const interrupt_condition *int_conditions() const override { return s_int_conditions; }
+	virtual unsigned int_vector_scale() const override { return 2; }
 };
 
 // ======================> atmega328_device
@@ -1133,8 +1144,11 @@ public:
 	// construction/destruction
 	atmega328_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
-	virtual void update_interrupt(int source) override;
 	void atmega328_internal_map(address_map &map) ATTR_COLD;
+
+protected:
+	virtual const interrupt_condition *int_conditions() const override { return s_int_conditions; }
+	virtual unsigned int_vector_scale() const override { return 2; }
 };
 
 // ======================> atmega644_device
@@ -1145,8 +1159,11 @@ public:
 	// construction/destruction
 	atmega644_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
-	virtual void update_interrupt(int source) override;
 	void atmega644_internal_map(address_map &map) ATTR_COLD;
+
+protected:
+	virtual const interrupt_condition *int_conditions() const override { return s_mega644_int_conditions; }
+	virtual unsigned int_vector_scale() const override { return 2; }
 };
 
 // ======================> atmega1280_device
@@ -1157,8 +1174,11 @@ public:
 	// construction/destruction
 	atmega1280_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
-	virtual void update_interrupt(int source) override;
 	void atmega1280_internal_map(address_map &map) ATTR_COLD;
+
+protected:
+	virtual const interrupt_condition *int_conditions() const override { return s_mega644_int_conditions; }
+	virtual unsigned int_vector_scale() const override { return 2; }
 };
 
 // ======================> atmega2560_device
@@ -1169,8 +1189,11 @@ public:
 	// construction/destruction
 	atmega2560_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
-	virtual void update_interrupt(int source) override;
 	void atmega2560_internal_map(address_map &map) ATTR_COLD;
+
+protected:
+	virtual const interrupt_condition *int_conditions() const override { return s_mega644_int_conditions; }
+	virtual unsigned int_vector_scale() const override { return 2; }
 };
 
 // ======================> attiny15_device
