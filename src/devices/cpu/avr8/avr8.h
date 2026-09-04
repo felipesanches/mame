@@ -564,7 +564,6 @@ protected:
 
 	enum : uint8_t
 	{
-		EEARH_MASK = (1 << 0),
 
 		SPSR_SPR2X_MASK = (1 << 0),
 		SPSR_SPIF_SHIFT = 7,
@@ -852,6 +851,7 @@ protected:
 	bool m_adc_hold;
 
 	// SPI
+	uint16_t eeprom_address() const;
 	void spsr_w(uint8_t data);
 	void spcr_w(uint8_t data);
 	void spdr_w(uint8_t data);

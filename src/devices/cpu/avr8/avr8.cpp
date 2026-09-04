@@ -2641,21 +2641,26 @@ void avr8_device<NumTimers>::gtccr_w(uint8_t data)
 }
 
 template <int NumTimers>
+uint16_t avr8_device<NumTimers>::eeprom_address() const
+{
+	const uint16_t addr = (uint16_t(m_r[EEARH]) << 8) | m_r[EEARL];
+	return addr & (m_eeprom.length() - 1);
+}
+
+template <int NumTimers>
 void avr8_device<NumTimers>::eecr_w(uint8_t data)
 {
 	m_r[EECR] = data & EECR_MASK;
 
 	if (data & EECR_EERE_MASK)
 	{
-		uint16_t addr = (m_r[EEARH] & EEARH_MASK) << 8;
-		addr |= m_r[EEARL];
+		const uint16_t addr = eeprom_address();
 		m_r[EEDR] = m_eeprom[addr];
 		LOGMASKED(LOG_EEPROM, "%s: EEPROM read @ %04x data = %02x\n", machine().describe_context(), addr, m_eeprom[addr]);
 	}
 	if ((data & EECR_EEPE_MASK) && (data & EECR_EEMPE_MASK))
 	{
-		uint16_t addr = (m_r[EEARH] & EEARH_MASK) << 8;
-		addr |= m_r[EEARL];
+		const uint16_t addr = eeprom_address();
 		m_eeprom[addr] = m_r[EEDR];
 		LOGMASKED(LOG_EEPROM, "%s: EEPROM write @ %04x data = %02x ('%c')\n", machine().describe_context(), addr, m_eeprom[addr], m_eeprom[addr] >= 0x21 ? m_eeprom[addr] : ' ');
 
