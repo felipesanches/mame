@@ -299,6 +299,13 @@ void wackygtr_state::wackygtr(machine_config &config)
 	config.set_default_layout(layout_wackygtr);
 
 	/* Sound */
+	screen_device &scene(SCREEN(config, "scene", SCREEN_TYPE_3D));
+	scene.set_scene_region("scene");
+	scene.set_mesh_region("meshes");
+	scene.set_refresh_hz(20);
+	scene.set_size(570, 320);
+	scene.set_visarea_full();
+
 	SPEAKER(config, "mono").front_center();
 	MSM5205(config, m_msm, XTAL(384'000));
 	m_msm->vck_legacy_callback().set(FUNC(wackygtr_state::adpcm_int));  /* IRQ handler */
@@ -358,6 +365,10 @@ ROM_START( wackygtr )
 
 	ROM_REGION(0x10000, "oki", 0)
 	ROM_LOAD("wp3-vo0.2h", 0x0000, 0x10000, CRC(91c7986f) SHA1(bc9fa0d41c1caa0f909a349f511d022b7e42c6cd))
+	ROM_REGION( 3433, "scene", 0 )
+	ROM_LOAD( "wackygtr.3dlay", 0, 3433, CRC(d73942f8) SHA1(8036776b877971195158c0043854b5d1fae54279) )
+	ROM_REGION( 149516, "meshes", 0 )
+	ROM_LOAD( "wackygtr_meshes.bin", 0, 149516, CRC(46ad9871) SHA1(d29f9ba0c24a0e5f6ab65127d7b3c6c1ed331605) )
 ROM_END
 
 } // anonymous namespace

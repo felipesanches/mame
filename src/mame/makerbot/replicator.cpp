@@ -35,6 +35,8 @@
 #include "screen.h"
 #include "speaker.h"
 
+#include "replicator.lh"
+
 #include <cmath>
 
 #define LOG_PORT_A      (1U << 1)
@@ -1013,6 +1015,15 @@ void replicator_state::replicator(machine_config &config)
 
 	/* sound hardware */
 	/* A piezo is connected to the PORT G bit 5 (OC0B pin driven by Timer/Counter #4) */
+	screen_device &scene(SCREEN(config, "scene", SCREEN_TYPE_3D));
+	scene.set_scene_region("scene");
+	scene.set_mesh_region("meshes");
+	scene.set_refresh_hz(20);
+	scene.set_size(400, 300);
+	scene.set_visarea_full();
+
+	config.set_default_layout(layout_replicator);
+
 	SPEAKER(config, "speaker").front_center();
 	DAC_1BIT(config, m_dac, 0).add_route(0, "speaker", 0.5);
 }
@@ -1096,6 +1107,10 @@ ROM_START( replica1 )
 
 	/* on-die 4kbyte eeprom */
 	ROM_REGION( 0x1000, "eeprom", ROMREGION_ERASEFF )
+	ROM_REGION( 1906, "scene", 0 )
+	ROM_LOAD( "replica1.3dlay", 0, 1906, CRC(1d188cdd) SHA1(aef39b674c4f246c7fa87ed56e1b95eb8cbc3835) )
+	ROM_REGION( 1984, "meshes", 0 )
+	ROM_LOAD( "replica1_meshes.bin", 0, 1984, CRC(bb1b2014) SHA1(8b372b5ce713cbcf207a8dc60d398ddb3b0a29a4) )
 ROM_END
 
 } // anonymous namespace

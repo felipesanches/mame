@@ -150,7 +150,7 @@ license:CC0-1.0
 		</disk>
 	</element>
 
-	<view name="Default Layout">
+	<group name="panel">
 
 		<element ref="brown_bg"><bounds x="0" y="0"  width="285" height="160" /></element>
 		<element ref="start_text">
@@ -359,5 +359,20 @@ license:CC0-1.0
 			<bounds x="0" y="160"  width="285" height="4" />
 		</element>
 
+	</group>
+
+	<view name="Default Layout">
+		<bounds x="117" y="4"  width="48" height="12" />
+		<group ref="panel" />
+	</view>
+	<view name="3D View">
+		<bounds left="0" right="285" top="0" bottom="160" />
+		<element ref="brown_bg"><bounds x="0" y="0" width="285" height="160" /></element>
+		<screen index="0"><bounds x="0" y="0" width="285" height="160" /></screen>
+	</view>
+	<view name="3D View and Panel">
+		<bounds left="0" right="570" top="0" bottom="160" />
+		<screen index="0"><bounds x="0" y="0" width="285" height="160" /></screen>
+		<group ref="panel"><bounds x="285" y="0" width="285" height="160" /></group>
 	</view>
 </mamelayout>
