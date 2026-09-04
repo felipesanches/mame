@@ -572,8 +572,8 @@ void avr8_device<NumTimers>::base_internal_map(address_map &map)
 	map(0x004a, 0x004a).w(FUNC(avr8_device::gpior1_w));
 	map(0x004b, 0x004b).w(FUNC(avr8_device::gpior2_w));
 	map(0x004c, 0x004c).w(FUNC(avr8_device::spcr_w));
-	map(0x004d, 0x004d).w(FUNC(avr8_device::spsr_w));
-	map(0x004e, 0x004e).w(FUNC(avr8_device::spdr_w));
+	map(0x004d, 0x004d).rw(FUNC(avr8_device::spsr_r), FUNC(avr8_device::spsr_w));
+	map(0x004e, 0x004e).rw(FUNC(avr8_device::spdr_r), FUNC(avr8_device::spdr_w));
 	map(0x0060, 0x0060).w(FUNC(avr8_device::wdtcsr_w));
 	map(0x0061, 0x0061).w(FUNC(avr8_device::clkpr_w));
 	map(0x0064, 0x0064).w(FUNC(avr8_device::prr0_w));
@@ -804,6 +804,8 @@ avr8_device<NumTimers>::avr8_device(const machine_config &mconfig, const char *t
 	, m_spi_active(false)
 	, m_spi_prescale(0)
 	, m_spi_prescale_count(0)
+	, m_spi_in(0)
+	, m_spsr_read_with_spif(false)
 {
 	// Fill in default callbacks
 	for (int i = 0; i < 8*4; i++)
@@ -1115,6 +1117,8 @@ void avr8_device<NumTimers>::device_start()
 	save_item(NAME(m_spi_prescale));
 	save_item(NAME(m_spi_prescale_count));
 	save_item(NAME(m_spi_prescale_countdown));
+	save_item(NAME(m_spi_in));
+	save_item(NAME(m_spsr_read_with_spif));
 }
 
 //-------------------------------------------------
@@ -1189,6 +1193,8 @@ void avr8_device<NumTimers>::device_reset()
 	m_spi_active = false;
 	m_spi_prescale = 0;
 	m_spi_prescale_count = 0;
+	m_spi_in = 0;
+	m_spsr_read_with_spif = false;
 
 	for (int t = 0; t < NumTimers; t++)
 	{
@@ -1418,6 +1424,14 @@ void avr8_device<NumTimers>::spi_tick()
 	m_r[PORTB] = data;
 	m_gpio_out_cb[GPIOB](data);
 	m_r[PORTB] = (m_r[PORTB] &~ PORTB_MOSI) | (out_bit ? PORTB_MOSI : 0);
+
+	if (m_spi_prescale_countdown < 0)
+	{
+		m_r[SPDR] = m_spi_in;
+		m_spi_active = false;
+		m_r[SPSR] |= SPSR_SPIF_MASK;
+		update_interrupt(INTIDX_SPI);
+	}
 }
 
 // Timer 0 Handling
@@ -2694,10 +2708,41 @@ void avr8_device<NumTimers>::spcr_w(uint8_t data)
 template <int NumTimers>
 void avr8_device<NumTimers>::spdr_w(uint8_t data)
 {
+	if (m_spsr_read_with_spif)
+	{
+		m_r[SPSR] &= ~SPSR_SPIF_MASK;
+		m_spsr_read_with_spif = false;
+		update_interrupt(INTIDX_SPI);
+	}
+
 	m_r[SPDR] = data;
+
+	if (!(m_r[SPCR] & SPCR_SPE_MASK))
+		return;
+
 	m_spi_active = true;
 	m_spi_prescale_countdown = 7;
 	m_spi_prescale_count = 0;
+}
+
+template <int NumTimers>
+uint8_t avr8_device<NumTimers>::spdr_r()
+{
+	if (!machine().side_effects_disabled() && m_spsr_read_with_spif)
+	{
+		m_r[SPSR] &= ~SPSR_SPIF_MASK;
+		m_spsr_read_with_spif = false;
+		update_interrupt(INTIDX_SPI);
+	}
+	return m_r[SPDR];
+}
+
+template <int NumTimers>
+uint8_t avr8_device<NumTimers>::spsr_r()
+{
+	if (!machine().side_effects_disabled() && (m_r[SPSR] & SPSR_SPIF_MASK))
+		m_spsr_read_with_spif = true;
+	return m_r[SPSR];
 }
 
 template <int NumTimers>
