@@ -1111,7 +1111,10 @@ void avr8_base_device::op_ror(uint16_t op)
 
 void avr8_base_device::op_setf(uint16_t op)
 {
-	m_r[SREG] |= 1 << ((op >> 4) & 0x07);
+	const uint8_t bit = (op >> 4) & 0x07;
+	m_r[SREG] |= 1 << bit;
+	if (bit == SREG_I)
+		m_int_inhibit = 1;
 }
 
 void avr8_base_device::op_clrf(uint16_t op)
@@ -1171,6 +1174,7 @@ void avr8_base_device::op_reti(uint16_t op)
 {
 	m_pc = (pop_pc() << 1) - 2;
 	m_r[SREG] |= SREG_MASK_I;
+	m_int_inhibit = 1;
 }
 
 void avr8_base_device::op_sleep(uint16_t op)

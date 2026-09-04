@@ -635,6 +635,7 @@ protected:
 	// internal CPU state
 	uint32_t m_addr_mask;
 	uint32_t m_int_pending;
+	uint8_t m_int_inhibit;
 	uint8_t m_pc_bytes;
 
 	// other internal states
