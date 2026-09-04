@@ -5,6 +5,7 @@
 
 #include "cpu/avr8/avr8.h"
 #include "mm2_stepper_sound.h"
+#include "mm2_viewport.h"
 
 #include "machine/a4982.h"
 #include "machine/ad5206.h"
@@ -42,12 +43,18 @@ public:
 		, m_digipot(*this, "digipot")
 		, m_eeprom(*this, "eeprom")
 		, m_nvram(*this, "nvram")
+		, m_viewport(*this, "viewport")
+		, m_partview(*this, "partview")
 		, m_motors(*this, "motors")
+		, m_view_controls(*this, "VIEW")
+		, m_mouse(*this, "MOUSE%u", 0U)
+		, m_view_config(*this, "VIEWCFG")
 		, m_axis_out(*this, "axis_%u_um")
 		, m_endstop_out(*this, "endstop_%u")
 		, m_temp_out(*this, "temp_%u_c")
 		, m_duty_out(*this, "duty_%u")
 		, m_motor_out(*this, "motor_%u_on")
+		, m_beads_out(*this, "deposit_beads")
 	{
 	}
 
@@ -94,13 +101,19 @@ private:
 	required_device<ad5206_device> m_digipot;
 	required_memory_region m_eeprom;
 	required_device<nvram_device> m_nvram;
+	required_device<mm2_viewport_device> m_viewport;
+	required_device<mm2_viewport_device> m_partview;
 	required_device<mm2_stepper_sound_device> m_motors;
+	required_ioport m_view_controls;
+	required_ioport_array<3> m_mouse;
+	required_ioport m_view_config;
 
 	output_finder<AXIS_COUNT> m_axis_out;
 	output_finder<ES_COUNT> m_endstop_out;
 	output_finder<2> m_temp_out;
 	output_finder<PWM_COUNT> m_duty_out;
 	output_finder<AXIS_COUNT> m_motor_out;
+	output_finder<> m_beads_out;
 
 	int64_t m_position[AXIS_COUNT]{};
 	int64_t m_last_translator[AXIS_COUNT]{};
@@ -115,6 +128,9 @@ private:
 
 	emu_timer *m_thermal_timer = nullptr;
 	emu_timer *m_view_timer = nullptr;
+	ioport_value m_last_keys = 0;
+	uint16_t m_last_mouse_x = 0, m_last_mouse_y = 0;
+	uint8_t m_last_wheel = 0;
 };
 
 static constexpr mm2_axis AXES[rambo_state::AXIS_COUNT] = {
@@ -308,6 +324,7 @@ TIMER_CALLBACK_MEMBER(rambo_state::thermal_tick)
 
 		if (channel == PWM_FAN)
 		{
+			m_viewport->set_fan(duty);
 			continue;
 		}
 
@@ -315,11 +332,61 @@ TIMER_CALLBACK_MEMBER(rambo_state::thermal_tick)
 						  * INTERVAL / MASS[channel];
 		m_temperature[channel] += dT;
 		m_temp_out[channel] = int32_t(m_temperature[channel] * 10.0 + 0.5);
+		m_viewport->set_temperature(channel, m_temperature[channel]);
 	}
+
+	const uint16_t mx = m_mouse[0]->read();
+	const uint16_t my = m_mouse[1]->read();
+	const ioport_value buttons = m_mouse[2]->read();
+	const uint8_t wheel = (buttons >> 4) & 0xff;
+
+	const int dx = int16_t(mx - m_last_mouse_x);
+	const int dy = int16_t(my - m_last_mouse_y);
+	m_last_mouse_x = mx;
+	m_last_mouse_y = my;
+
+	if (BIT(buttons, 0))
+	{
+		m_viewport->orbit(dx * -0.010, dy * 0.010);
+		m_partview->orbit(dx * -0.010, dy * 0.010);
+	}
+
+	const int dw = int8_t(wheel - m_last_wheel);
+	m_last_wheel = wheel;
+	if (dw)
+	{
+		m_viewport->zoom(std::pow(0.90, double(dw)));
+		m_partview->zoom(std::pow(0.90, double(dw)));
+	}
+
+	const ioport_value keys = m_view_controls->read();
+	if (BIT(keys, 0)) { m_viewport->orbit(-0.03, 0.0); m_partview->orbit(-0.03, 0.0); }
+	if (BIT(keys, 1)) { m_viewport->orbit(0.03, 0.0); m_partview->orbit(0.03, 0.0); }
+	if (BIT(keys, 2)) { m_viewport->orbit(0.0, 0.02); m_partview->orbit(0.0, 0.02); }
+	if (BIT(keys, 3)) { m_viewport->orbit(0.0, -0.02); m_partview->orbit(0.0, -0.02); }
+	if (BIT(keys, 4)) { m_viewport->zoom(0.97); m_partview->zoom(0.97); }
+	if (BIT(keys, 5)) { m_viewport->zoom(1.03); m_partview->zoom(1.03); }
+	if (BIT(keys, 6) && !BIT(m_last_keys, 6)) { m_viewport->reset_view(); m_partview->reset_view(); }
+	if (BIT(keys, 7) && !BIT(m_last_keys, 7)) { m_viewport->toggle_deposit(); m_partview->toggle_deposit(); }
+	if (BIT(keys, 8) && !BIT(m_last_keys, 8)) { m_viewport->clear_deposit(); m_partview->clear_deposit(); }
+	m_last_keys = keys;
 }
 
 TIMER_CALLBACK_MEMBER(rambo_state::view_tick)
 {
+	m_viewport->set_position(axis_mm(AXIS_X), axis_mm(AXIS_Y), axis_mm(AXIS_Z));
+	m_viewport->set_extrusion(axis_mm(AXIS_E0));
+	m_viewport->set_motors(m_stepper[AXIS_X]->outputs_enabled());
+
+	m_partview->set_position(axis_mm(AXIS_X), axis_mm(AXIS_Y), axis_mm(AXIS_Z));
+	m_partview->set_extrusion(axis_mm(AXIS_E0));
+
+	m_beads_out = int32_t(m_viewport->deposit_beads());
+	const uint8_t viewcfg = m_view_config->read();
+	m_viewport->set_show_3d(!BIT(viewcfg, 0));
+	m_viewport->set_endstops(BIT(m_endstops, ES_Z_MIN), BIT(m_endstops, ES_Z_MAX),
+							 BIT(m_endstops, ES_Y_MIN), BIT(m_endstops, ES_Y_MAX));
+
 	for (int axis = 0; axis < AXIS_COUNT; axis++)
 		m_motors->set_holding(axis, m_stepper[axis]->outputs_enabled(),
 							  m_stepper[axis]->coil_current(0), m_stepper[axis]->coil_current(1),
@@ -377,6 +444,7 @@ void rambo_state::machine_start()
 	m_endstop_out.resolve();
 	m_temp_out.resolve();
 	m_duty_out.resolve();
+	m_beads_out.resolve();
 	m_motor_out.resolve();
 
 	m_nvram->set_base(m_eeprom->base(), m_eeprom->bytes());
@@ -391,6 +459,10 @@ void rambo_state::machine_start()
 	save_item(NAME(m_pwm_changed));
 	save_item(NAME(m_pwm_high));
 	save_item(NAME(m_temperature));
+	save_item(NAME(m_last_keys));
+	save_item(NAME(m_last_mouse_x));
+	save_item(NAME(m_last_mouse_y));
+	save_item(NAME(m_last_wheel));
 }
 
 void rambo_state::machine_reset()
@@ -484,6 +556,13 @@ void rambo_state::rambo(machine_config &config)
 	SPEAKER(config, "mono").front_center();
 	MM2_STEPPER_SOUND(config, m_motors).add_route(ALL_OUTPUTS, "mono", 1.0);
 
+	MM2_VIEWPORT(config, m_viewport);
+	m_viewport->set_mesh_region("meshes");
+
+	MM2_VIEWPORT(config, m_partview);
+	m_partview->set_mesh_region("meshes");
+	m_partview->set_part_only(true);
+
 	config.set_default_layout(layout_metamaq2);
 
 	RS232_PORT(config, m_rs232, default_rs232_devices, nullptr);
@@ -494,6 +573,34 @@ void rambo_state::rambo(machine_config &config)
 	m_rs232->rxd_handler().set(m_maincpu, FUNC(atmega2560_device::rxd_w<0>));
 
 }
+
+static INPUT_PORTS_START( metamaq2 )
+	PORT_START("VIEW")
+	PORT_BIT( 0x001, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CODE(KEYCODE_LEFT)  PORT_NAME("View: orbit left")
+	PORT_BIT( 0x002, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CODE(KEYCODE_RIGHT) PORT_NAME("View: orbit right")
+	PORT_BIT( 0x004, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CODE(KEYCODE_UP)    PORT_NAME("View: orbit up")
+	PORT_BIT( 0x008, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CODE(KEYCODE_DOWN)  PORT_NAME("View: orbit down")
+	PORT_BIT( 0x010, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CODE(KEYCODE_PGUP)  PORT_NAME("View: zoom in")
+	PORT_BIT( 0x020, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CODE(KEYCODE_PGDN)  PORT_NAME("View: zoom out")
+	PORT_BIT( 0x040, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CODE(KEYCODE_HOME)  PORT_NAME("View: reset camera")
+	PORT_BIT( 0x080, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CODE(KEYCODE_D)     PORT_NAME("View: show extruded plastic")
+	PORT_BIT( 0x100, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CODE(KEYCODE_C)     PORT_NAME("View: clear extruded plastic")
+
+	PORT_START("MOUSE0")
+	PORT_BIT( 0xffff, 0x0000, IPT_MOUSE_X ) PORT_SENSITIVITY(60) PORT_KEYDELTA(0) PORT_NAME("View: orbit (drag left/right)")
+
+	PORT_START("MOUSE1")
+	PORT_BIT( 0xffff, 0x0000, IPT_MOUSE_Y ) PORT_SENSITIVITY(60) PORT_KEYDELTA(0) PORT_NAME("View: orbit (drag up/down)")
+
+	PORT_START("MOUSE2")
+	PORT_BIT( 0x0001, IP_ACTIVE_HIGH, IPT_BUTTON1 ) PORT_CODE(MOUSECODE_BUTTON1) PORT_NAME("View: hold to orbit")
+	PORT_BIT( 0x0ff0, 0x0000, IPT_DIAL_V ) PORT_SENSITIVITY(1) PORT_KEYDELTA(1) PORT_CODE(MOUSECODE_Z) PORT_NAME("View: zoom (wheel)")
+
+	PORT_START("VIEWCFG")
+	PORT_CONFNAME( 0x01, 0x00, "3D view" )
+	PORT_CONFSETTING(    0x00, "On" )
+	PORT_CONFSETTING(    0x01, "Off (faster)" )
+INPUT_PORTS_END
 
 ROM_START( metamaq2 )
 	ROM_REGION( 0x40000, "maincpu", 0 )
@@ -535,11 +642,14 @@ ROM_START( metamaq2 )
 	ROM_SYSTEM_BIOS( 11, "20131015", "October 15th, 2013" )
 	ROMX_LOAD("repetier-fw-metamaquina2-2013-10-15.bin", 0x0000, 0x102c8, CRC(520134bd) SHA1(dfe2251aad06972f237eb4920ce14ccb32da5af0), ROM_BIOS(11))
 
+	ROM_REGION( 3801028, "meshes", 0 )
+	ROM_LOAD( "mm2_meshes.bin", 0, 3801028, CRC(0db473ea) SHA1(5525809e62ee075ab4b729fbd0daf14d578c01ae) )
+
 	ROM_REGION( 0x1000, "eeprom", ROMREGION_ERASEFF )
 ROM_END
 
 } // anonymous namespace
 
 
-//   YEAR  NAME      PARENT  COMPAT  MACHINE  INPUT  CLASS        INIT        COMPANY        FULLNAME                            FLAGS
-COMP(2012, metamaq2, 0,      0,      rambo,   0,     rambo_state, empty_init, "Metamaquina", "Metamaquina 2 desktop 3d printer", MACHINE_NOT_WORKING)
+//   YEAR  NAME      PARENT  COMPAT  MACHINE  INPUT     CLASS        INIT        COMPANY        FULLNAME                            FLAGS
+COMP(2012, metamaq2, 0,      0,      rambo,   metamaq2, rambo_state, empty_init, "Metamaquina", "Metamaquina 2 desktop 3d printer", MACHINE_NOT_WORKING)
