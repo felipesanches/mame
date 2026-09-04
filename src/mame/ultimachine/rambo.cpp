@@ -5,6 +5,8 @@
 
 #include "cpu/avr8/avr8.h"
 
+#include "machine/a4982.h"
+#include "machine/ad5206.h"
 #include "machine/nvram.h"
 #include "bus/rs232/rs232.h"
 
@@ -13,6 +15,14 @@ namespace {
 
 #define MASTER_CLOCK    16000000
 
+struct mm2_axis
+{
+	double steps_per_mm;
+	double travel_mm;
+	double overtravel_mm;
+	double direction;
+};
+
 class rambo_state : public driver_device
 {
 public:
@@ -20,24 +30,68 @@ public:
 		: driver_device(mconfig, type, tag)
 		, m_maincpu(*this, "maincpu")
 		, m_rs232(*this, "rs232")
+		, m_stepper(*this, "stepper%u", 0U)
+		, m_digipot(*this, "digipot")
 		, m_eeprom(*this, "eeprom")
 		, m_nvram(*this, "nvram")
+		, m_axis_out(*this, "axis_%u_um")
+		, m_endstop_out(*this, "endstop_%u")
+		, m_motor_out(*this, "motor_%u_on")
 	{
 	}
 
 	void rambo(machine_config &config);
 
+	enum : int { AXIS_X, AXIS_Y, AXIS_Z, AXIS_E0, AXIS_E1, AXIS_COUNT };
+
+	enum : int { ES_X_MIN, ES_X_MAX, ES_Y_MIN, ES_Y_MAX, ES_Z_MIN, ES_Z_MAX, ES_COUNT };
+
 private:
 	virtual void machine_start() override ATTR_COLD;
+	virtual void machine_reset() override ATTR_COLD;
 
 	void rambo_prg_map(address_map &map) ATTR_COLD;
 	void rambo_data_map(address_map &map) ATTR_COLD;
 
+	uint8_t port_a_r();
+	uint8_t port_b_r();
+	uint8_t port_c_r();
+	void port_a_w(uint8_t data);
+	void port_c_w(uint8_t data);
+	void port_d_w(uint8_t data);
+	void port_g_w(uint8_t data);
+	void port_k_w(uint8_t data);
+	void port_l_w(uint8_t data);
+
+	template <int Axis> void step_taken(uint64_t position);
+	void update_endstops();
+	double axis_mm(int axis) const;
+
 	required_device<atmega2560_device> m_maincpu;
 	required_device<rs232_port_device> m_rs232;
+	required_device_array<a4982_device, AXIS_COUNT> m_stepper;
+	required_device<ad5206_device> m_digipot;
 	required_memory_region m_eeprom;
 	required_device<nvram_device> m_nvram;
+
+	output_finder<AXIS_COUNT> m_axis_out;
+	output_finder<ES_COUNT> m_endstop_out;
+	output_finder<AXIS_COUNT> m_motor_out;
+
+	int64_t m_position[AXIS_COUNT]{};
+	int64_t m_last_translator[AXIS_COUNT]{};
+	uint8_t m_endstops = 0;
 };
+
+static constexpr mm2_axis AXES[rambo_state::AXIS_COUNT] = {
+	{  100.0, 200.0, 3.0, +1.0 },
+	{  100.0, 200.0, 3.0, +1.0 },
+	{ 2560.0, 150.0, 2.0, +1.0 },
+	{  650.0,   0.0, 0.0, -1.0 },
+	{  650.0,   0.0, 0.0, -1.0 }
+};
+
+static constexpr double POWER_ON_POSE[3] = { 100.0, 100.0, 130.0 };
 
 void rambo_state::rambo_prg_map(address_map &map)
 {
@@ -47,6 +101,126 @@ void rambo_state::rambo_prg_map(address_map &map)
 void rambo_state::rambo_data_map(address_map &map)
 {
 	map(0x0200, 0x21FF).ram();
+}
+
+template <int Axis>
+void rambo_state::step_taken(uint64_t position)
+{
+	const int64_t now = int64_t(position);
+	const int64_t delta = now - m_last_translator[Axis];
+	m_last_translator[Axis] = now;
+
+	if (!m_stepper[Axis]->outputs_enabled())
+		return;
+
+	m_position[Axis] += delta;
+
+	if (AXES[Axis].travel_mm > 0.0)
+	{
+		const int64_t low = int64_t(-AXES[Axis].overtravel_mm * AXES[Axis].steps_per_mm);
+		const int64_t high = int64_t((AXES[Axis].travel_mm + AXES[Axis].overtravel_mm) * AXES[Axis].steps_per_mm);
+		m_position[Axis] = std::clamp(m_position[Axis], low, high);
+	}
+
+	update_endstops();
+}
+
+double rambo_state::axis_mm(int axis) const
+{
+	return AXES[axis].direction * double(m_position[axis]) / AXES[axis].steps_per_mm;
+}
+
+void rambo_state::update_endstops()
+{
+	static constexpr double TRIP = 0.5;
+
+	uint8_t state = 0;
+	for (int axis = AXIS_X; axis <= AXIS_Z; axis++)
+	{
+		const double mm = axis_mm(axis);
+		if (mm <= TRIP)
+			state |= 1 << (axis * 2);
+		if (mm >= AXES[axis].travel_mm - TRIP)
+			state |= 1 << (axis * 2 + 1);
+	}
+
+	if (state != m_endstops)
+	{
+		m_endstops = state;
+		for (int i = 0; i < ES_COUNT; i++)
+			m_endstop_out[i] = BIT(state, i);
+	}
+
+	for (int axis = 0; axis < AXIS_COUNT; axis++)
+	{
+		m_axis_out[axis] = int32_t(1000.0 * axis_mm(axis));
+		m_motor_out[axis] = m_stepper[axis]->outputs_enabled() ? 1 : 0;
+	}
+}
+
+uint8_t rambo_state::port_a_r()
+{
+	return (BIT(m_endstops, ES_Y_MAX) << 1) | (BIT(m_endstops, ES_X_MAX) << 2);
+}
+
+uint8_t rambo_state::port_b_r()
+{
+	return (BIT(m_endstops, ES_Z_MIN) << 4) | (BIT(m_endstops, ES_Y_MIN) << 5) | (BIT(m_endstops, ES_X_MIN) << 6);
+}
+
+uint8_t rambo_state::port_c_r()
+{
+	return BIT(m_endstops, ES_Z_MAX) << 7;
+}
+
+void rambo_state::port_a_w(uint8_t data)
+{
+	m_stepper[AXIS_E0]->enable_w(BIT(data, 4));
+	m_stepper[AXIS_Z]->enable_w(BIT(data, 5));
+	m_stepper[AXIS_Y]->enable_w(BIT(data, 6));
+	m_stepper[AXIS_X]->enable_w(BIT(data, 7));
+	update_endstops();
+}
+
+void rambo_state::port_c_w(uint8_t data)
+{
+	m_stepper[AXIS_X]->step_w(BIT(data, 0));
+	m_stepper[AXIS_Y]->step_w(BIT(data, 1));
+	m_stepper[AXIS_Z]->step_w(BIT(data, 2));
+	m_stepper[AXIS_E0]->step_w(BIT(data, 3));
+	m_stepper[AXIS_E1]->step_w(BIT(data, 4));
+}
+
+void rambo_state::port_d_w(uint8_t data)
+{
+	m_digipot->cs_w(BIT(data, 7));
+}
+
+void rambo_state::port_g_w(uint8_t data)
+{
+	m_stepper[AXIS_X]->ms2_w(BIT(data, 0));
+	m_stepper[AXIS_X]->ms1_w(BIT(data, 1));
+	m_stepper[AXIS_Y]->ms2_w(BIT(data, 2));
+}
+
+void rambo_state::port_k_w(uint8_t data)
+{
+	m_stepper[AXIS_E1]->ms1_w(BIT(data, 1));
+	m_stepper[AXIS_E1]->ms2_w(BIT(data, 2));
+	m_stepper[AXIS_E0]->ms1_w(BIT(data, 3));
+	m_stepper[AXIS_E0]->ms2_w(BIT(data, 4));
+	m_stepper[AXIS_Z]->ms2_w(BIT(data, 5));
+	m_stepper[AXIS_Z]->ms1_w(BIT(data, 6));
+	m_stepper[AXIS_Y]->ms1_w(BIT(data, 7));
+}
+
+void rambo_state::port_l_w(uint8_t data)
+{
+	m_stepper[AXIS_Y]->dir_w(BIT(data, 0));
+	m_stepper[AXIS_X]->dir_w(BIT(data, 1));
+	m_stepper[AXIS_Z]->dir_w(BIT(data, 2));
+	m_stepper[AXIS_E0]->dir_w(BIT(data, 6));
+	m_stepper[AXIS_E1]->dir_w(BIT(data, 7));
 }
 
 static DEVICE_INPUT_DEFAULTS_START( host_serial )
@@ -59,7 +233,30 @@ DEVICE_INPUT_DEFAULTS_END
 
 void rambo_state::machine_start()
 {
+	m_axis_out.resolve();
+	m_endstop_out.resolve();
+	m_motor_out.resolve();
+
 	m_nvram->set_base(m_eeprom->base(), m_eeprom->bytes());
+
+	save_item(NAME(m_position));
+	save_item(NAME(m_last_translator));
+	save_item(NAME(m_endstops));
+}
+
+void rambo_state::machine_reset()
+{
+	for (int axis = 0; axis < AXIS_COUNT; axis++)
+	{
+		m_position[axis] = (axis < 3) ? int64_t(POWER_ON_POSE[axis] * AXES[axis].steps_per_mm) : 0;
+		m_last_translator[axis] = 0;
+	}
+
+	for (int axis = 0; axis < AXIS_COUNT; axis++)
+		m_stepper[axis]->enable_w(1);
+
+	m_endstops = 0xff;
+	update_endstops();
 }
 
 void rambo_state::rambo(machine_config &config)
@@ -74,6 +271,49 @@ void rambo_state::rambo(machine_config &config)
 	m_maincpu->set_high_fuses(0xd9);
 	m_maincpu->set_extended_fuses(0xfd);
 	m_maincpu->set_lock_bits(0x0f);
+
+	m_maincpu->gpio_in<atmega2560_device::GPIOA>().set(FUNC(rambo_state::port_a_r));
+	m_maincpu->gpio_in<atmega2560_device::GPIOB>().set(FUNC(rambo_state::port_b_r));
+	m_maincpu->gpio_in<atmega2560_device::GPIOC>().set(FUNC(rambo_state::port_c_r));
+
+	m_maincpu->gpio_out<atmega2560_device::GPIOA>().set(FUNC(rambo_state::port_a_w));
+	m_maincpu->gpio_out<atmega2560_device::GPIOC>().set(FUNC(rambo_state::port_c_w));
+	m_maincpu->gpio_out<atmega2560_device::GPIOD>().set(FUNC(rambo_state::port_d_w));
+	m_maincpu->gpio_out<atmega2560_device::GPIOG>().set(FUNC(rambo_state::port_g_w));
+	m_maincpu->gpio_out<atmega2560_device::GPIOK>().set(FUNC(rambo_state::port_k_w));
+	m_maincpu->gpio_out<atmega2560_device::GPIOL>().set(FUNC(rambo_state::port_l_w));
+
+	AD5206(config, m_digipot);
+	m_digipot->set_resistance(10000.0);
+	m_digipot->set_terminal_voltages(1.678, 0.0);
+	m_maincpu->spi_out().set(m_digipot, FUNC(ad5206_device::write));
+
+	for (int axis = 0; axis < AXIS_COUNT; axis++)
+	{
+		A4982(config, m_stepper[axis]);
+		m_stepper[axis]->set_sense_resistor(0.1);
+	}
+	m_stepper[AXIS_X]->step_cb().set(FUNC(rambo_state::step_taken<AXIS_X>));
+	m_stepper[AXIS_Y]->step_cb().set(FUNC(rambo_state::step_taken<AXIS_Y>));
+	m_stepper[AXIS_Z]->step_cb().set(FUNC(rambo_state::step_taken<AXIS_Z>));
+	m_stepper[AXIS_E0]->step_cb().set(FUNC(rambo_state::step_taken<AXIS_E0>));
+	m_stepper[AXIS_E1]->step_cb().set(FUNC(rambo_state::step_taken<AXIS_E1>));
+
+	m_digipot->wiper_cb<4>().set([this] (uint8_t) {
+		m_stepper[AXIS_X]->set_vref(m_digipot->wiper_voltage(4));
+	});
+	m_digipot->wiper_cb<5>().set([this] (uint8_t) {
+		m_stepper[AXIS_Y]->set_vref(m_digipot->wiper_voltage(5));
+	});
+	m_digipot->wiper_cb<3>().set([this] (uint8_t) {
+		m_stepper[AXIS_Z]->set_vref(m_digipot->wiper_voltage(3));
+	});
+	m_digipot->wiper_cb<0>().set([this] (uint8_t) {
+		m_stepper[AXIS_E0]->set_vref(m_digipot->wiper_voltage(0));
+	});
+	m_digipot->wiper_cb<1>().set([this] (uint8_t) {
+		m_stepper[AXIS_E1]->set_vref(m_digipot->wiper_voltage(1));
+	});
 
 	RS232_PORT(config, m_rs232, default_rs232_devices, nullptr);
 	m_rs232->set_option_device_input_defaults("terminal", DEVICE_INPUT_DEFAULTS_NAME(host_serial));
