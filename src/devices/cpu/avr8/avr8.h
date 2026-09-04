@@ -953,6 +953,7 @@ protected:
 	int8_t m_spi_prescale_countdown;
 	uint8_t m_spi_in;
 	bool m_spsr_read_with_spif;
+	uint8_t m_spi_mosi_mask;
 
 	// timers
 	void gtccr_w(uint8_t data);
