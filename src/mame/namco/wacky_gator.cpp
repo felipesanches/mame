@@ -14,13 +14,13 @@
 
    TODO:
    - IRQ and NMI sources are unknown
-   - proper PMM8713 and steppers emulation
 */
 
 #include "emu.h"
 #include "cpu/m6809/m6809.h"
 #include "machine/i8255.h"
 #include "machine/pit8253.h"
+#include "machine/steppers.h"
 #include "machine/ticket.h"
 #include "machine/timer.h"
 #include "sound/msm5205.h"
@@ -41,6 +41,7 @@ public:
 		m_msm(*this, "msm"),
 		m_pit8253(*this, "pit8253%u", 0U),
 		m_ticket(*this, "ticket"),
+		m_stepper(*this, "stepper%u", 0U),
 		m_samples(*this, "oki"),
 		m_alligator(*this, "alligator%u", 0U),
 		m_digit(*this, "digit%u", 0U),
@@ -70,6 +71,7 @@ private:
 
 	void pmm8713_ck(int i, int state);
 	template <unsigned N> void alligator_ck(int state) { pmm8713_ck(N, state); }
+	int motor_pos(int i) { return m_stepper[i]->get_absolute_position(); }
 
 	void irq_ack_w(uint8_t data)            { m_maincpu->set_input_line(M6809_IRQ_LINE, CLEAR_LINE); }
 	void firq_ack_w(uint8_t data)           { m_maincpu->set_input_line(M6809_FIRQ_LINE, CLEAR_LINE); }
@@ -82,6 +84,7 @@ private:
 	required_device<msm5205_device> m_msm;
 	required_device_array<pit8253_device, 2> m_pit8253;
 	required_device<ticket_dispenser_device> m_ticket;
+	required_device_array<stepper_device, 5> m_stepper;
 	required_memory_region m_samples;
 	output_finder<5> m_alligator;
 	output_finder<8> m_digit;
@@ -92,7 +95,7 @@ private:
 	uint8_t   m_adpcm_ctrl;
 
 	uint8_t   m_alligators_ctrl;
-	int       m_motors_pos[5] = { };
+	uint8_t   m_motors_phase[5] = { };
 };
 
 
@@ -151,34 +154,32 @@ void wackygtr_state::alligators_ctrl2_w(uint8_t data)
 
 void wackygtr_state::pmm8713_ck(int i, int state)
 {
+	static constexpr uint8_t PHASES[8] = { 0x02, 0x06, 0x04, 0x05, 0x01, 0x09, 0x08, 0x0a };
+
 	if (state)
 	{
-		m_motors_pos[i] += (BIT(m_alligators_ctrl, i) ? +1 : -1);
-
-		int alligator_state = m_motors_pos[i] / 10;
-		if (alligator_state > 5)    alligator_state = 5;
-		if (alligator_state < 0)    alligator_state = 0;
-		m_alligator[i] = alligator_state;
+		m_motors_phase[i] = (m_motors_phase[i] + (BIT(m_alligators_ctrl, i) ? 1 : -1)) & 7;
+		m_stepper[i]->update(PHASES[m_motors_phase[i]]);
+		m_alligator[i] = std::clamp(motor_pos(i) / 10, 0, 5);
 	}
 }
 
 ioport_value wackygtr_state::alligators_rear_sensors_r()
 {
-	return  ((m_motors_pos[0] < 10) ? 0x01 : 0) |
-			((m_motors_pos[1] < 10) ? 0x02 : 0) |
-			((m_motors_pos[2] < 10) ? 0x04 : 0) |
-			((m_motors_pos[3] < 10) ? 0x08 : 0) |
-			((m_motors_pos[4] < 10) ? 0x10 : 0) |
-			(m_alligators_ctrl ^ 0x1f);
+	ioport_value sensors = m_alligators_ctrl ^ 0x1f;
+	for (int i = 0; i < 5; i++)
+		if (motor_pos(i) < 10)
+			sensors |= 1 << i;
+	return sensors;
 }
 
 ioport_value wackygtr_state::alligators_front_sensors_r()
 {
-	return  ((m_motors_pos[0] < 5 || m_motors_pos[0] > 55) ? 0x01 : 0) |
-			((m_motors_pos[1] < 5 || m_motors_pos[1] > 55) ? 0x02 : 0) |
-			((m_motors_pos[2] < 5 || m_motors_pos[2] > 55) ? 0x04 : 0) |
-			((m_motors_pos[3] < 5 || m_motors_pos[3] > 55) ? 0x08 : 0) |
-			((m_motors_pos[4] < 5 || m_motors_pos[4] > 55) ? 0x10 : 0);
+	ioport_value sensors = 0;
+	for (int i = 0; i < 5; i++)
+		if (motor_pos(i) < 5 || motor_pos(i) > 55)
+			sensors |= 1 << i;
+	return sensors;
 }
 
 void wackygtr_state::machine_start()
@@ -191,7 +192,7 @@ void wackygtr_state::machine_start()
 	save_item(NAME(m_adpcm_pos));
 	save_item(NAME(m_adpcm_ctrl));
 	save_item(NAME(m_alligators_ctrl));
-	save_item(NAME(m_motors_pos));
+	save_item(NAME(m_motors_phase));
 }
 
 void wackygtr_state::machine_reset()
@@ -200,6 +201,7 @@ void wackygtr_state::machine_reset()
 	m_adpcm_sel = 0;
 	m_adpcm_ctrl = 0x80;
 	m_alligators_ctrl = 0;
+	std::fill(std::begin(m_motors_phase), std::end(m_motors_phase), 0);
 }
 
 void wackygtr_state::set_digits(int p, uint8_t value)
@@ -336,6 +338,15 @@ void wackygtr_state::wackygtr(machine_config &config)
 	m_pit8253[1]->out_handler<1>().set(FUNC(wackygtr_state::alligator_ck<3>));
 	m_pit8253[1]->set_clk<2>(XTAL(3'579'545)/16);  // this is a guess
 	m_pit8253[1]->out_handler<2>().set(FUNC(wackygtr_state::alligator_ck<4>));
+
+	for (int i = 0; i < 5; i++)
+	{
+		STEPPER(config, m_stepper[i]);
+		m_stepper[i]->set_init_phase(7);
+		m_stepper[i]->set_motor_type(stepper_device::MOTOR_REEL_48STEP);
+		m_stepper[i]->set_drive_current(0.3);
+		m_stepper[i]->add_route(ALL_OUTPUTS, "mono", 0.1);
+	}
 
 	TICKET_DISPENSER(config, "ticket", attotime::from_msec(200));
 }
