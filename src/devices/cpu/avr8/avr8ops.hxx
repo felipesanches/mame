@@ -1153,8 +1153,7 @@ void avr8_base_device::op_jmp(uint16_t op)
 
 void avr8_base_device::op_call(uint16_t op)
 {
-	push(((m_pc >> 1) + 2) & 0x00ff);
-	push((((m_pc >> 1) + 2) >> 8) & 0x00ff);
+	push_pc((m_pc >> 1) + 2);
 	uint32_t offs = KCONST22(op) << 16;
 	m_pc += 2;
 	offs |= m_program->read_word(m_pc);
@@ -1164,16 +1163,12 @@ void avr8_base_device::op_call(uint16_t op)
 
 void avr8_base_device::op_ret(uint16_t op)
 {
-	m_pc = pop() << 8;
-	m_pc |= pop();
-	m_pc = (m_pc << 1) - 2;
+	m_pc = (pop_pc() << 1) - 2;
 }
 
 void avr8_base_device::op_reti(uint16_t op)
 {
-	m_pc = pop() << 8;
-	m_pc |= pop();
-	m_pc = (m_pc << 1) - 2;
+	m_pc = (pop_pc() << 1) - 2;
 	m_r[SREG] |= SREG_MASK_I;
 }
 
@@ -1215,8 +1210,7 @@ void avr8_base_device::op_spmzi(uint16_t op)
 
 void avr8_base_device::op_icall(uint16_t op)
 {
-	push(((m_pc >> 1) + 1) & 0x00ff);
-	push((((m_pc >> 1) + 1) >> 8) & 0x00ff);
+	push_pc((m_pc >> 1) + 1);
 	m_pc = (ZREG << 1) - 2;
 }
 
@@ -1333,8 +1327,7 @@ void avr8_base_device::op_rjmp(uint16_t op)
 void avr8_base_device::op_rcall(uint16_t op)
 {
 	const int32_t offs = (int32_t)((op & 0x0800) ? ((op & 0x0fff) | 0xfffff000) : (op & 0x0fff)) << 1;
-	push(((m_pc >> 1) + 1) & 0x00ff);
-	push((((m_pc >> 1) + 1) >> 8) & 0x00ff);
+	push_pc((m_pc >> 1) + 1);
 	m_pc += offs;
 }
 

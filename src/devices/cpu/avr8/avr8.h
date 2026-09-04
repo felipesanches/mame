@@ -635,6 +635,7 @@ protected:
 	// internal CPU state
 	uint32_t m_addr_mask;
 	bool m_interrupt_pending;
+	uint8_t m_pc_bytes;
 
 	// other internal states
 	int m_icount;
@@ -649,6 +650,8 @@ protected:
 
 	// interrupts
 	void set_irq_line(uint16_t vector, int state);
+	inline void push_pc(uint32_t word_addr);
+	inline uint32_t pop_pc();
 
 	// ops
 	void populate_ops();
