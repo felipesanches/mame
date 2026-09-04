@@ -1931,12 +1931,12 @@ void avr8_device<NumTimers>::update_timer_waveform_gen_mode(uint8_t t, uint8_t m
 		break;
 	}
 
-	static const int32_t s_top_values_02[8] =
+	const int32_t s_top_values_02[8] =
 	{
 		0xff, 0xff, oc_val, 0xff, -1, oc_val, -1, oc_val
 	}; //table 20-8
 
-	static const int32_t s_top_values_1345[16] =
+	const int32_t s_top_values_1345[16] =
 	{
 		0xffff, 0x00ff, 0x01ff, 0x03ff,
 		oc_val, 0x00ff, 0x01ff, 0x03ff,
