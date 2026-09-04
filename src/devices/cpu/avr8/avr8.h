@@ -578,6 +578,15 @@ protected:
 		ATMEGA2560_INT_USART3_TX
 	};
 
+	enum : uint8_t
+	{
+		PORF    = (1 << 0),
+		EXTRF   = (1 << 1),
+		BORF    = (1 << 2),
+		WDRF    = (1 << 3),
+		JTRF    = (1 << 4)
+	};
+
 	// lock bit masks
 	enum : uint8_t
 	{
@@ -698,6 +707,7 @@ protected:
 	uint32_t m_int_pending;
 	uint8_t m_int_inhibit;
 	uint8_t m_pc_bytes;
+	bool m_powered_up;
 
 	// other internal states
 	int m_icount;
