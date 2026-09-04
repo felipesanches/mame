@@ -4,13 +4,13 @@
 #include "emu.h"
 
 #include "cpu/avr8/avr8.h"
-#include "mm2_stepper_sound.h"
 #include "mm2_viewport.h"
 
 #include "machine/a4982.h"
 #include "machine/ad5206.h"
 #include "machine/nvram.h"
 #include "machine/rescap.h"
+#include "machine/steppers.h"
 #include "bus/rs232/rs232.h"
 
 #include "speaker.h"
@@ -45,7 +45,7 @@ public:
 		, m_nvram(*this, "nvram")
 		, m_viewport(*this, "viewport")
 		, m_partview(*this, "partview")
-		, m_motors(*this, "motors")
+		, m_motor(*this, "motor%u", 0U)
 		, m_view_controls(*this, "VIEW")
 		, m_mouse(*this, "MOUSE%u", 0U)
 		, m_view_config(*this, "VIEWCFG")
@@ -103,7 +103,7 @@ private:
 	required_device<nvram_device> m_nvram;
 	required_device<mm2_viewport_device> m_viewport;
 	required_device<mm2_viewport_device> m_partview;
-	required_device<mm2_stepper_sound_device> m_motors;
+	required_device_array<stepper_device, AXIS_COUNT> m_motor;
 	required_ioport m_view_controls;
 	required_ioport_array<3> m_mouse;
 	required_ioport m_view_config;
@@ -141,6 +141,15 @@ static constexpr mm2_axis AXES[rambo_state::AXIS_COUNT] = {
 	{  650.0,   0.0, 0.0, -1.0 }
 };
 
+static constexpr double MICROSTEPS = 16.0;
+static constexpr double FULL_STEPS_PER_REV = 200.0;
+static constexpr double MOTOR_CURRENT = 1.0;
+
+static constexpr double mm_per_rev(double steps_per_mm)
+{
+	return FULL_STEPS_PER_REV * MICROSTEPS / steps_per_mm;
+}
+
 static constexpr double POWER_ON_POSE[3] = { 100.0, 100.0, 130.0 };
 
 void rambo_state::rambo_prg_map(address_map &map)
@@ -160,7 +169,7 @@ void rambo_state::step_taken(uint64_t position)
 	const int64_t delta = now - m_last_translator[Axis];
 	m_last_translator[Axis] = now;
 
-	m_motors->step_edge(Axis, m_stepper[Axis]->coil_current(0), m_stepper[Axis]->coil_current(1));
+	m_motor[Axis]->set_coil_currents(m_stepper[Axis]->coil_current(0), m_stepper[Axis]->coil_current(1));
 
 	if (!m_stepper[Axis]->outputs_enabled())
 		return;
@@ -388,9 +397,11 @@ TIMER_CALLBACK_MEMBER(rambo_state::view_tick)
 							 BIT(m_endstops, ES_Y_MIN), BIT(m_endstops, ES_Y_MAX));
 
 	for (int axis = 0; axis < AXIS_COUNT; axis++)
-		m_motors->set_holding(axis, m_stepper[axis]->outputs_enabled(),
-							  m_stepper[axis]->coil_current(0), m_stepper[axis]->coil_current(1),
-							  m_stepper[axis]->current_limit());
+	{
+		m_motor[axis]->set_drive_current(m_stepper[axis]->current_limit());
+		m_motor[axis]->set_holding(m_stepper[axis]->outputs_enabled(),
+								   m_stepper[axis]->coil_current(0), m_stepper[axis]->coil_current(1));
+	}
 }
 
 double rambo_state::thermistor_resistance(int channel, double celsius)
@@ -554,7 +565,41 @@ void rambo_state::rambo(machine_config &config)
 	m_maincpu->adc_in<2>().set([this]() { return thermistor_code(1); });
 
 	SPEAKER(config, "mono").front_center();
-	MM2_STEPPER_SOUND(config, m_motors).add_route(ALL_OUTPUTS, "mono", 1.0);
+
+	for (int axis = 0; axis < AXIS_COUNT; axis++)
+	{
+		STEPPER(config, m_motor[axis]);
+		m_motor[axis]->set_motor_type(stepper_device::MOTOR_NEMA17);
+		m_motor[axis]->set_drive_current(MOTOR_CURRENT);
+		m_motor[axis]->add_route(ALL_OUTPUTS, "mono", 1.0);
+	}
+
+	m_motor[AXIS_X]->set_belt_load(0.50, 16, 2.0);
+	m_motor[AXIS_X]->set_rotor_damping(9.0, 1.60);
+	m_motor[AXIS_X]->set_mode(1, 430.0, 4.0, 0.55);
+	m_motor[AXIS_X]->set_mode(2, 1900.0, 3.0, 0.30);
+	m_motor[AXIS_X]->set_radiation(0.50);
+
+	m_motor[AXIS_Y]->set_belt_load(1.20, 16, 2.0);
+	m_motor[AXIS_Y]->set_rotor_damping(9.0, 1.80);
+	m_motor[AXIS_Y]->set_mode(1, 300.0, 4.0, 0.60);
+	m_motor[AXIS_Y]->set_mode(2, 1500.0, 3.0, 0.28);
+	m_motor[AXIS_Y]->set_radiation(0.50);
+
+	m_motor[AXIS_Z]->set_screw_load(4.00, 1.25, 2);
+	m_motor[AXIS_Z]->set_rotor_damping(8.0, 1.30);
+	m_motor[AXIS_Z]->set_mode(1, 283.4, 8.0, 1.30);
+	m_motor[AXIS_Z]->set_mode(2, 2300.0, 3.0, 0.35);
+	m_motor[AXIS_Z]->set_radiation(0.55);
+
+	for (int axis = AXIS_E0; axis <= AXIS_E1; axis++)
+	{
+		m_motor[axis]->set_linear_load(0.03, mm_per_rev(AXES[axis].steps_per_mm));
+		m_motor[axis]->set_rotor_damping(7.0, 1.10);
+		m_motor[axis]->set_mode(1, 800.0, 4.0, 0.40);
+		m_motor[axis]->set_mode(2, 2600.0, 3.0, 0.30);
+		m_motor[axis]->set_radiation(0.45);
+	}
 
 	MM2_VIEWPORT(config, m_viewport);
 	m_viewport->set_mesh_region("meshes");
