@@ -76,7 +76,14 @@ void pseudo_terminal_device::device_start()
 {
 	m_timer_poll = timer_alloc(FUNC(pseudo_terminal_device::update_queue), this);
 
-	open();
+	if (open())
+	{
+		osd_printf_info("%s: pseudo terminal ready at %s\n", tag(), slave_name());
+	}
+	else
+	{
+		osd_printf_error("%s: failed to allocate a pseudo terminal\n", tag());
+	}
 }
 
 void pseudo_terminal_device::device_stop()
