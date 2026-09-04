@@ -25,6 +25,7 @@
 #include "machine/timer.h"
 #include "sound/msm5205.h"
 #include "sound/ymopl.h"
+#include "screen.h"
 #include "speaker.h"
 
 #include "wackygtr.lh"

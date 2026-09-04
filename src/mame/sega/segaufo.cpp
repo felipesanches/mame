@@ -62,6 +62,7 @@ TODO:
 #include "sound/upd7759.h"
 #include "sound/ymopn.h"
 
+#include "screen.h"
 #include "speaker.h"
 
 #include <iomanip>
@@ -1028,6 +1029,7 @@ void ufo_state::newufo(machine_config &config)
 	scene.set_refresh_hz(20);
 	scene.set_size(400, 300);
 	scene.set_visarea_full();
+	scene.set_camera(2);
 
 	SPEAKER(config, "mono").front_center();
 
