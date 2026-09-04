@@ -787,7 +787,7 @@ avr8_base_device::avr8_base_device(const machine_config &mconfig, const char *ta
 	, m_r(*this, "regs")
 	, m_pc(0)
 	, m_addr_mask((addr_mask << 1) | 1)
-	, m_interrupt_pending(false)
+	, m_int_pending(0)
 	, m_pc_bytes((addr_mask > 0xffff) ? 3 : 2)
 {
 }
@@ -1063,7 +1063,7 @@ void avr8_base_device::device_start()
 
 	// Misc.
 	save_item(NAME(m_addr_mask));
-	save_item(NAME(m_interrupt_pending));
+	save_item(NAME(m_int_pending));
 	save_item(NAME(m_opcycles));
 
 	// set our instruction counter
@@ -1164,7 +1164,7 @@ void avr8_base_device::device_reset()
 		m_r[i] = 0;
 	}
 
-	m_interrupt_pending = false;
+	m_int_pending = 0;
 }
 
 template <int NumTimers>
@@ -1289,22 +1289,39 @@ inline uint32_t avr8_base_device::pop_pc()
 //  IRQ HANDLING
 //**************************************************************************
 
-void avr8_base_device::set_irq_line(uint16_t vector, int state)
+void avr8_base_device::set_int_pending(int source, bool state)
 {
 	if (state)
+		m_int_pending |= 1U << source;
+	else
+		m_int_pending &= ~(1U << source);
+}
+
+void avr8_base_device::take_interrupt()
+{
+	const interrupt_condition *const table = int_conditions();
+
+	int best = -1;
+	for (int source = 0; source < INTIDX_COUNT; source++)
 	{
-		if (BIT(m_r[SREG], SREG_I))
-		{
-			m_r[SREG] &= ~SREG_MASK_I;
-			push((m_pc >> 1) & 0x00ff);
-			push((m_pc >> 9) & 0x00ff);
-			m_pc = vector << 1;
-		}
-		else
-		{
-			m_interrupt_pending = true;
-		}
+		if (!BIT(m_int_pending, source))
+			continue;
+		if (best < 0 || table[source].m_intindex < table[best].m_intindex)
+			best = source;
 	}
+	if (best < 0)
+		return;
+
+	const interrupt_condition &condition = table[best];
+
+	m_r[condition.m_regindex] &= ~condition.m_regmask;
+	m_int_pending &= ~(1U << best);
+
+	m_r[SREG] &= ~SREG_MASK_I;
+	push_pc(m_pc >> 1);
+	m_pc = (condition.m_intindex * int_vector_scale()) << 1;
+
+	m_icount -= (m_pc_bytes > 2) ? 5 : 4;
 }
 
 const avr8_base_device::interrupt_condition avr8_base_device::s_int_conditions[avr8_base_device::INTIDX_COUNT] =
@@ -1324,51 +1341,12 @@ const avr8_base_device::interrupt_condition avr8_base_device::s_int_conditions[a
 
 void avr8_base_device::update_interrupt(int source)
 {
-	const interrupt_condition &condition = s_int_conditions[source];
+	const interrupt_condition &condition = int_conditions()[source];
 
-	int intstate = 0;
-	if (m_r[condition.m_intreg] & condition.m_intmask)
-		intstate = (m_r[condition.m_regindex] & condition.m_regmask) ? 1 : 0;
+	const bool enabled = (m_r[condition.m_intreg] & condition.m_intmask) != 0;
+	const bool flagged = (m_r[condition.m_regindex] & condition.m_regmask) != 0;
 
-	set_irq_line(condition.m_intindex, intstate);
-
-	if (intstate)
-	{
-		m_r[condition.m_regindex] &= ~condition.m_regmask;
-	}
-}
-
-//TODO: review this!
-void atmega168_device::update_interrupt(int source)
-{
-	const interrupt_condition &condition = s_int_conditions[source];
-
-	int intstate = 0;
-	if (m_r[condition.m_intreg] & condition.m_intmask)
-		intstate = (m_r[condition.m_regindex] & condition.m_regmask) ? 1 : 0;
-
-	set_irq_line(condition.m_intindex << 1, intstate);
-
-	if (intstate)
-	{
-		m_r[condition.m_regindex] &= ~condition.m_regmask;
-	}
-}
-
-void atmega328_device::update_interrupt(int source)
-{
-	const interrupt_condition &condition = s_int_conditions[source];
-
-	int intstate = 0;
-	if (m_r[condition.m_intreg] & condition.m_intmask)
-		intstate = (m_r[condition.m_regindex] & condition.m_regmask) ? 1 : 0;
-
-	set_irq_line(condition.m_intindex << 1, intstate);
-
-	if (intstate)
-	{
-		m_r[condition.m_regindex] &= ~condition.m_regmask;
-	}
+	set_int_pending(source, enabled && flagged);
 }
 
 const avr8_base_device::interrupt_condition avr8_base_device::s_mega644_int_conditions[avr8_base_device::INTIDX_COUNT] =
@@ -1386,57 +1364,6 @@ const avr8_base_device::interrupt_condition avr8_base_device::s_mega644_int_cond
 	{ ATMEGA644_INT_T2OVF,   TIMSK2, TIMSK2_TOIE2_MASK,  TIFR2,   TIFR2_TOV2_MASK }
 };
 
-void atmega644_device::update_interrupt(int source)
-{
-	const interrupt_condition &condition = s_mega644_int_conditions[source];
-
-	int intstate = 0;
-	if (m_r[condition.m_intreg] & condition.m_intmask)
-		intstate = (m_r[condition.m_regindex] & condition.m_regmask) ? 1 : 0;
-
-	set_irq_line(condition.m_intindex << 1, intstate);
-
-	if (intstate)
-	{
-		m_r[condition.m_regindex] &= ~condition.m_regmask;
-	}
-}
-
-//TODO: review this!
-void atmega1280_device::update_interrupt(int source)
-{
-	const interrupt_condition &condition = s_mega644_int_conditions[source];
-
-	int intstate = 0;
-	if (m_r[condition.m_intreg] & condition.m_intmask)
-		intstate = (m_r[condition.m_regindex] & condition.m_regmask) ? 1 : 0;
-
-	if (intstate) logerror("interrupt %d is 1\n", source);
-	set_irq_line(condition.m_intindex << 1, intstate);
-
-	if (intstate)
-	{
-		m_r[condition.m_regindex] &= ~condition.m_regmask;
-	}
-}
-
-//TODO: review this!
-void atmega2560_device::update_interrupt(int source)
-{
-	const interrupt_condition &condition = s_mega644_int_conditions[source];
-
-	int intstate = 0;
-	if (m_r[condition.m_intreg] & condition.m_intmask)
-		intstate = (m_r[condition.m_regindex] & condition.m_regmask) ? 1 : 0;
-
-	if (intstate) logerror("interrupt %d is 1\n", source);
-	set_irq_line(condition.m_intindex << 1, intstate);
-
-	if (intstate)
-	{
-		m_r[condition.m_regindex] &= ~condition.m_regmask;
-	}
-}
 
 
 //**************************************************************************
@@ -3493,6 +3420,9 @@ void avr8_device<NumTimers>::execute_run()
 {
 	while (m_icount > 0)
 	{
+		if (m_int_pending && BIT(m_r[SREG], SREG_I))
+			take_interrupt();
+
 		m_pc &= m_addr_mask;
 		debugger_instruction_hook(m_pc);
 
