@@ -809,6 +809,8 @@ avr8_device<NumTimers>::avr8_device(const machine_config &mconfig, const char *t
 	, m_spi_in(0)
 	, m_spsr_read_with_spif(false)
 	, m_spi_mosi_mask(PORTB_MOSI)
+	, m_spi_out_cb(*this)
+	, m_spi_in_cb(*this, 0)
 {
 	// Fill in default callbacks
 	for (int i = 0; i < 8*4; i++)
@@ -1430,6 +1432,7 @@ void avr8_device<NumTimers>::spi_tick()
 
 	if (m_spi_prescale_countdown < 0)
 	{
+		m_spi_out_cb(m_r[SPDR]);
 		m_r[SPDR] = m_spi_in;
 		m_spi_active = false;
 		m_r[SPSR] |= SPSR_SPIF_MASK;
@@ -2723,6 +2726,7 @@ void avr8_device<NumTimers>::spdr_w(uint8_t data)
 	if (!(m_r[SPCR] & SPCR_SPE_MASK))
 		return;
 
+	m_spi_in = m_spi_in_cb();
 	m_spi_active = true;
 	m_spi_prescale_countdown = 7;
 	m_spi_prescale_count = 0;
