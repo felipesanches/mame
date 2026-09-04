@@ -1,0 +1,418 @@
+<?xml version="1.0"?>
+<!--
+license:CC0-1.0
+authors:Felipe Sanches
+-->
+<mamelayout version="2">
+
+	<element name="view_bg">
+		<rect><color red="0.055" green="0.058" blue="0.070" /></rect>
+	</element>
+
+	<element name="panel_bg">
+		<rect><color red="0.098" green="0.102" blue="0.122" /></rect>
+	</element>
+
+	<element name="frame_part">
+		<rect><color red="0.220" green="0.240" blue="0.280" /></rect>
+	</element>
+
+	<element name="rail">
+		<rect><color red="0.560" green="0.585" blue="0.620" /></rect>
+	</element>
+
+	<element name="envelope">
+		<rect><color red="0.35" green="0.45" blue="0.60" alpha="0.10" /></rect>
+	</element>
+
+	<element name="tick">
+		<rect><color red="0.55" green="0.58" blue="0.62" /></rect>
+	</element>
+
+	<element name="bar_track">
+		<rect><color red="0.155" green="0.160" blue="0.190" /></rect>
+	</element>
+
+	<element name="bar_fill">
+		<rect><color red="1.0" green="1.0" blue="1.0" /></rect>
+	</element>
+
+	<element name="carriage" defstate="0">
+		<rect><bounds x="0" y="0" width="432" height="28" /><color red="0" green="0" blue="0" alpha="0" /></rect>
+		<rect><bounds x="206" y="0" width="20" height="4" /><color red="0.34" green="0.36" blue="0.40" /></rect>
+		<rect><bounds x="208" y="3" width="16" height="17" /><color red="0.90" green="0.55" blue="0.10" /></rect>
+		<rect><bounds x="211" y="6" width="10" height="8" /><color red="0.55" green="0.33" blue="0.06" /></rect>
+		<rect>
+			<bounds x="210" y="20" width="12" height="5" />
+			<color state="0" red="0.62" green="0.63" blue="0.66" />
+			<color state="255" red="1.00" green="0.42" blue="0.10" />
+		</rect>
+		<rect>
+			<bounds x="214" y="25" width="4" height="3" />
+			<color state="0" red="0.78" green="0.79" blue="0.82" />
+			<color state="255" red="1.00" green="0.72" blue="0.30" />
+		</rect>
+	</element>
+
+	<element name="bed_side" defstate="0">
+		<rect>
+			<bounds x="0" y="0" width="200" height="5" />
+			<color red="0.60" green="0.72" blue="0.78" alpha="0.55" />
+		</rect>
+		<rect>
+			<bounds x="0" y="5" width="200" height="7" />
+			<color state="0" red="0.30" green="0.31" blue="0.35" />
+			<color state="255" red="0.95" green="0.25" blue="0.10" />
+		</rect>
+	</element>
+
+	<element name="bed_plan" defstate="0">
+		<rect>
+			<bounds x="0" y="0" width="200" height="200" />
+			<color state="0" red="0.30" green="0.31" blue="0.35" />
+			<color state="255" red="0.95" green="0.25" blue="0.10" />
+		</rect>
+		<rect>
+			<bounds x="26" y="4" width="170" height="192" />
+			<color red="0.60" green="0.72" blue="0.78" alpha="0.30" />
+		</rect>
+		<rect><bounds x="26" y="199" width="170" height="1" /><color red="0.85" green="0.88" blue="0.92" /></rect>
+		<rect><bounds x="26" y="0"   width="1"   height="200" /><color red="0.85" green="0.88" blue="0.92" /></rect>
+		<rect><bounds x="26" y="195" width="9"   height="5" /><color red="0.30" green="0.95" blue="0.45" /></rect>
+		<rect><bounds x="19" y="199" width="6" height="1" /><color red="0.80" green="0.83" blue="0.87" /></rect>
+		<rect><bounds x="19" y="149" width="6" height="1" /><color red="0.80" green="0.83" blue="0.87" /></rect>
+		<rect><bounds x="19" y="99"  width="6" height="1" /><color red="0.80" green="0.83" blue="0.87" /></rect>
+		<rect><bounds x="19" y="49"  width="6" height="1" /><color red="0.80" green="0.83" blue="0.87" /></rect>
+		<rect><bounds x="19" y="0"   width="6" height="1" /><color red="0.80" green="0.83" blue="0.87" /></rect>
+		<text string="0"><bounds x="0" y="187" width="17" height="13" /><color red="0.80" green="0.83" blue="0.87" /></text>
+		<text string="100"><bounds x="0" y="93" width="17" height="13" /><color red="0.80" green="0.83" blue="0.87" /></text>
+		<text string="200"><bounds x="0" y="0" width="17" height="13" /><color red="0.80" green="0.83" blue="0.87" /></text>
+	</element>
+
+	<element name="nozzle_plan" defstate="0">
+		<disk><bounds x="0" y="0" width="12" height="12" /><color red="0.90" green="0.55" blue="0.10" /></disk>
+		<disk><bounds x="4" y="4" width="4" height="4" /><color red="1.00" green="0.92" blue="0.80" /></disk>
+	</element>
+
+	<element name="feed_stripes">
+		<rect><bounds x="0" y="0" width="80" height="22" /><color red="0.14" green="0.15" blue="0.18" /></rect>
+		<rect><bounds x="0"  y="0" width="5" height="22" /><color red="0.35" green="0.80" blue="0.95" /></rect>
+		<rect><bounds x="10" y="0" width="5" height="22" /><color red="0.35" green="0.80" blue="0.95" /></rect>
+		<rect><bounds x="20" y="0" width="5" height="22" /><color red="0.35" green="0.80" blue="0.95" /></rect>
+		<rect><bounds x="30" y="0" width="5" height="22" /><color red="0.35" green="0.80" blue="0.95" /></rect>
+		<rect><bounds x="40" y="0" width="5" height="22" /><color red="0.35" green="0.80" blue="0.95" /></rect>
+		<rect><bounds x="50" y="0" width="5" height="22" /><color red="0.35" green="0.80" blue="0.95" /></rect>
+		<rect><bounds x="60" y="0" width="5" height="22" /><color red="0.35" green="0.80" blue="0.95" /></rect>
+		<rect><bounds x="70" y="0" width="5" height="22" /><color red="0.35" green="0.80" blue="0.95" /></rect>
+	</element>
+
+	<element name="lamp_endstop" defstate="0">
+		<rect state="0"><color red="0.26" green="0.07" blue="0.07" /></rect>
+		<rect state="1"><color red="1.00" green="0.18" blue="0.16" /></rect>
+	</element>
+
+	<element name="lamp_motor" defstate="0">
+		<rect state="0"><color red="0.06" green="0.20" blue="0.09" /></rect>
+		<rect state="1"><color red="0.24" green="1.00" blue="0.36" /></rect>
+	</element>
+
+	<element name="temp_digits" defstate="0">
+		<rect><color red="0.04" green="0.05" blue="0.06" /></rect>
+		<simplecounter digits="4" maxstate="4095" align="0">
+			<bounds x="0.03" y="0.08" width="0.94" height="0.84" />
+			<color red="1.00" green="0.62" blue="0.20" />
+		</simplecounter>
+	</element>
+
+	<element name="duty_digits" defstate="0">
+		<rect><color red="0.04" green="0.05" blue="0.06" /></rect>
+		<simplecounter digits="3" maxstate="255" align="0">
+			<bounds x="0.04" y="0.08" width="0.92" height="0.84" />
+			<color red="0.55" green="0.85" blue="1.00" />
+		</simplecounter>
+	</element>
+
+	<repeat count="5">
+		<param name="n" start="0" increment="50" />
+		<element name="num_~n~">
+			<text string="~n~"><color red="0.62" green="0.65" blue="0.70" /></text>
+		</element>
+	</repeat>
+
+	<element name="txt_title"><text string="METAM&#193;QUINA 2" align="1"><color red="0.90" green="0.92" blue="0.95" /></text></element>
+	<element name="txt_subtitle"><text string="RAMBo 1.1b / ATmega2560 / Repetier" align="1"><color red="0.50" green="0.54" blue="0.60" /></text></element>
+
+	<element name="txt_front"><text string="FRONT ELEVATION - X and Z" align="1"><color red="0.45" green="0.75" blue="1.00" /></text></element>
+	<element name="txt_plan"><text string="PLAN - X and Y" align="1"><color red="0.45" green="0.75" blue="1.00" /></text></element>
+	<element name="txt_state"><text string="MACHINE STATE" align="1"><color red="0.45" green="0.75" blue="1.00" /></text></element>
+
+	<element name="txt_temps"><text string="TEMPERATURES" align="1"><color red="0.45" green="0.75" blue="1.00" /></text></element>
+	<element name="txt_temps_note"><text string="counters read tenths of &#176;C   0250 = 25.0 &#176;C" align="1"><color red="0.50" green="0.54" blue="0.60" /></text></element>
+	<element name="txt_duty"><text string="PWM DUTY" align="1"><color red="0.45" green="0.75" blue="1.00" /></text></element>
+	<element name="txt_duty_note"><text string="software PWM at 15.26 Hz, 0 to 255" align="1"><color red="0.50" green="0.54" blue="0.60" /></text></element>
+	<element name="txt_endstops"><text string="ENDSTOPS" align="1"><color red="0.45" green="0.75" blue="1.00" /></text></element>
+	<element name="txt_endstops_note"><text string="lit = triggered   X and Y home to MIN, Z homes to MAX" align="1"><color red="0.50" green="0.54" blue="0.60" /></text></element>
+	<element name="txt_motors"><text string="STEPPER ENABLE" align="1"><color red="0.45" green="0.75" blue="1.00" /></text></element>
+	<element name="txt_feed"><text string="EXTRUDER FEED" align="1"><color red="0.45" green="0.75" blue="1.00" /></text></element>
+	<element name="txt_feed_note"><text string="one stripe pitch per 512 &#181;m of filament" align="1"><color red="0.50" green="0.54" blue="0.60" /></text></element>
+
+	<element name="txt_hotend"><text string="HOT END" align="1"><color red="0.82" green="0.85" blue="0.90" /></text></element>
+	<element name="txt_bed"><text string="BED" align="1"><color red="0.82" green="0.85" blue="0.90" /></text></element>
+	<element name="txt_fan"><text string="FAN" align="1"><color red="0.82" green="0.85" blue="0.90" /></text></element>
+	<element name="txt_unit_temp"><text string="&#215;0.1 &#176;C" align="1"><color red="0.50" green="0.54" blue="0.60" /></text></element>
+
+	<element name="txt_xmin"><text string="X MIN" align="1"><color red="0.82" green="0.85" blue="0.90" /></text></element>
+	<element name="txt_xmax"><text string="X MAX" align="1"><color red="0.82" green="0.85" blue="0.90" /></text></element>
+	<element name="txt_ymin"><text string="Y MIN" align="1"><color red="0.82" green="0.85" blue="0.90" /></text></element>
+	<element name="txt_ymax"><text string="Y MAX" align="1"><color red="0.82" green="0.85" blue="0.90" /></text></element>
+	<element name="txt_zmin"><text string="Z MIN" align="1"><color red="0.82" green="0.85" blue="0.90" /></text></element>
+	<element name="txt_zmax"><text string="Z MAX" align="1"><color red="0.82" green="0.85" blue="0.90" /></text></element>
+
+	<element name="txt_mx"><text string="X" align="1"><color red="0.82" green="0.85" blue="0.90" /></text></element>
+	<element name="txt_my"><text string="Y" align="1"><color red="0.82" green="0.85" blue="0.90" /></text></element>
+	<element name="txt_mz"><text string="Z" align="1"><color red="0.82" green="0.85" blue="0.90" /></text></element>
+	<element name="txt_me0"><text string="E0" align="1"><color red="0.82" green="0.85" blue="0.90" /></text></element>
+
+	<element name="txt_leg1"><text string="travel: X 0 to 200 mm, Y 0 to 200 mm, Z 0 to 150 mm" align="1"><color red="0.62" green="0.65" blue="0.70" /></text></element>
+	<element name="txt_leg2"><text string="100 steps/mm on X and Y, 2560 on Z, 650 on the extruder" align="1"><color red="0.62" green="0.65" blue="0.70" /></text></element>
+	<element name="txt_leg3"><text string="X and Y home to MIN, Z homes to MAX, so G28 leaves the" align="1"><color red="0.62" green="0.65" blue="0.70" /></text></element>
+	<element name="txt_leg4"><text string="nozzle 150 mm above the glass" align="1"><color red="0.62" green="0.65" blue="0.70" /></text></element>
+
+	<element name="txt_zmm"><text string="Z mm" align="1"><color red="0.62" green="0.65" blue="0.70" /></text></element>
+	<element name="txt_xmm"><text string="X mm" align="1"><color red="0.62" green="0.65" blue="0.70" /></text></element>
+	<element name="txt_ymm"><text string="Y mm on the bed" align="1"><color red="0.62" green="0.65" blue="0.70" /></text></element>
+
+	<group name="front_elevation">
+		<bounds x="0" y="0" width="300" height="280" />
+
+		<element ref="panel_bg"><bounds x="0" y="0" width="300" height="280" /></element>
+
+		<element ref="frame_part"><bounds x="40" y="0" width="260" height="10" /></element>
+		<element ref="frame_part"><bounds x="40" y="0" width="14" height="250" /></element>
+		<element ref="frame_part"><bounds x="286" y="0" width="14" height="250" /></element>
+		<element ref="frame_part"><bounds x="40" y="236" width="260" height="14" /></element>
+		<element ref="frame_part"><bounds x="54" y="222" width="232" height="8" /></element>
+
+		<element ref="bed_side" name="duty_1"><bounds x="70" y="210" width="200" height="12" /></element>
+
+		<element ref="lamp_endstop" name="endstop_4"><bounds x="42" y="205" width="10" height="10" /></element>
+		<element ref="lamp_endstop" name="endstop_5"><bounds x="42" y="55" width="10" height="10" /></element>
+
+		<element ref="rail">
+			<animate name="axis_2_um" />
+			<bounds state="0" x="54" y="168" width="232" height="12" />
+			<bounds state="150000" x="54" y="18" width="232" height="12" />
+		</element>
+
+		<element ref="carriage" name="duty_0">
+			<animate name="axis_2_um" />
+			<bounds state="0" x="62" y="182" width="216" height="28" />
+			<bounds state="150000" x="62" y="32" width="216" height="28" />
+			<xscroll name="axis_0_um" size="0.5" min="208000" max="-8000" />
+		</element>
+
+		<element ref="txt_zmm"><bounds x="2" y="20" width="34" height="12" /></element>
+		<element ref="tick"><bounds x="30" y="209" width="8" height="2" /></element>
+		<element ref="tick"><bounds x="30" y="159" width="8" height="2" /></element>
+		<element ref="tick"><bounds x="30" y="109" width="8" height="2" /></element>
+		<element ref="tick"><bounds x="30" y="59" width="8" height="2" /></element>
+		<element ref="num_0"><bounds x="2" y="204" width="26" height="12" /></element>
+		<element ref="num_50"><bounds x="2" y="154" width="26" height="12" /></element>
+		<element ref="num_100"><bounds x="2" y="104" width="26" height="12" /></element>
+		<element ref="num_150"><bounds x="2" y="54" width="26" height="12" /></element>
+
+		<element ref="txt_xmm"><bounds x="2" y="258" width="34" height="12" /></element>
+		<element ref="tick"><bounds x="69" y="252" width="2" height="6" /></element>
+		<element ref="tick"><bounds x="119" y="252" width="2" height="6" /></element>
+		<element ref="tick"><bounds x="169" y="252" width="2" height="6" /></element>
+		<element ref="tick"><bounds x="219" y="252" width="2" height="6" /></element>
+		<element ref="tick"><bounds x="269" y="252" width="2" height="6" /></element>
+		<element ref="num_0"><bounds x="56" y="260" width="28" height="12" /></element>
+		<element ref="num_50"><bounds x="106" y="260" width="28" height="12" /></element>
+		<element ref="num_100"><bounds x="156" y="260" width="28" height="12" /></element>
+		<element ref="num_150"><bounds x="206" y="260" width="28" height="12" /></element>
+		<element ref="num_200"><bounds x="256" y="260" width="28" height="12" /></element>
+	</group>
+
+	<group name="plan_view">
+		<bounds x="0" y="0" width="300" height="460" />
+
+		<element ref="panel_bg"><bounds x="0" y="0" width="300" height="460" /></element>
+
+		<element ref="envelope"><bounds x="70" y="30" width="200" height="400" /></element>
+
+		<element ref="frame_part"><bounds x="40" y="150" width="14" height="160" /></element>
+		<element ref="frame_part"><bounds x="286" y="150" width="14" height="160" /></element>
+
+		<element ref="bed_plan" name="duty_1">
+			<animate name="axis_1_um" />
+			<bounds state="0" x="70" y="30" width="200" height="200" />
+			<bounds state="200000" x="70" y="230" width="200" height="200" />
+		</element>
+
+		<element ref="rail"><bounds x="54" y="224" width="232" height="12" /></element>
+
+		<element ref="lamp_endstop" name="endstop_0"><bounds x="56" y="225" width="10" height="10" /></element>
+		<element ref="lamp_endstop" name="endstop_1"><bounds x="274" y="225" width="10" height="10" /></element>
+
+		<element ref="lamp_endstop" name="endstop_2"><bounds x="42" y="158" width="10" height="10" /></element>
+		<element ref="lamp_endstop" name="endstop_3"><bounds x="42" y="292" width="10" height="10" /></element>
+
+		<element ref="nozzle_plan">
+			<animate name="axis_0_um" />
+			<bounds state="0" x="64" y="224" width="12" height="12" />
+			<bounds state="200000" x="264" y="224" width="12" height="12" />
+		</element>
+
+		<element ref="txt_ymm"><bounds x="4" y="436" width="120" height="12" /></element>
+	</group>
+
+	<group name="status_panel">
+		<bounds x="-10" y="-10" width="440" height="420" />
+
+		<element ref="panel_bg"><bounds x="-10" y="-10" width="440" height="420" /></element>
+
+		<element ref="txt_temps"><bounds x="0" y="0" width="200" height="14" /></element>
+		<element ref="txt_temps_note"><bounds x="0" y="18" width="300" height="11" /></element>
+
+		<element ref="txt_hotend"><bounds x="0" y="40" width="72" height="13" /></element>
+		<element ref="temp_digits" name="temp_0_c"><bounds x="76" y="36" width="58" height="20" /></element>
+		<element ref="txt_unit_temp"><bounds x="140" y="41" width="50" height="11" /></element>
+		<element ref="bar_track"><bounds x="196" y="40" width="220" height="14" /></element>
+		<element ref="bar_fill">
+			<animate name="temp_0_c" />
+			<bounds state="0" x="196" y="40" width="1" height="14" />
+			<bounds state="2500" x="196" y="40" width="220" height="14" />
+			<color state="0" red="0.30" green="0.55" blue="0.95" />
+			<color state="400" red="0.30" green="0.85" blue="0.40" />
+			<color state="1200" red="1.00" green="0.75" blue="0.15" />
+			<color state="2500" red="1.00" green="0.25" blue="0.15" />
+		</element>
+
+		<element ref="txt_bed"><bounds x="0" y="64" width="72" height="13" /></element>
+		<element ref="temp_digits" name="temp_1_c"><bounds x="76" y="60" width="58" height="20" /></element>
+		<element ref="txt_unit_temp"><bounds x="140" y="65" width="50" height="11" /></element>
+		<element ref="bar_track"><bounds x="196" y="64" width="220" height="14" /></element>
+		<element ref="bar_fill">
+			<animate name="temp_1_c" />
+			<bounds state="0" x="196" y="64" width="1" height="14" />
+			<bounds state="1500" x="196" y="64" width="220" height="14" />
+			<color state="0" red="0.30" green="0.55" blue="0.95" />
+			<color state="400" red="0.30" green="0.85" blue="0.40" />
+			<color state="800" red="1.00" green="0.75" blue="0.15" />
+			<color state="1500" red="1.00" green="0.25" blue="0.15" />
+		</element>
+
+		<element ref="txt_duty"><bounds x="0" y="94" width="200" height="14" /></element>
+		<element ref="txt_duty_note"><bounds x="0" y="112" width="300" height="11" /></element>
+
+		<element ref="txt_hotend"><bounds x="0" y="134" width="72" height="13" /></element>
+		<element ref="duty_digits" name="duty_0"><bounds x="76" y="130" width="46" height="20" /></element>
+		<element ref="bar_track"><bounds x="196" y="134" width="220" height="14" /></element>
+		<element ref="bar_fill">
+			<animate name="duty_0" />
+			<bounds state="0" x="196" y="134" width="1" height="14" />
+			<bounds state="255" x="196" y="134" width="220" height="14" />
+			<color state="0" red="0.55" green="0.30" blue="0.12" />
+			<color state="255" red="1.00" green="0.45" blue="0.12" />
+		</element>
+
+		<element ref="txt_bed"><bounds x="0" y="158" width="72" height="13" /></element>
+		<element ref="duty_digits" name="duty_1"><bounds x="76" y="154" width="46" height="20" /></element>
+		<element ref="bar_track"><bounds x="196" y="158" width="220" height="14" /></element>
+		<element ref="bar_fill">
+			<animate name="duty_1" />
+			<bounds state="0" x="196" y="158" width="1" height="14" />
+			<bounds state="255" x="196" y="158" width="220" height="14" />
+			<color state="0" red="0.55" green="0.20" blue="0.14" />
+			<color state="255" red="1.00" green="0.28" blue="0.16" />
+		</element>
+
+		<element ref="txt_fan"><bounds x="0" y="182" width="72" height="13" /></element>
+		<element ref="duty_digits" name="duty_2"><bounds x="76" y="178" width="46" height="20" /></element>
+		<element ref="bar_track"><bounds x="196" y="182" width="220" height="14" /></element>
+		<element ref="bar_fill">
+			<animate name="duty_2" />
+			<bounds state="0" x="196" y="182" width="1" height="14" />
+			<bounds state="255" x="196" y="182" width="220" height="14" />
+			<color state="0" red="0.22" green="0.45" blue="0.60" />
+			<color state="255" red="0.40" green="0.85" blue="1.00" />
+		</element>
+
+		<element ref="txt_endstops"><bounds x="0" y="212" width="200" height="14" /></element>
+		<element ref="txt_endstops_note"><bounds x="0" y="230" width="330" height="11" /></element>
+
+		<element ref="lamp_endstop" name="endstop_0"><bounds x="0" y="250" width="16" height="16" /></element>
+		<element ref="txt_xmin"><bounds x="22" y="252" width="60" height="12" /></element>
+		<element ref="lamp_endstop" name="endstop_2"><bounds x="140" y="250" width="16" height="16" /></element>
+		<element ref="txt_ymin"><bounds x="162" y="252" width="60" height="12" /></element>
+		<element ref="lamp_endstop" name="endstop_4"><bounds x="280" y="250" width="16" height="16" /></element>
+		<element ref="txt_zmin"><bounds x="302" y="252" width="60" height="12" /></element>
+
+		<element ref="lamp_endstop" name="endstop_1"><bounds x="0" y="274" width="16" height="16" /></element>
+		<element ref="txt_xmax"><bounds x="22" y="276" width="60" height="12" /></element>
+		<element ref="lamp_endstop" name="endstop_3"><bounds x="140" y="274" width="16" height="16" /></element>
+		<element ref="txt_ymax"><bounds x="162" y="276" width="60" height="12" /></element>
+		<element ref="lamp_endstop" name="endstop_5"><bounds x="280" y="274" width="16" height="16" /></element>
+		<element ref="txt_zmax"><bounds x="302" y="276" width="60" height="12" /></element>
+
+		<element ref="txt_motors"><bounds x="0" y="304" width="200" height="14" /></element>
+		<element ref="lamp_motor" name="motor_0_on"><bounds x="0" y="324" width="16" height="16" /></element>
+		<element ref="txt_mx"><bounds x="22" y="326" width="60" height="12" /></element>
+		<element ref="lamp_motor" name="motor_1_on"><bounds x="105" y="324" width="16" height="16" /></element>
+		<element ref="txt_my"><bounds x="127" y="326" width="60" height="12" /></element>
+		<element ref="lamp_motor" name="motor_2_on"><bounds x="210" y="324" width="16" height="16" /></element>
+		<element ref="txt_mz"><bounds x="232" y="326" width="60" height="12" /></element>
+		<element ref="lamp_motor" name="motor_3_on"><bounds x="315" y="324" width="16" height="16" /></element>
+		<element ref="txt_me0"><bounds x="337" y="326" width="60" height="12" /></element>
+
+		<element ref="txt_feed"><bounds x="0" y="352" width="200" height="14" /></element>
+		<element ref="bar_track"><bounds x="0" y="370" width="416" height="18" /></element>
+		<element ref="feed_stripes">
+			<bounds x="2" y="372" width="412" height="14" />
+			<xscroll name="axis_3_um" mask="0xfff" wrap="yes" min="4095" max="0" />
+		</element>
+		<element ref="txt_feed_note"><bounds x="0" y="391" width="300" height="11" /></element>
+	</group>
+
+	<view name="Machine">
+		<bounds x="0" y="0" width="1058" height="504" />
+		<element ref="view_bg"><bounds x="0" y="0" width="1058" height="504" /></element>
+
+		<element ref="txt_title"><bounds x="16" y="4" width="220" height="16" /></element>
+		<element ref="txt_subtitle"><bounds x="240" y="7" width="320" height="12" /></element>
+
+		<element ref="txt_front"><bounds x="16" y="27" width="240" height="13" /></element>
+		<element ref="txt_plan"><bounds x="362" y="27" width="200" height="13" /></element>
+		<element ref="txt_state"><bounds x="580" y="27" width="240" height="13" /></element>
+
+		<group ref="front_elevation"><bounds x="16" y="46" width="330" height="308" /></group>
+		<group ref="plan_view"><bounds x="362" y="46" width="200.9" height="308" /></group>
+		<group ref="status_panel"><bounds x="586" y="46" width="462" height="441" /></group>
+
+		<element ref="txt_leg1"><bounds x="16" y="374" width="330" height="12" /></element>
+		<element ref="txt_leg2"><bounds x="16" y="392" width="330" height="12" /></element>
+		<element ref="txt_leg3"><bounds x="16" y="410" width="330" height="12" /></element>
+		<element ref="txt_leg4"><bounds x="16" y="428" width="330" height="12" /></element>
+	</view>
+
+	<view name="Mechanics">
+		<bounds x="0" y="0" width="820" height="506" />
+		<element ref="view_bg"><bounds x="0" y="0" width="820" height="506" /></element>
+
+		<element ref="txt_front"><bounds x="16" y="20" width="300" height="16" /></element>
+		<element ref="txt_plan"><bounds x="512" y="20" width="240" height="16" /></element>
+
+		<group ref="front_elevation"><bounds x="16" y="42" width="480" height="448" /></group>
+		<group ref="plan_view"><bounds x="512" y="42" width="292.2" height="448" /></group>
+	</view>
+
+	<view name="Machine State">
+		<bounds x="0" y="0" width="502" height="487" />
+		<element ref="view_bg"><bounds x="0" y="0" width="502" height="487" /></element>
+
+		<element ref="txt_state"><bounds x="20" y="8" width="240" height="13" /></element>
+		<group ref="status_panel"><bounds x="20" y="26" width="462" height="441" /></group>
+	</view>
+
+</mamelayout>
