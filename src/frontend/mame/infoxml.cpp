@@ -218,7 +218,7 @@ constexpr char f_dtd_string[] =
 		"\t\t\t<!ATTLIST chip clock CDATA #IMPLIED>\n"
 		"\t\t<!ELEMENT display EMPTY>\n"
 		"\t\t\t<!ATTLIST display tag CDATA #IMPLIED>\n"
-		"\t\t\t<!ATTLIST display type (raster|vector|lcd|svg|unknown) #REQUIRED>\n"
+		"\t\t\t<!ATTLIST display type (raster|vector|lcd|svg|3d|unknown) #REQUIRED>\n"
 		"\t\t\t<!ATTLIST display rotate (0|90|180|270) #IMPLIED>\n"
 		"\t\t\t<!ATTLIST display flipx (yes|no) \"no\">\n"
 		"\t\t\t<!ATTLIST display width CDATA #IMPLIED>\n"
@@ -1299,6 +1299,7 @@ void output_display(std::ostream &out, device_t &device, machine_flags::type con
 				case SCREEN_TYPE_VECTOR:    out << " type=\"vector\"";  break;
 				case SCREEN_TYPE_LCD:       out << " type=\"lcd\"";     break;
 				case SCREEN_TYPE_SVG:       out << " type=\"svg\"";     break;
+				case SCREEN_TYPE_3D:        out << " type=\"3d\"";      break;
 				default:                    out << " type=\"unknown\""; break;
 			}
 
