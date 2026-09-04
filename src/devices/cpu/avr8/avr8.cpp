@@ -1438,8 +1438,24 @@ void avr8_device<NumTimers>::spi_tick()
 template <int NumTimers>
 void avr8_device<NumTimers>::timer0_tick_norm()
 {
-	LOGMASKED(LOG_TIMER0, "%s: WGM02_NORMAL: Unimplemented timer#0 waveform generation mode\n", machine().describe_context());
 	m_r[TCNT0]++;
+
+	if (m_r[TCNT0] == 0)
+	{
+		m_r[TIFR0] |= TIFR0_TOV0_MASK;
+		update_interrupt(INTIDX_TOV0);
+	}
+	if (m_r[TCNT0] == m_r[OCR0A])
+	{
+		m_r[TIFR0] |= TIFR0_OCF0A_MASK;
+		update_interrupt(INTIDX_OCF0A);
+	}
+	if (m_r[TCNT0] == m_r[OCR0B])
+	{
+		m_r[TIFR0] |= TIFR0_OCF0B_MASK;
+		update_interrupt(INTIDX_OCF0B);
+	}
+
 	m_timer_prescale_count[0] -= m_timer_prescale[0];
 }
 
