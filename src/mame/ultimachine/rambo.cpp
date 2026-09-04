@@ -8,7 +8,10 @@
 #include "machine/a4982.h"
 #include "machine/ad5206.h"
 #include "machine/nvram.h"
+#include "machine/rescap.h"
 #include "bus/rs232/rs232.h"
+
+#include <cmath>
 
 
 namespace {
@@ -36,6 +39,8 @@ public:
 		, m_nvram(*this, "nvram")
 		, m_axis_out(*this, "axis_%u_um")
 		, m_endstop_out(*this, "endstop_%u")
+		, m_temp_out(*this, "temp_%u_c")
+		, m_duty_out(*this, "duty_%u")
 		, m_motor_out(*this, "motor_%u_on")
 	{
 	}
@@ -45,6 +50,8 @@ public:
 	enum : int { AXIS_X, AXIS_Y, AXIS_Z, AXIS_E0, AXIS_E1, AXIS_COUNT };
 
 	enum : int { ES_X_MIN, ES_X_MAX, ES_Y_MIN, ES_Y_MAX, ES_Z_MIN, ES_Z_MAX, ES_COUNT };
+
+	enum : int { PWM_HOTEND, PWM_BED, PWM_FAN, PWM_COUNT };
 
 private:
 	virtual void machine_start() override ATTR_COLD;
@@ -59,13 +66,20 @@ private:
 	void port_a_w(uint8_t data);
 	void port_c_w(uint8_t data);
 	void port_d_w(uint8_t data);
+	void port_e_w(uint8_t data);
 	void port_g_w(uint8_t data);
+	void port_h_w(uint8_t data);
 	void port_k_w(uint8_t data);
 	void port_l_w(uint8_t data);
 
 	template <int Axis> void step_taken(uint64_t position);
 	void update_endstops();
 	double axis_mm(int axis) const;
+
+	void pwm_level(int channel, int state);
+	TIMER_CALLBACK_MEMBER(thermal_tick);
+	static double thermistor_resistance(int channel, double celsius);
+	uint16_t thermistor_code(int channel);
 
 	required_device<atmega2560_device> m_maincpu;
 	required_device<rs232_port_device> m_rs232;
@@ -76,11 +90,22 @@ private:
 
 	output_finder<AXIS_COUNT> m_axis_out;
 	output_finder<ES_COUNT> m_endstop_out;
+	output_finder<2> m_temp_out;
+	output_finder<PWM_COUNT> m_duty_out;
 	output_finder<AXIS_COUNT> m_motor_out;
 
 	int64_t m_position[AXIS_COUNT]{};
 	int64_t m_last_translator[AXIS_COUNT]{};
 	uint8_t m_endstops = 0;
+
+	uint8_t m_pwm_state[PWM_COUNT]{};
+	attotime m_pwm_changed[PWM_COUNT];
+	attotime m_pwm_high[PWM_COUNT];
+
+	double m_temperature[2]{};
+	double m_adc_residue[2]{};
+
+	emu_timer *m_thermal_timer = nullptr;
 };
 
 static constexpr mm2_axis AXES[rambo_state::AXIS_COUNT] = {
@@ -196,11 +221,22 @@ void rambo_state::port_d_w(uint8_t data)
 	m_digipot->cs_w(BIT(data, 7));
 }
 
+void rambo_state::port_e_w(uint8_t data)
+{
+	pwm_level(PWM_BED, BIT(data, 5));
+}
+
 void rambo_state::port_g_w(uint8_t data)
 {
 	m_stepper[AXIS_X]->ms2_w(BIT(data, 0));
 	m_stepper[AXIS_X]->ms1_w(BIT(data, 1));
 	m_stepper[AXIS_Y]->ms2_w(BIT(data, 2));
+}
+
+void rambo_state::port_h_w(uint8_t data)
+{
+	pwm_level(PWM_FAN, BIT(data, 5));
+	pwm_level(PWM_HOTEND, BIT(data, 6));
 }
 
 void rambo_state::port_k_w(uint8_t data)
@@ -223,6 +259,91 @@ void rambo_state::port_l_w(uint8_t data)
 	m_stepper[AXIS_E1]->dir_w(BIT(data, 7));
 }
 
+void rambo_state::pwm_level(int channel, int state)
+{
+	if (state == m_pwm_state[channel])
+		return;
+
+	const attotime now = machine().time();
+	if (m_pwm_state[channel])
+		m_pwm_high[channel] += now - m_pwm_changed[channel];
+
+	m_pwm_state[channel] = state;
+	m_pwm_changed[channel] = now;
+}
+
+TIMER_CALLBACK_MEMBER(rambo_state::thermal_tick)
+{
+	static constexpr double AMBIENT = 25.0;
+	static constexpr double INTERVAL = 0.1;   // seconds
+
+	static constexpr double POWER[2]    = {  28.8, 200.0 };   // W
+	static constexpr double MASS[2]     = {   5.2, 400.0 };   // J/K
+	static constexpr double LOSS[2]     = { 0.045,   1.9 };   // W/K
+
+	const attotime now = machine().time();
+	for (int channel = 0; channel < PWM_COUNT; channel++)
+	{
+		if (m_pwm_state[channel])
+		{
+			m_pwm_high[channel] += now - m_pwm_changed[channel];
+			m_pwm_changed[channel] = now;
+		}
+
+		double duty = m_pwm_high[channel].as_double() / INTERVAL;
+		duty = std::clamp(duty, 0.0, 1.0);
+		m_pwm_high[channel] = attotime::zero;
+		m_duty_out[channel] = int32_t(duty * 255.0 + 0.5);
+
+		if (channel == PWM_FAN)
+		{
+			continue;
+		}
+
+		const double dT = (POWER[channel] * duty - LOSS[channel] * (m_temperature[channel] - AMBIENT))
+						  * INTERVAL / MASS[channel];
+		m_temperature[channel] += dT;
+		m_temp_out[channel] = int32_t(m_temperature[channel] * 10.0 + 0.5);
+	}
+}
+
+double rambo_state::thermistor_resistance(int channel, double celsius)
+{
+	const double kelvin = celsius + 273.15;
+
+	if (channel == 0)
+	{
+		static constexpr double A = 7.1577566465e-04;
+		static constexpr double B = 2.1755533222e-04;
+		static constexpr double C = 8.7241270924e-08;
+
+		const double x = (A - 1.0 / kelvin) / C;
+		const double y = std::sqrt((B / (3.0 * C)) * (B / (3.0 * C)) * (B / (3.0 * C))
+								   + x * x * 0.25);
+		return std::exp(std::cbrt(y - x * 0.5) - std::cbrt(y + x * 0.5));
+	}
+
+	static constexpr double BED_R25 = 15000.0;
+	static constexpr double BED_BETA = 3528.0;
+	return BED_R25 * std::exp(BED_BETA * (1.0 / kelvin - 1.0 / 298.15));
+}
+
+uint16_t rambo_state::thermistor_code(int channel)
+{
+	static constexpr double PULLUP = RES_K(4.7);
+
+	const double celsius = std::clamp(m_temperature[channel], -55.0, 250.0);
+	const double rt = thermistor_resistance(channel, celsius);
+
+	const double exact = 1023.0 * RES_VOLTAGE_DIVIDER(PULLUP, rt);
+
+	const double wanted = std::clamp(exact + m_adc_residue[channel], 0.0, 1023.0);
+	const double rounded = std::floor(wanted + 0.5);
+	m_adc_residue[channel] = std::clamp(wanted - rounded, -1.0, 1.0);
+
+	return uint16_t(rounded);
+}
+
 static DEVICE_INPUT_DEFAULTS_START( host_serial )
 	DEVICE_INPUT_DEFAULTS( "RS232_RXBAUD", 0xff, RS232_BAUD_115200 )
 	DEVICE_INPUT_DEFAULTS( "RS232_TXBAUD", 0xff, RS232_BAUD_115200 )
@@ -235,13 +356,21 @@ void rambo_state::machine_start()
 {
 	m_axis_out.resolve();
 	m_endstop_out.resolve();
+	m_temp_out.resolve();
+	m_duty_out.resolve();
 	m_motor_out.resolve();
 
 	m_nvram->set_base(m_eeprom->base(), m_eeprom->bytes());
 
+	m_thermal_timer = timer_alloc(FUNC(rambo_state::thermal_tick), this);
+
 	save_item(NAME(m_position));
 	save_item(NAME(m_last_translator));
 	save_item(NAME(m_endstops));
+	save_item(NAME(m_pwm_state));
+	save_item(NAME(m_pwm_changed));
+	save_item(NAME(m_pwm_high));
+	save_item(NAME(m_temperature));
 }
 
 void rambo_state::machine_reset()
@@ -257,6 +386,17 @@ void rambo_state::machine_reset()
 
 	m_endstops = 0xff;
 	update_endstops();
+
+	for (int channel = 0; channel < PWM_COUNT; channel++)
+	{
+		m_pwm_state[channel] = 0;
+		m_pwm_changed[channel] = machine().time();
+		m_pwm_high[channel] = attotime::zero;
+	}
+
+	m_temperature[0] = m_temperature[1] = 25.0;
+
+	m_thermal_timer->adjust(attotime::from_msec(100), 0, attotime::from_msec(100));
 }
 
 void rambo_state::rambo(machine_config &config)
@@ -279,7 +419,9 @@ void rambo_state::rambo(machine_config &config)
 	m_maincpu->gpio_out<atmega2560_device::GPIOA>().set(FUNC(rambo_state::port_a_w));
 	m_maincpu->gpio_out<atmega2560_device::GPIOC>().set(FUNC(rambo_state::port_c_w));
 	m_maincpu->gpio_out<atmega2560_device::GPIOD>().set(FUNC(rambo_state::port_d_w));
+	m_maincpu->gpio_out<atmega2560_device::GPIOE>().set(FUNC(rambo_state::port_e_w));
 	m_maincpu->gpio_out<atmega2560_device::GPIOG>().set(FUNC(rambo_state::port_g_w));
+	m_maincpu->gpio_out<atmega2560_device::GPIOH>().set(FUNC(rambo_state::port_h_w));
 	m_maincpu->gpio_out<atmega2560_device::GPIOK>().set(FUNC(rambo_state::port_k_w));
 	m_maincpu->gpio_out<atmega2560_device::GPIOL>().set(FUNC(rambo_state::port_l_w));
 
@@ -314,6 +456,9 @@ void rambo_state::rambo(machine_config &config)
 	m_digipot->wiper_cb<1>().set([this] (uint8_t) {
 		m_stepper[AXIS_E1]->set_vref(m_digipot->wiper_voltage(1));
 	});
+
+	m_maincpu->adc_in<0>().set([this]() { return thermistor_code(0); });
+	m_maincpu->adc_in<2>().set([this]() { return thermistor_code(1); });
 
 	RS232_PORT(config, m_rs232, default_rs232_devices, nullptr);
 	m_rs232->set_option_device_input_defaults("terminal", DEVICE_INPUT_DEFAULTS_NAME(host_serial));
