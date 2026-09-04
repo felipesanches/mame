@@ -2413,6 +2413,7 @@ void avr8_device<NumTimers>::change_spcr(uint8_t data)
 
 	if (low_to_high & SPCR_SPE_MASK)
 	{
+		spi_update_clock_rate();
 		enable_spi();
 	}
 	else if (high_to_low & SPCR_SPE_MASK)
