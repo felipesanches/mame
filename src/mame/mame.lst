@@ -49504,3 +49504,10 @@ iq151
 
 @source:zvt/pp01.cpp
 pp01
+
+@source:misc/scene3d_probe.cpp
+s3dprobe
+s3dunbnd
+s3dbadxml
+s3dnoscn
+s3dnewufo
