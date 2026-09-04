@@ -16,6 +16,7 @@
 #include "main.h"
 #include "render.h"
 #include "rendutil.h"
+#include "scene3d.h"
 
 #include "nanosvg.h"
 #include "png.h"
@@ -546,6 +547,9 @@ screen_device::screen_device(const machine_config &mconfig, const char *tag, dev
 	, m_palette(*this, finder_base::DUMMY_TAG)
 	, m_video_attributes(0)
 	, m_svg_region(*this, DEVICE_SELF)
+	, m_scene_region(*this, finder_base::DUMMY_TAG)
+	, m_mesh_region(*this, finder_base::DUMMY_TAG)
+	, m_scene_camera(0)
 	, m_container(nullptr)
 	, m_max_width(100)
 	, m_width(100)
@@ -671,7 +675,7 @@ void screen_device::device_validity_check(validity_checker &valid) const
 		osd_printf_error("Invalid display dimensions\n");
 
 	// sanity check display area
-	if (m_type != SCREEN_TYPE_VECTOR && m_type != SCREEN_TYPE_SVG)
+	if (m_type != SCREEN_TYPE_VECTOR && m_type != SCREEN_TYPE_SVG && m_type != SCREEN_TYPE_3D)
 	{
 		if (m_visarea.empty() || m_visarea.right() >= m_width || m_visarea.bottom() >= m_height)
 			osd_printf_error("Invalid display area\n");
@@ -740,6 +744,7 @@ std::pair<unsigned, unsigned> screen_device::physical_aspect() const
 			break;
 		case SCREEN_TYPE_LCD:
 		case SCREEN_TYPE_SVG:
+		case SCREEN_TYPE_3D:
 			phys_aspect = std::make_pair(~0U, ~0U); // assume square pixels
 			break;
 		case SCREEN_TYPE_INVALID:
@@ -806,6 +811,13 @@ void screen_device::device_start()
 			m_height = m_svg->height();
 			m_visarea.set(0, m_width - 1, 0, m_height - 1);
 		}
+	}
+
+	if (m_type == SCREEN_TYPE_3D)
+	{
+		m_scene3d = std::make_unique<scene3d_renderer>(*this, m_scene_region.target(), m_mesh_region.target());
+		m_scene3d->set_camera(m_scene_camera);
+		machine().output().set_global_notifier(scene3d_renderer::output_notifier, m_scene3d.get());
 	}
 
 	// configure bitmap formats and allocate screen bitmaps
@@ -969,6 +981,30 @@ TIMER_CALLBACK_MEMBER(screen_device::scanline_tick)
 
 
 //-------------------------------------------------
+//  camera_count - number of cameras a 3D scene
+//  offers
+//-------------------------------------------------
+
+int screen_device::camera_count() const
+{
+	return m_scene3d ? m_scene3d->camera_count() : 0;
+}
+
+
+//-------------------------------------------------
+//  set_camera - render a 3D scene from one of
+//  its cameras
+//-------------------------------------------------
+
+void screen_device::set_camera(int index)
+{
+	m_scene_camera = index;
+	if (m_scene3d)
+		m_scene3d->set_camera(index);
+}
+
+
+//-------------------------------------------------
 //  configure - configure screen parameters
 //-------------------------------------------------
 
@@ -981,8 +1017,8 @@ void screen_device::configure(int width, int height, const rectangle &visarea, a
 	assert(visarea.top() >= 0);
 //  assert(visarea.right() < width);
 //  assert(visarea.bottom() < height);
-	assert(m_type == SCREEN_TYPE_VECTOR || m_type == SCREEN_TYPE_SVG || visarea.left() < width);
-	assert(m_type == SCREEN_TYPE_VECTOR || m_type == SCREEN_TYPE_SVG || visarea.top() < height);
+	assert(m_type == SCREEN_TYPE_VECTOR || m_type == SCREEN_TYPE_SVG || m_type == SCREEN_TYPE_3D || visarea.left() < width);
+	assert(m_type == SCREEN_TYPE_VECTOR || m_type == SCREEN_TYPE_SVG || m_type == SCREEN_TYPE_3D || visarea.top() < height);
 	assert(frame_period > 0);
 
 	// fill in the new parameters
@@ -1226,7 +1262,7 @@ bool screen_device::update_partial(int scanline)
 		}
 		else
 		{
-			if (m_type != SCREEN_TYPE_SVG)
+			if (m_type != SCREEN_TYPE_SVG && m_type != SCREEN_TYPE_3D)
 			{
 				screen_bitmap &curbitmap = m_bitmap[m_curbitmap];
 				switch (curbitmap.format())
@@ -1244,7 +1280,8 @@ bool screen_device::update_partial(int scanline)
 					flags = m_screen_update_rgb32(*this, m_bitmap[m_curbitmap].as_rgb32(), clip);
 
 				if (~flags & UPDATE_HAS_NOT_CHANGED)
-					flags = m_svg->render(*this, m_bitmap[m_curbitmap].as_rgb32(), clip);
+					flags = m_svg ? m_svg->render(*this, m_bitmap[m_curbitmap].as_rgb32(), clip)
+							: m_scene3d->render(*this, m_bitmap[m_curbitmap].as_rgb32(), clip);
 			}
 			m_partial_updates_this_frame++;
 		}

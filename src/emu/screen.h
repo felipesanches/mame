@@ -23,6 +23,8 @@
 //  CONSTANTS
 //**************************************************************************
 
+class scene3d_renderer;
+
 // screen types
 enum screen_type_enum
 {
@@ -30,7 +32,8 @@ enum screen_type_enum
 	SCREEN_TYPE_RASTER,
 	SCREEN_TYPE_VECTOR,
 	SCREEN_TYPE_LCD,
-	SCREEN_TYPE_SVG
+	SCREEN_TYPE_SVG,
+	SCREEN_TYPE_3D
 };
 
 // screen_update callback flags
@@ -369,6 +372,8 @@ public:
 	screen_device &set_video_attributes(u32 flags) { m_video_attributes = flags; return *this; }
 	screen_device &set_color(rgb_t color) { m_color = color; return *this; }
 	template <typename T> screen_device &set_svg_region(T &&tag) { m_svg_region.set_tag(std::forward<T>(tag)); return *this; } // default region is device tag
+	template <typename T> screen_device &set_scene_region(T &&tag) { m_scene_region.set_tag(std::forward<T>(tag)); return *this; }
+	template <typename T> screen_device &set_mesh_region(T &&tag) { m_mesh_region.set_tag(std::forward<T>(tag)); return *this; }
 
 	// information getters
 	render_container &container() const { assert(m_container != nullptr); return *m_container; }
@@ -376,6 +381,8 @@ public:
 	device_palette_interface &palette() const { assert(m_palette != nullptr); return *m_palette; }
 	bool has_palette() const { return m_palette != nullptr; }
 	screen_bitmap &curbitmap() { return m_bitmap[m_curtexture]; }
+	int camera_count() const;
+	void set_camera(int index);
 
 	// dynamic configuration
 	void configure(int width, int height, const rectangle &visarea, attoseconds_t frame_period);
@@ -466,10 +473,14 @@ private:
 	optional_device<device_palette_interface> m_palette; // our palette
 	u32                 m_video_attributes;         // flags describing the video system
 	optional_memory_region m_svg_region;            // the region in which the svg data is in
+	optional_memory_region m_scene_region;          // the region holding the 3D scene description
+	optional_memory_region m_mesh_region;           // the region holding the 3D scene meshes
+	int                 m_scene_camera;             // which of the scene's cameras to render from
 
 	// internal state
 	render_container *  m_container;                // pointer to our container
 	std::unique_ptr<svg_renderer> m_svg; // the svg renderer
+	std::unique_ptr<scene3d_renderer> m_scene3d; // the 3D scene renderer
 	// dimensions
 	int                 m_max_width;                // maximum width encountered
 	int                 m_width;                    // current width (HTOTAL)
