@@ -27,11 +27,15 @@
 #include "emu.h"
 #include "cpu/avr8/avr8.h"
 #include "machine/a4982.h"
+#include "machine/max6675.h"
+#include "machine/rescap.h"
 #include "sound/dac.h"
 #include "video/hd44780.h"
 #include "emupal.h"
 #include "screen.h"
 #include "speaker.h"
+
+#include <cmath>
 
 #define LOG_PORT_A      (1U << 1)
 #define LOG_PORT_B      (1U << 2)
@@ -179,9 +183,12 @@ public:
 		m_dac(*this, "dac"),
 		m_io_keypad(*this, "keypad"),
 		m_stepper(*this, "stepper%u", 0U),
+		m_thermocouple(*this, "thermocouple%u", 0U),
 		m_axis_out(*this, "axis_%u_um"),
 		m_endstop_out(*this, "endstop_%u"),
-		m_motor_out(*this, "motor_%u_on")
+		m_motor_out(*this, "motor_%u_on"),
+		m_temp_out(*this, "temp_%u_c"),
+		m_duty_out(*this, "duty_%u")
 	{
 	}
 
@@ -190,6 +197,8 @@ public:
 	enum : int { AXIS_X, AXIS_Y, AXIS_Z, AXIS_A, AXIS_B, AXIS_COUNT };
 
 	enum : int { ES_X_MAX, ES_Y_MAX, ES_Z_MIN, ES_COUNT };
+
+	enum : int { HEAT_A, HEAT_B, HEAT_HBP, HEAT_COUNT };
 
 private:
 	virtual void machine_start() override ATTR_COLD;
@@ -228,6 +237,10 @@ private:
 	void update_endstops();
 	double axis_mm(int axis) const;
 
+	void pwm_level(int channel, int state);
+	TIMER_CALLBACK_MEMBER(thermal_tick);
+	uint16_t thermistor_code();
+
 	uint8_t m_port_a;
 	uint8_t m_port_b;
 	uint8_t m_port_c;
@@ -247,14 +260,24 @@ private:
 	required_device<dac_bit_interface> m_dac;
 	required_ioport m_io_keypad;
 	required_device_array<a4982_device, AXIS_COUNT> m_stepper;
+	required_device_array<max6675_device, 2> m_thermocouple;
 
 	output_finder<AXIS_COUNT> m_axis_out;
 	output_finder<ES_COUNT> m_endstop_out;
 	output_finder<AXIS_COUNT> m_motor_out;
+	output_finder<HEAT_COUNT> m_temp_out;
+	output_finder<HEAT_COUNT> m_duty_out;
 
 	int64_t m_position[AXIS_COUNT]{};
 	int64_t m_last_translator[AXIS_COUNT]{};
 	uint8_t m_endstops = 0;
+
+	uint8_t m_pwm_state[HEAT_COUNT]{};
+	attotime m_pwm_changed[HEAT_COUNT];
+	attotime m_pwm_high[HEAT_COUNT];
+	double m_temperature[HEAT_COUNT]{};
+	double m_adc_residue = 0.0;
+	emu_timer *m_thermal_timer = nullptr;
 };
 
 struct rep1_axis
@@ -328,6 +351,68 @@ void replicator_state::update_endstops()
 	}
 }
 
+void replicator_state::pwm_level(int channel, int state)
+{
+	if (state == m_pwm_state[channel])
+		return;
+
+	const attotime now = machine().time();
+	if (m_pwm_state[channel])
+		m_pwm_high[channel] += now - m_pwm_changed[channel];
+
+	m_pwm_state[channel] = state;
+	m_pwm_changed[channel] = now;
+}
+
+TIMER_CALLBACK_MEMBER(replicator_state::thermal_tick)
+{
+	static constexpr double AMBIENT = 25.0;
+	static constexpr double INTERVAL = 0.1;   // seconds
+
+	static constexpr double POWER[HEAT_COUNT] = { 40.0, 40.0, 160.0 };   // W
+	static constexpr double MASS[HEAT_COUNT]  = { 10.0, 10.0, 500.0 };   // J/K
+	static constexpr double LOSS[HEAT_COUNT]  = { 0.08, 0.08,   1.6 };   // W/K
+
+	const attotime now = machine().time();
+	for (int channel = 0; channel < HEAT_COUNT; channel++)
+	{
+		if (m_pwm_state[channel])
+		{
+			m_pwm_high[channel] += now - m_pwm_changed[channel];
+			m_pwm_changed[channel] = now;
+		}
+
+		const double duty = std::clamp(m_pwm_high[channel].as_double() / INTERVAL, 0.0, 1.0);
+		m_pwm_high[channel] = attotime::zero;
+		m_duty_out[channel] = int32_t(duty * 255.0 + 0.5);
+
+		const double dT = (POWER[channel] * duty - LOSS[channel] * (m_temperature[channel] - AMBIENT))
+						  * INTERVAL / MASS[channel];
+		m_temperature[channel] += dT;
+		m_temp_out[channel] = int32_t(m_temperature[channel] * 10.0 + 0.5);
+	}
+
+	m_thermocouple[0]->set_temperature(m_temperature[HEAT_A]);
+	m_thermocouple[1]->set_temperature(m_temperature[HEAT_B]);
+}
+
+uint16_t replicator_state::thermistor_code()
+{
+	static constexpr double PULLUP = RES_K(4.7);
+	static constexpr double R25 = RES_K(100);
+	static constexpr double BETA = 4066.0;
+
+	const double celsius = std::clamp(m_temperature[HEAT_HBP], -40.0, 300.0);
+	const double rt = R25 * std::exp(BETA * (1.0 / (celsius + 273.15) - 1.0 / 298.15));
+	const double exact = 1023.0 * RES_VOLTAGE_DIVIDER(PULLUP, rt);
+
+	const double wanted = std::clamp(exact + m_adc_residue, 0.0, 1023.0);
+	const double rounded = std::floor(wanted + 0.5);
+	m_adc_residue = std::clamp(wanted - rounded, -1.0, 1.0);
+
+	return uint16_t(rounded);
+}
+
 uint8_t replicator_state::port_a_r()
 {
 	LOGMASKED(LOG_PORT_A, "%s: Port A READ (A-axis signals + B-axis STEP&DIR)\n", machine().describe_context());
@@ -355,7 +440,7 @@ uint8_t replicator_state::port_d_r()
 uint8_t replicator_state::port_e_r()
 {
 	LOGMASKED(LOG_PORT_E, "%s: Port E READ (1280-TX/RX; THERMO-signals)\n", machine().describe_context());
-	return 0;
+	return (m_thermocouple[0]->so_r() | m_thermocouple[1]->so_r()) ? THERMO_DO : 0;
 }
 
 uint8_t replicator_state::port_f_r()
@@ -457,6 +542,8 @@ void replicator_state::port_b_w(uint8_t data)
 	if (changed & BLINK)
 		LOGMASKED(LOG_PORT_B, "%s: [B] BLINK: %d\n", machine().describe_context(), data & BLINK ? 1 : 0);
 
+	pwm_level(HEAT_B, BIT(data, 5));
+
 	m_port_b = data;
 }
 
@@ -547,6 +634,11 @@ void replicator_state::port_e_w(uint8_t data)
 		LOGMASKED(LOG_PORT_E, "%s: [E] THERMO-CS2: %d\n", machine().describe_context(), data & THERMO_CS2 ? 1 : 0);
 	if (changed & THERMO_DO)
 		LOGMASKED(LOG_PORT_E, "%s: [E] THERMO-DO: %d\n", machine().describe_context(), data & THERMO_DO ? 1 : 0);
+
+	m_thermocouple[0]->cs_w(BIT(data, 3));
+	m_thermocouple[1]->cs_w(BIT(data, 4));
+	m_thermocouple[0]->sck_w(BIT(data, 2));
+	m_thermocouple[1]->sck_w(BIT(data, 2));
 
 	m_port_e = data;
 }
@@ -639,6 +731,8 @@ void replicator_state::port_h_w(uint8_t data)
 	if (changed & SD_CD)
 		LOGMASKED(LOG_PORT_H, "%s: [H] SD_CD: %d\n", machine().describe_context(), data & SD_CD ? 1 : 0);
 
+	pwm_level(HEAT_A, BIT(data, 3));
+
 	m_port_h = data;
 }
 
@@ -724,6 +818,8 @@ void replicator_state::port_l_w(uint8_t data)
 	if (changed & Z_MAX)
 		LOGMASKED(LOG_PORT_L, "%s: [L] Z_MAX: %d\n", machine().describe_context(), data & Z_MAX ? 1 : 0);
 
+	pwm_level(HEAT_HBP, BIT(data, 4));
+
 	m_port_l = data;
 }
 
@@ -763,10 +859,19 @@ void replicator_state::machine_start()
 	m_axis_out.resolve();
 	m_endstop_out.resolve();
 	m_motor_out.resolve();
+	m_temp_out.resolve();
+	m_duty_out.resolve();
+
+	m_thermal_timer = timer_alloc(FUNC(replicator_state::thermal_tick), this);
 
 	save_item(NAME(m_position));
 	save_item(NAME(m_last_translator));
 	save_item(NAME(m_endstops));
+	save_item(NAME(m_pwm_state));
+	save_item(NAME(m_pwm_changed));
+	save_item(NAME(m_pwm_high));
+	save_item(NAME(m_temperature));
+	save_item(NAME(m_adc_residue));
 	save_item(NAME(m_shift_register_value));
 	save_item(NAME(m_port_a));
 	save_item(NAME(m_port_b));
@@ -807,6 +912,17 @@ void replicator_state::machine_reset()
 
 	m_endstops = 0xff;
 	update_endstops();
+
+	for (int channel = 0; channel < HEAT_COUNT; channel++)
+	{
+		m_pwm_state[channel] = 0;
+		m_pwm_changed[channel] = machine().time();
+		m_pwm_high[channel] = attotime::zero;
+		m_temperature[channel] = 25.0;
+	}
+	m_adc_residue = 0.0;
+
+	m_thermal_timer->adjust(attotime::from_msec(100), 0, attotime::from_msec(100));
 }
 
 void replicator_state::palette_init(palette_device &palette) const
@@ -876,6 +992,10 @@ void replicator_state::replicator(machine_config &config)
 	m_stepper[AXIS_Z]->step_cb().set(FUNC(replicator_state::step_taken<AXIS_Z>));
 	m_stepper[AXIS_A]->step_cb().set(FUNC(replicator_state::step_taken<AXIS_A>));
 	m_stepper[AXIS_B]->step_cb().set(FUNC(replicator_state::step_taken<AXIS_B>));
+
+	MAX6675(config, m_thermocouple[0]);
+	MAX6675(config, m_thermocouple[1]);
+	m_maincpu->adc_in<15>().set([this]() { return thermistor_code(); });
 
 	/* video hardware */
 	screen_device &screen(SCREEN(config, "screen", SCREEN_TYPE_LCD));
