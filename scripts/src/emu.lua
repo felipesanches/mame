@@ -202,6 +202,8 @@ files {
 	MAME_DIR .. "src/emu/romentry.cpp",
 	MAME_DIR .. "src/emu/save.cpp",
 	MAME_DIR .. "src/emu/save.h",
+	MAME_DIR .. "src/emu/scene3d.cpp",
+	MAME_DIR .. "src/emu/scene3d.h",
 	MAME_DIR .. "src/emu/schedule.cpp",
 	MAME_DIR .. "src/emu/schedule.h",
 	MAME_DIR .. "src/emu/screen.cpp",

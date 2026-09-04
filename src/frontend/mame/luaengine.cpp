@@ -451,6 +451,7 @@ int sol_lua_push(sol::types<screen_type_enum>, lua_State *L, screen_type_enum &&
 	case SCREEN_TYPE_VECTOR:    return sol::stack::push(L, "vector");
 	case SCREEN_TYPE_LCD:       return sol::stack::push(L, "lcd");
 	case SCREEN_TYPE_SVG:       return sol::stack::push(L, "svg");
+	case SCREEN_TYPE_3D:        return sol::stack::push(L, "3d");
 	}
 	return sol::stack::push(L, "unknown");
 }
@@ -1874,6 +1875,8 @@ void lua_engine::initialize()
 				machine().video().save_snapshot(&sdev, file);
 				return sol::lua_nil;
 			});
+	screen_dev_type.set_function("set_camera", &screen_device::set_camera);
+	screen_dev_type["camera_count"] = sol::property(&screen_device::camera_count);
 	screen_dev_type.set_function("pixel", &screen_device::pixel);
 	screen_dev_type.set_function(
 			"pixels",
