@@ -719,6 +719,18 @@ end
 
 ---------------------------------------------------
 --
+--@src/devices/machine/a4982.h,MACHINES["A4982"] = true
+---------------------------------------------------
+
+if MACHINES["A4982"] then
+	files {
+		MAME_DIR .. "src/devices/machine/a4982.cpp",
+		MAME_DIR .. "src/devices/machine/a4982.h",
+	}
+end
+
+---------------------------------------------------
+--
 --@src/devices/machine/ad5206.h,MACHINES["AD5206"] = true
 ---------------------------------------------------
 
