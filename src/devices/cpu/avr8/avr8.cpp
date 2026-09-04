@@ -202,6 +202,48 @@ enum
 
 // I/O Defines
 #define TCCR0B_CS_SHIFT         0
+#define UCSRA_MPCM_BIT      0
+#define UCSRA_U2X_BIT       1
+#define UCSRA_UPE_BIT       2
+#define UCSRA_DOR_BIT       3
+#define UCSRA_FE_BIT        4
+#define UCSRA_UDRE_BIT      5
+#define UCSRA_TXC_BIT       6
+#define UCSRA_RXC_BIT       7
+#define UCSRA_U2X_MASK      (1 << UCSRA_U2X_BIT)
+#define UCSRA_UDRE_MASK     (1 << UCSRA_UDRE_BIT)
+#define UCSRA_TXC_MASK      (1 << UCSRA_TXC_BIT)
+#define UCSRA_RXC_MASK      (1 << UCSRA_RXC_BIT)
+#define UCSRA_FE_MASK       (1 << UCSRA_FE_BIT)
+#define UCSRA_DOR_MASK      (1 << UCSRA_DOR_BIT)
+
+#define UCSRB_TXB8_BIT      0
+#define UCSRB_RXB8_BIT      1
+#define UCSRB_UCSZ2_BIT     2
+#define UCSRB_TXEN_BIT      3
+#define UCSRB_RXEN_BIT      4
+#define UCSRB_UDRIE_BIT     5
+#define UCSRB_TXCIE_BIT     6
+#define UCSRB_RXCIE_BIT     7
+#define UCSRB_UCSZ2_MASK    (1 << UCSRB_UCSZ2_BIT)
+#define UCSRB_TXEN_MASK     (1 << UCSRB_TXEN_BIT)
+#define UCSRB_RXEN_MASK     (1 << UCSRB_RXEN_BIT)
+#define UCSRB_UDRIE_MASK    (1 << UCSRB_UDRIE_BIT)
+#define UCSRB_TXCIE_MASK    (1 << UCSRB_TXCIE_BIT)
+#define UCSRB_RXCIE_MASK    (1 << UCSRB_RXCIE_BIT)
+
+#define UCSRC_UCPOL_BIT     0
+#define UCSRC_UCSZ0_BIT     1
+#define UCSRC_UCSZ1_BIT     2
+#define UCSRC_USBS_BIT      3
+#define UCSRC_UPM0_BIT      4
+#define UCSRC_UPM1_BIT      5
+#define UCSRC_UMSEL0_BIT    6
+#define UCSRC_UMSEL1_BIT    7
+#define UCSRC_UCSZ01_MASK   0x06
+#define UCSRC_USBS_MASK     (1 << UCSRC_USBS_BIT)
+#define UCSRC_UPM_MASK      0x30
+
 #define TCCR0B_CS_MASK          0x07
 #define TCCR0B_WGM0_2_SHIFT     3
 #define TCCR0B_WGM0_2_MASK      0x08
@@ -648,9 +690,48 @@ void avr8_device<NumTimers>::base_internal_map(address_map &map)
 	map(0x00bb, 0x00bb).w(FUNC(avr8_device::twdr_w));
 	map(0x00bc, 0x00bc).w(FUNC(avr8_device::twcr_w));
 	map(0x00bd, 0x00bd).w(FUNC(avr8_device::twamr_w));
-	map(0x00c0, 0x00c0).w(FUNC(avr8_device::ucsr0a_w));
-	map(0x00c1, 0x00c1).w(FUNC(avr8_device::ucsr0b_w));
-	map(0x00c2, 0x00c2).w(FUNC(avr8_device::ucsr0c_w));
+	usart_map(map, 0);
+}
+
+template <int NumTimers>
+void avr8_device<NumTimers>::usart_map(address_map &map, int n)
+{
+	const uint16_t base = usart_base(n);
+	switch (n)
+	{
+	case 0:
+		map(base + 0, base + 0).w(FUNC(avr8_device::ucsra_w<0>));
+		map(base + 1, base + 1).w(FUNC(avr8_device::ucsrb_w<0>));
+		map(base + 2, base + 2).w(FUNC(avr8_device::ucsrc_w<0>));
+		map(base + 4, base + 4).w(FUNC(avr8_device::ubrrl_w<0>));
+		map(base + 5, base + 5).w(FUNC(avr8_device::ubrrh_w<0>));
+		map(base + 6, base + 6).rw(FUNC(avr8_device::udr_r<0>), FUNC(avr8_device::udr_w<0>));
+		break;
+	case 1:
+		map(base + 0, base + 0).w(FUNC(avr8_device::ucsra_w<1>));
+		map(base + 1, base + 1).w(FUNC(avr8_device::ucsrb_w<1>));
+		map(base + 2, base + 2).w(FUNC(avr8_device::ucsrc_w<1>));
+		map(base + 4, base + 4).w(FUNC(avr8_device::ubrrl_w<1>));
+		map(base + 5, base + 5).w(FUNC(avr8_device::ubrrh_w<1>));
+		map(base + 6, base + 6).rw(FUNC(avr8_device::udr_r<1>), FUNC(avr8_device::udr_w<1>));
+		break;
+	case 2:
+		map(base + 0, base + 0).w(FUNC(avr8_device::ucsra_w<2>));
+		map(base + 1, base + 1).w(FUNC(avr8_device::ucsrb_w<2>));
+		map(base + 2, base + 2).w(FUNC(avr8_device::ucsrc_w<2>));
+		map(base + 4, base + 4).w(FUNC(avr8_device::ubrrl_w<2>));
+		map(base + 5, base + 5).w(FUNC(avr8_device::ubrrh_w<2>));
+		map(base + 6, base + 6).rw(FUNC(avr8_device::udr_r<2>), FUNC(avr8_device::udr_w<2>));
+		break;
+	default:
+		map(base + 0, base + 0).w(FUNC(avr8_device::ucsra_w<3>));
+		map(base + 1, base + 1).w(FUNC(avr8_device::ucsrb_w<3>));
+		map(base + 2, base + 2).w(FUNC(avr8_device::ucsrc_w<3>));
+		map(base + 4, base + 4).w(FUNC(avr8_device::ubrrl_w<3>));
+		map(base + 5, base + 5).w(FUNC(avr8_device::ubrrh_w<3>));
+		map(base + 6, base + 6).rw(FUNC(avr8_device::udr_r<3>), FUNC(avr8_device::udr_w<3>));
+		break;
+	}
 }
 
 void atmega88_device::atmega88_internal_map(address_map &map)
@@ -686,6 +767,9 @@ void atmega1280_device::atmega1280_internal_map(address_map &map)
 	map(0x010b, 0x010b).rw(FUNC(atmega1280_device::gpio_r<GPIOL>),FUNC(atmega1280_device::port_w<GPIOL>));
 	map(0x0120, 0x0120).w(FUNC(atmega1280_device::tccr5a_w));
 	map(0x0121, 0x0121).w(FUNC(atmega1280_device::tccr5b_w));
+	usart_map(map, 1);
+	usart_map(map, 2);
+	usart_map(map, 3);
 }
 
 void atmega2560_device::atmega2560_internal_map(address_map &map)
@@ -811,6 +895,8 @@ avr8_device<NumTimers>::avr8_device(const machine_config &mconfig, const char *t
 	, m_spi_mosi_mask(PORTB_MOSI)
 	, m_spi_out_cb(*this)
 	, m_spi_in_cb(*this, 0)
+	, m_usart_txd_cb(*this)
+	, m_usart_active(0)
 {
 	// Fill in default callbacks
 	for (int i = 0; i < 8*4; i++)
@@ -1124,6 +1210,18 @@ void avr8_device<NumTimers>::device_start()
 	save_item(NAME(m_spi_prescale_countdown));
 	save_item(NAME(m_spi_in));
 	save_item(NAME(m_spsr_read_with_spif));
+
+	save_item(NAME(m_usart_active));
+	save_item(NAME(m_usart_rx_data));
+	save_item(NAME(m_usart_tx_data));
+	save_item(NAME(m_usart_tx_pending));
+	save_item(NAME(m_usart_tx_shift));
+	save_item(NAME(m_usart_tx_bits));
+	save_item(NAME(m_usart_tx_count));
+	save_item(NAME(m_usart_rx_shift));
+	save_item(NAME(m_usart_rx_bits));
+	save_item(NAME(m_usart_rx_count));
+	save_item(NAME(m_usart_rxd));
 }
 
 //-------------------------------------------------
@@ -1188,6 +1286,25 @@ template <int NumTimers>
 void avr8_device<NumTimers>::device_reset()
 {
 	avr8_base_device::device_reset();
+
+	for (int n = 0; n < USART_COUNT; n++)
+	{
+		m_usart_rx_data[n] = 0;
+		m_usart_tx_data[n] = 0;
+		m_usart_tx_pending[n] = false;
+		m_usart_tx_shift[n] = 0;
+		m_usart_tx_bits[n] = -1;
+		m_usart_tx_count[n] = 0;
+		m_usart_rx_shift[n] = 0;
+		m_usart_rx_bits[n] = -1;
+		m_usart_rx_count[n] = 0;
+		m_usart_rxd[n] = 1;
+		m_usart_txd_cb[n](1);
+
+		m_r[usart_base(n) + 0] = UCSRA_UDRE_MASK;
+		m_r[usart_base(n) + 2] = UCSRC_UCSZ01_MASK;
+	}
+	m_usart_active = 0;
 
 	m_adc_sample = 0;
 	m_adc_result = 0;
@@ -1333,8 +1450,12 @@ void avr8_base_device::take_interrupt()
 
 	const interrupt_condition &condition = table[best];
 
-	m_r[condition.m_regindex] &= ~condition.m_regmask;
+	if (condition.m_autoclear)
+		m_r[condition.m_regindex] &= ~condition.m_regmask;
 	m_int_pending &= ~(1U << best);
+
+	if (!condition.m_autoclear)
+		update_interrupt(best);
 
 	m_r[SREG] &= ~SREG_MASK_I;
 	push_pc(m_pc >> 1);
@@ -1345,17 +1466,26 @@ void avr8_base_device::take_interrupt()
 
 const avr8_base_device::interrupt_condition avr8_base_device::s_int_conditions[avr8_base_device::INTIDX_COUNT] =
 {
-	{ AVR8_INT_SPI_STC, SPCR,   SPCR_SPIE_MASK,     SPSR,    SPSR_SPIF_MASK },
-	{ AVR8_INT_T0COMPB, TIMSK0, TIMSK0_OCIE0B_MASK, TIFR0,   TIFR0_OCF0B_MASK },
-	{ AVR8_INT_T0COMPA, TIMSK0, TIMSK0_OCIE0A_MASK, TIFR0,   TIFR0_OCF0A_MASK },
-	{ AVR8_INT_T0OVF,   TIMSK0, TIMSK0_TOIE0_MASK,  TIFR0,   TIFR0_TOV0_MASK },
-	{ AVR8_INT_T1CAPT,  TIMSK1, TIMSK1_ICIE1_MASK,  TIFR1,   TIFR1_ICF1_MASK },
-	{ AVR8_INT_T1COMPB, TIMSK1, TIMSK1_OCIE1B_MASK, TIFR1,   TIFR1_OCF1B_MASK },
-	{ AVR8_INT_T1COMPA, TIMSK1, TIMSK1_OCIE1A_MASK, TIFR1,   TIFR1_OCF1A_MASK },
-	{ AVR8_INT_T1OVF,   TIMSK1, TIMSK1_TOIE1_MASK,  TIFR1,   TIFR1_TOV1_MASK },
-	{ AVR8_INT_T2COMPB, TIMSK2, TIMSK2_OCIE2B_MASK, TIFR2,   TIFR2_OCF2B_MASK },
-	{ AVR8_INT_T2COMPA, TIMSK2, TIMSK2_OCIE2A_MASK, TIFR2,   TIFR2_OCF2A_MASK },
-	{ AVR8_INT_T2OVF,   TIMSK2, TIMSK2_TOIE2_MASK,  TIFR2,   TIFR2_TOV2_MASK }
+	{ AVR8_INT_SPI_STC, SPCR,   SPCR_SPIE_MASK,     SPSR,    SPSR_SPIF_MASK, true },
+	{ AVR8_INT_T0COMPB, TIMSK0, TIMSK0_OCIE0B_MASK, TIFR0,   TIFR0_OCF0B_MASK, true },
+	{ AVR8_INT_T0COMPA, TIMSK0, TIMSK0_OCIE0A_MASK, TIFR0,   TIFR0_OCF0A_MASK, true },
+	{ AVR8_INT_T0OVF,   TIMSK0, TIMSK0_TOIE0_MASK,  TIFR0,   TIFR0_TOV0_MASK, true },
+	{ AVR8_INT_T1CAPT,  TIMSK1, TIMSK1_ICIE1_MASK,  TIFR1,   TIFR1_ICF1_MASK, true },
+	{ AVR8_INT_T1COMPB, TIMSK1, TIMSK1_OCIE1B_MASK, TIFR1,   TIFR1_OCF1B_MASK, true },
+	{ AVR8_INT_T1COMPA, TIMSK1, TIMSK1_OCIE1A_MASK, TIFR1,   TIFR1_OCF1A_MASK, true },
+	{ AVR8_INT_T1OVF,   TIMSK1, TIMSK1_TOIE1_MASK,  TIFR1,   TIFR1_TOV1_MASK, true },
+	{ AVR8_INT_T2COMPB, TIMSK2, TIMSK2_OCIE2B_MASK, TIFR2,   TIFR2_OCF2B_MASK, true },
+	{ AVR8_INT_T2COMPA, TIMSK2, TIMSK2_OCIE2A_MASK, TIFR2,   TIFR2_OCF2A_MASK, true },
+	{ AVR8_INT_T2OVF,   TIMSK2, TIMSK2_TOIE2_MASK,  TIFR2,   TIFR2_TOV2_MASK, true },
+
+	// timers 3-5 do not exist on these variants
+	{ 0, 0, 0, 0, 0, true }, { 0, 0, 0, 0, 0, true }, { 0, 0, 0, 0, 0, true },
+	{ 0, 0, 0, 0, 0, true }, { 0, 0, 0, 0, 0, true }, { 0, 0, 0, 0, 0, true },
+	{ 0, 0, 0, 0, 0, true }, { 0, 0, 0, 0, 0, true }, { 0, 0, 0, 0, 0, true },
+
+	{ AVR8_INT_USART_RX,   UCSR0B, UCSRB_RXCIE_MASK, UCSR0A, UCSRA_RXC_MASK, false },
+	{ AVR8_INT_USART_UDRE, UCSR0B, UCSRB_UDRIE_MASK, UCSR0A, UCSRA_UDRE_MASK, false },
+	{ AVR8_INT_USART_TX,   UCSR0B, UCSRB_TXCIE_MASK, UCSR0A, UCSRA_TXC_MASK, true }
 };
 
 void avr8_base_device::update_interrupt(int source)
@@ -1370,50 +1500,62 @@ void avr8_base_device::update_interrupt(int source)
 
 const avr8_base_device::interrupt_condition avr8_base_device::s_mega644_int_conditions[avr8_base_device::INTIDX_COUNT] =
 {
-	{ ATMEGA644_INT_SPI_STC, SPCR,   SPCR_SPIE_MASK,     SPSR,    SPSR_SPIF_MASK },
-	{ ATMEGA644_INT_T0COMPB, TIMSK0, TIMSK0_OCIE0B_MASK, TIFR0,   TIFR0_OCF0B_MASK },
-	{ ATMEGA644_INT_T0COMPA, TIMSK0, TIMSK0_OCIE0A_MASK, TIFR0,   TIFR0_OCF0A_MASK },
-	{ ATMEGA644_INT_T0OVF,   TIMSK0, TIMSK0_TOIE0_MASK,  TIFR0,   TIFR0_TOV0_MASK },
-	{ ATMEGA644_INT_T1CAPT,  TIMSK1, TIMSK1_ICIE1_MASK,  TIFR1,   TIFR1_ICF1_MASK },
-	{ ATMEGA644_INT_T1COMPB, TIMSK1, TIMSK1_OCIE1B_MASK, TIFR1,   TIFR1_OCF1B_MASK },
-	{ ATMEGA644_INT_T1COMPA, TIMSK1, TIMSK1_OCIE1A_MASK, TIFR1,   TIFR1_OCF1A_MASK },
-	{ ATMEGA644_INT_T1OVF,   TIMSK1, TIMSK1_TOIE1_MASK,  TIFR1,   TIFR1_TOV1_MASK },
-	{ ATMEGA644_INT_T2COMPB, TIMSK2, TIMSK2_OCIE2B_MASK, TIFR2,   TIFR2_OCF2B_MASK },
-	{ ATMEGA644_INT_T2COMPA, TIMSK2, TIMSK2_OCIE2A_MASK, TIFR2,   TIFR2_OCF2A_MASK },
-	{ ATMEGA644_INT_T2OVF,   TIMSK2, TIMSK2_TOIE2_MASK,  TIFR2,   TIFR2_TOV2_MASK }
+	{ ATMEGA644_INT_SPI_STC, SPCR,   SPCR_SPIE_MASK,     SPSR,    SPSR_SPIF_MASK, true },
+	{ ATMEGA644_INT_T0COMPB, TIMSK0, TIMSK0_OCIE0B_MASK, TIFR0,   TIFR0_OCF0B_MASK, true },
+	{ ATMEGA644_INT_T0COMPA, TIMSK0, TIMSK0_OCIE0A_MASK, TIFR0,   TIFR0_OCF0A_MASK, true },
+	{ ATMEGA644_INT_T0OVF,   TIMSK0, TIMSK0_TOIE0_MASK,  TIFR0,   TIFR0_TOV0_MASK, true },
+	{ ATMEGA644_INT_T1CAPT,  TIMSK1, TIMSK1_ICIE1_MASK,  TIFR1,   TIFR1_ICF1_MASK, true },
+	{ ATMEGA644_INT_T1COMPB, TIMSK1, TIMSK1_OCIE1B_MASK, TIFR1,   TIFR1_OCF1B_MASK, true },
+	{ ATMEGA644_INT_T1COMPA, TIMSK1, TIMSK1_OCIE1A_MASK, TIFR1,   TIFR1_OCF1A_MASK, true },
+	{ ATMEGA644_INT_T1OVF,   TIMSK1, TIMSK1_TOIE1_MASK,  TIFR1,   TIFR1_TOV1_MASK, true },
+	{ ATMEGA644_INT_T2COMPB, TIMSK2, TIMSK2_OCIE2B_MASK, TIFR2,   TIFR2_OCF2B_MASK, true },
+	{ ATMEGA644_INT_T2COMPA, TIMSK2, TIMSK2_OCIE2A_MASK, TIFR2,   TIFR2_OCF2A_MASK, true },
+	{ ATMEGA644_INT_T2OVF,   TIMSK2, TIMSK2_TOIE2_MASK,  TIFR2,   TIFR2_TOV2_MASK, true },
+
+	// the ATmega644 has no timers 3-5
+	{ 0, 0, 0, 0, 0, true }, { 0, 0, 0, 0, 0, true }, { 0, 0, 0, 0, 0, true },
+	{ 0, 0, 0, 0, 0, true }, { 0, 0, 0, 0, 0, true }, { 0, 0, 0, 0, 0, true },
+	{ 0, 0, 0, 0, 0, true }, { 0, 0, 0, 0, 0, true }, { 0, 0, 0, 0, 0, true },
+
+	{ ATMEGA644_INT_USART_RX,   UCSR0B, UCSRB_RXCIE_MASK, UCSR0A, UCSRA_RXC_MASK, false },
+	{ ATMEGA644_INT_USART_UDRE, UCSR0B, UCSRB_UDRIE_MASK, UCSR0A, UCSRA_UDRE_MASK, false },
+	{ ATMEGA644_INT_USART_TX,   UCSR0B, UCSRB_TXCIE_MASK, UCSR0A, UCSRA_TXC_MASK, true }
 };
 
 const avr8_base_device::interrupt_condition avr8_base_device::s_mega2560_int_conditions[avr8_base_device::INTIDX_COUNT] =
 {
-	{ ATMEGA2560_INT_SPI_STC, SPCR,   SPCR_SPIE_MASK,     SPSR,    SPSR_SPIF_MASK },
+	{ ATMEGA2560_INT_SPI_STC, SPCR,   SPCR_SPIE_MASK,     SPSR,    SPSR_SPIF_MASK, true },
 
-	{ ATMEGA2560_INT_T0COMPB, TIMSK0, TIMSK0_OCIE0B_MASK, TIFR0,   TIFR0_OCF0B_MASK },
-	{ ATMEGA2560_INT_T0COMPA, TIMSK0, TIMSK0_OCIE0A_MASK, TIFR0,   TIFR0_OCF0A_MASK },
-	{ ATMEGA2560_INT_T0OVF,   TIMSK0, TIMSK0_TOIE0_MASK,  TIFR0,   TIFR0_TOV0_MASK },
+	{ ATMEGA2560_INT_T0COMPB, TIMSK0, TIMSK0_OCIE0B_MASK, TIFR0,   TIFR0_OCF0B_MASK, true },
+	{ ATMEGA2560_INT_T0COMPA, TIMSK0, TIMSK0_OCIE0A_MASK, TIFR0,   TIFR0_OCF0A_MASK, true },
+	{ ATMEGA2560_INT_T0OVF,   TIMSK0, TIMSK0_TOIE0_MASK,  TIFR0,   TIFR0_TOV0_MASK, true },
 
-	{ ATMEGA2560_INT_T1CAPT,  TIMSK1, TIMSK1_ICIE1_MASK,  TIFR1,   TIFR1_ICF1_MASK },
+	{ ATMEGA2560_INT_T1CAPT,  TIMSK1, TIMSK1_ICIE1_MASK,  TIFR1,   TIFR1_ICF1_MASK, true },
 
-	{ ATMEGA2560_INT_T1COMPB, TIMSK1, TIMSK1_OCIE1B_MASK, TIFR1,   TIFR1_OCF1B_MASK },
-	{ ATMEGA2560_INT_T1COMPA, TIMSK1, TIMSK1_OCIE1A_MASK, TIFR1,   TIFR1_OCF1A_MASK },
-	{ ATMEGA2560_INT_T1OVF,   TIMSK1, TIMSK1_TOIE1_MASK,  TIFR1,   TIFR1_TOV1_MASK },
+	{ ATMEGA2560_INT_T1COMPB, TIMSK1, TIMSK1_OCIE1B_MASK, TIFR1,   TIFR1_OCF1B_MASK, true },
+	{ ATMEGA2560_INT_T1COMPA, TIMSK1, TIMSK1_OCIE1A_MASK, TIFR1,   TIFR1_OCF1A_MASK, true },
+	{ ATMEGA2560_INT_T1OVF,   TIMSK1, TIMSK1_TOIE1_MASK,  TIFR1,   TIFR1_TOV1_MASK, true },
 
-	{ ATMEGA2560_INT_T2COMPB, TIMSK2, TIMSK2_OCIE2B_MASK, TIFR2,   TIFR2_OCF2B_MASK },
-	{ ATMEGA2560_INT_T2COMPA, TIMSK2, TIMSK2_OCIE2A_MASK, TIFR2,   TIFR2_OCF2A_MASK },
-	{ ATMEGA2560_INT_T2OVF,   TIMSK2, TIMSK2_TOIE2_MASK,  TIFR2,   TIFR2_TOV2_MASK },
+	{ ATMEGA2560_INT_T2COMPB, TIMSK2, TIMSK2_OCIE2B_MASK, TIFR2,   TIFR2_OCF2B_MASK, true },
+	{ ATMEGA2560_INT_T2COMPA, TIMSK2, TIMSK2_OCIE2A_MASK, TIFR2,   TIFR2_OCF2A_MASK, true },
+	{ ATMEGA2560_INT_T2OVF,   TIMSK2, TIMSK2_TOIE2_MASK,  TIFR2,   TIFR2_TOV2_MASK, true },
 
-	{ ATMEGA2560_INT_T3COMPB, TIMSK3, TIMSK1_OCIE1B_MASK, TIFR3,   TIFR1_OCF1B_MASK },
-	{ ATMEGA2560_INT_T3COMPA, TIMSK3, TIMSK1_OCIE1A_MASK, TIFR3,   TIFR1_OCF1A_MASK },
-	{ ATMEGA2560_INT_T3OVF,   TIMSK3, TIMSK1_TOIE1_MASK,  TIFR3,   TIFR1_TOV1_MASK },
+	{ ATMEGA2560_INT_T3COMPB, TIMSK3, TIMSK1_OCIE1B_MASK, TIFR3,   TIFR1_OCF1B_MASK, true },
+	{ ATMEGA2560_INT_T3COMPA, TIMSK3, TIMSK1_OCIE1A_MASK, TIFR3,   TIFR1_OCF1A_MASK, true },
+	{ ATMEGA2560_INT_T3OVF,   TIMSK3, TIMSK1_TOIE1_MASK,  TIFR3,   TIFR1_TOV1_MASK, true },
 
-	{ ATMEGA2560_INT_T4COMPB, TIMSK4, TIMSK1_OCIE1B_MASK, TIFR4,   TIFR1_OCF1B_MASK },
-	{ ATMEGA2560_INT_T4COMPA, TIMSK4, TIMSK1_OCIE1A_MASK, TIFR4,   TIFR1_OCF1A_MASK },
-	{ ATMEGA2560_INT_T4OVF,   TIMSK4, TIMSK1_TOIE1_MASK,  TIFR4,   TIFR1_TOV1_MASK },
+	{ ATMEGA2560_INT_T4COMPB, TIMSK4, TIMSK1_OCIE1B_MASK, TIFR4,   TIFR1_OCF1B_MASK, true },
+	{ ATMEGA2560_INT_T4COMPA, TIMSK4, TIMSK1_OCIE1A_MASK, TIFR4,   TIFR1_OCF1A_MASK, true },
+	{ ATMEGA2560_INT_T4OVF,   TIMSK4, TIMSK1_TOIE1_MASK,  TIFR4,   TIFR1_TOV1_MASK, true },
 
-	{ ATMEGA2560_INT_T5COMPB, TIMSK5, TIMSK1_OCIE1B_MASK, TIFR5,   TIFR1_OCF1B_MASK },
-	{ ATMEGA2560_INT_T5COMPA, TIMSK5, TIMSK1_OCIE1A_MASK, TIFR5,   TIFR1_OCF1A_MASK },
-	{ ATMEGA2560_INT_T5OVF,   TIMSK5, TIMSK1_TOIE1_MASK,  TIFR5,   TIFR1_TOV1_MASK }
+	{ ATMEGA2560_INT_T5COMPB, TIMSK5, TIMSK1_OCIE1B_MASK, TIFR5,   TIFR1_OCF1B_MASK, true },
+	{ ATMEGA2560_INT_T5COMPA, TIMSK5, TIMSK1_OCIE1A_MASK, TIFR5,   TIFR1_OCF1A_MASK, true },
+	{ ATMEGA2560_INT_T5OVF,   TIMSK5, TIMSK1_TOIE1_MASK,  TIFR5,   TIFR1_TOV1_MASK, true },
+
+	{ ATMEGA2560_INT_USART0_RX,   UCSR0B, UCSRB_RXCIE_MASK, UCSR0A, UCSRA_RXC_MASK, false },
+	{ ATMEGA2560_INT_USART0_UDRE, UCSR0B, UCSRB_UDRIE_MASK, UCSR0A, UCSRA_UDRE_MASK, false },
+	{ ATMEGA2560_INT_USART0_TX,   UCSR0B, UCSRB_TXCIE_MASK, UCSR0A, UCSRA_TXC_MASK, true }
 };
-
 
 
 //**************************************************************************
@@ -2365,6 +2507,257 @@ TIMER_CALLBACK_MEMBER(avr8_device<NumTimers>::adc_conversion_complete)
 	// trigger another conversion if appropriate
 	if (ADCSRA_ADATE && (ADCSRB_ADTS == 0))
 		adc_start_conversion();
+}
+
+template <int NumTimers>
+uint32_t avr8_device<NumTimers>::usart_bit_cycles(int n) const
+{
+	const uint16_t base = usart_base(n);
+	const uint16_t ubrr = ((m_r[base + 5] & 0x0f) << 8) | m_r[base + 4];
+	const uint32_t mul = (m_r[base + 0] & UCSRA_U2X_MASK) ? 8 : 16;
+	return (ubrr + 1) * mul;
+}
+
+template <int NumTimers>
+uint8_t avr8_device<NumTimers>::usart_data_bits(int n) const
+{
+	const uint16_t base = usart_base(n);
+	const uint8_t ucsz = ((m_r[base + 1] & UCSRB_UCSZ2_MASK) ? 4 : 0)
+					   | ((m_r[base + 2] & UCSRC_UCSZ01_MASK) >> UCSRC_UCSZ0_BIT);
+	static const uint8_t s_bits[8] = { 5, 6, 7, 8, 8, 8, 8, 9 };
+	return s_bits[ucsz & 7];
+}
+
+template <int NumTimers>
+void avr8_device<NumTimers>::usart_update_int(int n)
+{
+	if (n != 0)
+		return;
+	update_interrupt(INTIDX_USART0RX);
+	update_interrupt(INTIDX_USART0UDRE);
+	update_interrupt(INTIDX_USART0TX);
+}
+
+template <int NumTimers>
+void avr8_device<NumTimers>::usart_load_shifter(int n)
+{
+	const uint16_t base = usart_base(n);
+	const uint8_t bits = usart_data_bits(n);
+	const uint8_t ucsrc = m_r[base + 2];
+
+	uint16_t frame = 0;
+	int len = 0;
+
+	frame |= 0 << len;
+	len++;
+
+	uint16_t data = m_usart_tx_data[n] & ((1 << bits) - 1);
+	frame |= data << len;
+	len += bits;
+
+	if (ucsrc & UCSRC_UPM_MASK)
+	{
+		int ones = 0;
+		for (int i = 0; i < bits; i++)
+			ones += BIT(data, i);
+		const int parity = ((ucsrc & UCSRC_UPM_MASK) == UCSRC_UPM_MASK) ? !(ones & 1) : (ones & 1);
+		frame |= parity << len;
+		len++;
+	}
+
+	frame |= 1 << len;
+	len++;
+	if (ucsrc & UCSRC_USBS_MASK)
+	{
+		frame |= 1 << len;
+		len++;
+	}
+
+	LOGMASKED(LOG_UART, "%s: USART%d transmitting 0x%02x as %d data bits in a %d bit frame, %d cycles per bit\n",
+		machine().describe_context(), n, m_usart_tx_data[n], bits, len, usart_bit_cycles(n));
+
+	m_usart_tx_shift[n] = frame;
+	m_usart_tx_bits[n] = len;
+	m_usart_tx_count[n] = 0;
+	m_usart_tx_pending[n] = false;
+	m_usart_active |= 1 << n;
+
+	m_r[base + 0] |= UCSRA_UDRE_MASK;
+	m_r[base + 0] &= ~UCSRA_TXC_MASK;
+	usart_update_int(n);
+}
+
+template <int NumTimers>
+void avr8_device<NumTimers>::usart_tick()
+{
+	for (int n = 0; n < USART_COUNT; n++)
+	{
+		if (!BIT(m_usart_active, n))
+			continue;
+
+		const uint16_t base = usart_base(n);
+		const uint32_t period = usart_bit_cycles(n);
+
+		if (m_usart_tx_bits[n] > 0)
+		{
+			if (m_usart_tx_count[n] == 0)
+				m_usart_txd_cb[n](BIT(m_usart_tx_shift[n], 0));
+
+			m_usart_tx_count[n]++;
+			if (m_usart_tx_count[n] >= period)
+			{
+				m_usart_tx_count[n] = 0;
+				m_usart_tx_shift[n] >>= 1;
+				m_usart_tx_bits[n]--;
+
+				if (m_usart_tx_bits[n] == 0)
+				{
+					m_usart_txd_cb[n](1);
+					if (m_usart_tx_pending[n])
+					{
+						usart_load_shifter(n);
+					}
+					else
+					{
+						m_usart_tx_bits[n] = -1;
+						m_r[base + 0] |= UCSRA_TXC_MASK;
+						usart_update_int(n);
+					}
+				}
+			}
+		}
+
+		if (m_usart_rx_bits[n] >= 0)
+		{
+			m_usart_rx_count[n]++;
+			if (m_usart_rx_count[n] >= int32_t(period))
+			{
+				m_usart_rx_count[n] = 0;
+				const uint8_t bits = usart_data_bits(n);
+				const uint8_t level = m_usart_rxd[n];
+
+				if (m_usart_rx_bits[n] < bits)
+				{
+					m_usart_rx_shift[n] |= level << m_usart_rx_bits[n];
+					m_usart_rx_bits[n]++;
+				}
+				else
+				{
+					if (!level)
+						m_r[base + 0] |= UCSRA_FE_MASK;
+
+					if (m_r[base + 0] & UCSRA_RXC_MASK)
+						m_r[base + 0] |= UCSRA_DOR_MASK;
+
+					m_usart_rx_data[n] = m_usart_rx_shift[n] & 0xff;
+					m_r[base + 0] |= UCSRA_RXC_MASK;
+					m_usart_rx_bits[n] = -1;
+					usart_update_int(n);
+				}
+			}
+		}
+
+		if (m_usart_tx_bits[n] < 0 && m_usart_rx_bits[n] < 0)
+			m_usart_active &= ~(1 << n);
+	}
+}
+
+template <int NumTimers>
+void avr8_device<NumTimers>::usart_rxd_w(int n, int state)
+{
+	const uint16_t base = usart_base(n);
+	const uint8_t old = m_usart_rxd[n];
+	m_usart_rxd[n] = state ? 1 : 0;
+
+	if (!(m_r[base + 1] & UCSRB_RXEN_MASK))
+		return;
+	if (m_usart_rx_bits[n] >= 0 || !old || state)
+		return;
+
+	m_usart_rx_shift[n] = 0;
+	m_usart_rx_bits[n] = 0;
+	m_usart_rx_count[n] = -int32_t(usart_bit_cycles(n) / 2);
+	m_usart_active |= 1 << n;
+}
+
+template <int NumTimers>
+template <int N>
+void avr8_device<NumTimers>::ucsra_w(uint8_t data)
+{
+	const uint16_t base = usart_base(N);
+	const uint8_t keep = m_r[base + 0] & ~(UCSRA_TXC_MASK | UCSRA_U2X_MASK | 0x01);
+	m_r[base + 0] = keep | (data & (UCSRA_U2X_MASK | 0x01));
+	if (data & UCSRA_TXC_MASK)
+		m_r[base + 0] &= ~UCSRA_TXC_MASK;
+	usart_update_int(N);
+}
+
+template <int NumTimers>
+template <int N>
+void avr8_device<NumTimers>::ucsrb_w(uint8_t data)
+{
+	const uint16_t base = usart_base(N);
+	m_r[base + 1] = data;
+	if ((data & UCSRB_TXEN_MASK) && !m_usart_tx_pending[N] && m_usart_tx_bits[N] < 0)
+		m_r[base + 0] |= UCSRA_UDRE_MASK;
+	usart_update_int(N);
+}
+
+template <int NumTimers>
+template <int N>
+void avr8_device<NumTimers>::ucsrc_w(uint8_t data)
+{
+	m_r[usart_base(N) + 2] = data;
+}
+
+template <int NumTimers>
+template <int N>
+void avr8_device<NumTimers>::ubrrl_w(uint8_t data)
+{
+	m_r[usart_base(N) + 4] = data;
+}
+
+template <int NumTimers>
+template <int N>
+void avr8_device<NumTimers>::ubrrh_w(uint8_t data)
+{
+	m_r[usart_base(N) + 5] = data;
+}
+
+template <int NumTimers>
+template <int N>
+void avr8_device<NumTimers>::udr_w(uint8_t data)
+{
+	const uint16_t base = usart_base(N);
+
+	if (!(m_r[base + 1] & UCSRB_TXEN_MASK))
+		return;
+
+	if (!(m_r[base + 0] & UCSRA_UDRE_MASK))
+		LOGMASKED(LOG_UART, "%s: USART%d transmit buffer overrun, 0x%02x lost\n", machine().describe_context(), N, data);
+
+	m_usart_tx_data[N] = data;
+	m_r[base + 0] &= ~UCSRA_UDRE_MASK;
+	usart_update_int(N);
+
+	if (m_usart_tx_bits[N] < 0)
+		usart_load_shifter(N);
+	else
+		m_usart_tx_pending[N] = true;
+}
+
+template <int NumTimers>
+template <int N>
+uint8_t avr8_device<NumTimers>::udr_r()
+{
+	const uint16_t base = usart_base(N);
+	const uint8_t data = m_usart_rx_data[N];
+	if (!machine().side_effects_disabled())
+	{
+		m_r[base + 0] &= ~(UCSRA_RXC_MASK | UCSRA_FE_MASK | UCSRA_DOR_MASK);
+		usart_update_int(N);
+	}
+	return data;
 }
 
 /************************************************************************************************/
@@ -3477,24 +3870,6 @@ void avr8_device<NumTimers>::twamr_w(uint8_t data)
 	LOGMASKED(LOG_TWI, "%s: (not yet implemented) TWAMR = %02x\n", machine().describe_context(), data);
 }
 
-template <int NumTimers>
-void avr8_device<NumTimers>::ucsr0a_w(uint8_t data)
-{
-	LOGMASKED(LOG_UART, "%s: (not yet implemented) UCSR0A = %02x\n", machine().describe_context(), data);
-}
-
-template <int NumTimers>
-void avr8_device<NumTimers>::ucsr0b_w(uint8_t data)
-{
-	LOGMASKED(LOG_UART, "%s: (not yet implemented) UCSR0B = %02x\n", machine().describe_context(), data);
-}
-
-template <int NumTimers>
-void avr8_device<NumTimers>::ucsr0c_w(uint8_t data)
-{
-	LOGMASKED(LOG_UART, "%s: (not yet implemented) UCSR0C = %02x\n", machine().describe_context(), data);
-}
-
 
 //**************************************************************************
 //  CORE EXECUTION LOOP
@@ -3541,6 +3916,9 @@ void avr8_device<NumTimers>::execute_run()
 					}
 				}
 			}
+
+			if (m_usart_active)
+				usart_tick();
 
 			m_timer_prescale_count[0]++;
 			if (m_timer_prescale_count[0] > m_timer_prescale[0])

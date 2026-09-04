@@ -482,6 +482,10 @@ protected:
 		INTIDX_TOV5,
 	//---------------------------------
 
+		INTIDX_USART0RX,
+		INTIDX_USART0UDRE,
+		INTIDX_USART0TX,
+
 		INTIDX_COUNT
 	};
 
@@ -655,6 +659,7 @@ protected:
 		uint8_t m_intmask;
 		uint8_t m_regindex;
 		uint8_t m_regmask;
+		bool m_autoclear;
 	};
 
 	op_func m_op_funcs[0x10000];
@@ -858,6 +863,9 @@ public:
 	auto spi_out() { return m_spi_out_cb.bind(); }
 	auto spi_in() { return m_spi_in_cb.bind(); }
 
+	template <int N> auto txd() { return m_usart_txd_cb[N].bind(); }
+	template <int N> void rxd_w(int state) { usart_rxd_w(N, state); }
+
 protected:
 	avr8_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock, const device_type type, uint32_t address_mask, address_map_constructor internal_map);
 
@@ -898,9 +906,6 @@ protected:
 	void twdr_w(uint8_t data);
 	void twcr_w(uint8_t data);
 	void twamr_w(uint8_t data);
-	void ucsr0a_w(uint8_t data);
-	void ucsr0b_w(uint8_t data);
-	void ucsr0c_w(uint8_t data);
 
 	// EEPROM
 	void eecr_w(uint8_t data);
@@ -960,6 +965,40 @@ protected:
 
 	devcb_write8 m_spi_out_cb;
 	devcb_read8 m_spi_in_cb;
+
+	static constexpr int USART_COUNT = 4;
+
+	template <int N> void ucsra_w(uint8_t data);
+	template <int N> void ucsrb_w(uint8_t data);
+	template <int N> void ucsrc_w(uint8_t data);
+	template <int N> void ubrrl_w(uint8_t data);
+	template <int N> void ubrrh_w(uint8_t data);
+	template <int N> void udr_w(uint8_t data);
+	template <int N> uint8_t udr_r();
+
+	void usart_rxd_w(int n, int state);
+	void usart_tick();
+	void usart_load_shifter(int n);
+	void usart_update_int(int n);
+	uint32_t usart_bit_cycles(int n) const;
+	uint8_t usart_data_bits(int n) const;
+	static constexpr uint16_t usart_base(int n) { return (n < 3) ? (0x00c0 + n * 8) : 0x0130; }
+
+	void usart_map(address_map &map, int n) ATTR_COLD;
+
+	devcb_write_line::array<USART_COUNT> m_usart_txd_cb;
+
+	uint8_t m_usart_active;
+	uint8_t m_usart_rx_data[USART_COUNT];
+	uint8_t m_usart_tx_data[USART_COUNT];
+	bool m_usart_tx_pending[USART_COUNT];
+	uint16_t m_usart_tx_shift[USART_COUNT];
+	int8_t m_usart_tx_bits[USART_COUNT];
+	uint32_t m_usart_tx_count[USART_COUNT];
+	uint16_t m_usart_rx_shift[USART_COUNT];
+	int8_t m_usart_rx_bits[USART_COUNT];
+	int32_t m_usart_rx_count[USART_COUNT];
+	uint8_t m_usart_rxd[USART_COUNT];
 
 	// timers
 	void gtccr_w(uint8_t data);
