@@ -1457,21 +1457,18 @@ void avr8_device<NumTimers>::timer0_tick_ctc_norm()
 	static const uint8_t s_ocf0[2] = { (1 << TIFR0_OCF0A_SHIFT), (1 << TIFR0_OCF0B_SHIFT) };
 	static const uint8_t s_int0[2] = { INTIDX_OCF0A, INTIDX_OCF0B };
 
-	if (m_r[TCNT0] == m_r[OCR0A] - 1)
+	m_r[TCNT0]++;
+
+	if (m_r[TCNT0] == m_r[OCR0B])
+	{
+		m_r[TIFR0] |= s_ocf0[AVR8_REG_B];
+		update_interrupt(s_int0[AVR8_REG_B]);
+	}
+	if (m_r[TCNT0] == m_r[OCR0A])
 	{
 		m_r[TIFR0] |= s_ocf0[AVR8_REG_A];
 		update_interrupt(s_int0[AVR8_REG_A]);
 		m_r[TCNT0] = 0;
-	}
-	else if (m_r[TCNT0] == m_r[OCR0B] - 1)
-	{
-		m_r[TIFR0] |= s_ocf0[AVR8_REG_B];
-		update_interrupt(s_int0[AVR8_REG_B]);
-		m_r[TCNT0]++;
-	}
-	else
-	{
-		m_r[TCNT0]++;
 	}
 	m_timer_prescale_count[0] -= m_timer_prescale[0];
 }
