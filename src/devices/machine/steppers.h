@@ -6,7 +6,7 @@
 //                                                                       //
 // Emulates : stepper motors driven with full step or half step          //
 //            also emulates the index optic                              //
-//                                                                       //
+//            optionally models the noise the motor makes                //
 //                                                                       //
 // TODO:  add further types of stepper motors if needed (Konami/IGT?)    //
 ///////////////////////////////////////////////////////////////////////////
@@ -16,6 +16,8 @@
 #define MAME_MACHINE_STEPPERS_H
 
 #pragma once
+
+#include <memory>
 
 #define BASIC_STEPPER           0
 #define STARPOINT_48STEP_REEL   1           /* STARPOINT RMXXX reel unit */
@@ -38,9 +40,19 @@
 #define SYS5_100STEP_REEL       12
 
 
-class stepper_device : public device_t
+class stepper_device : public device_t, public device_sound_interface
 {
 public:
+	enum motor_type : int
+	{
+		MOTOR_NEMA17 = 0,
+		MOTOR_REEL_48STEP,
+		MOTOR_REEL_200STEP,
+		MOTOR_TYPES
+	};
+
+	static constexpr int ACOUSTIC_MODES = 4;
+
 	stepper_device(const machine_config &mconfig, const char *tag, device_t *owner, uint8_t init_phase)
 		: stepper_device(mconfig, tag, owner, (uint32_t)0)
 	{
@@ -48,6 +60,7 @@ public:
 	}
 
 	stepper_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
+	virtual ~stepper_device();
 
 	auto optic_handler() { return m_optic_cb.bind(); }
 
@@ -78,12 +91,39 @@ public:
 	/* get maximum position in half steps */
 	int get_max()               { return m_max_steps; }
 
+	/* acoustics: the rotor */
+	stepper_device &set_motor_type(motor_type type);
+	stepper_device &set_rotor(double inertia_kgm2, double holding_torque_nm, int rotor_teeth = 50);
+	stepper_device &set_rotor_damping(double q, double gain);
+
+	/* acoustics: what the shaft drives */
+	stepper_device &set_linear_load(double moving_kg, double mm_per_rev, int motors = 1);
+	stepper_device &set_belt_load(double moving_kg, int pulley_teeth, double belt_pitch_mm, int motors = 1);
+	stepper_device &set_screw_load(double moving_kg, double lead_mm, int motors = 1);
+	stepper_device &set_inertial_load(double extra_kgm2);
+
+	/* acoustics: electrical */
+	stepper_device &set_winding(double henries, double supply_volts);
+	stepper_device &set_drive_current(double amps);
+
+	/* acoustics: measured override */
+	stepper_device &set_mode(int index, double hz, double q, double gain);
+	stepper_device &set_radiation(double fraction);
+
+	double resonance_hz() const;
+
+	/* acoustics: excitation */
+	void set_coil_currents(double ia, double ib);
+	void set_holding(bool energised, double ia, double ib);
+
 protected:
 	stepper_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock = 0);
 
 	// device-level overrides
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
+	virtual void device_post_load() override;
+	virtual void sound_stream_update(sound_stream &stream) override;
 
 	uint8_t m_pattern;      /* coil pattern */
 	uint8_t m_old_pattern;  /* old coil pattern */
@@ -101,6 +141,16 @@ protected:
 	void update_optic();
 	virtual void advance_phase();
 	devcb_write_line m_optic_cb;
+
+private:
+	struct acoustics;
+
+	acoustics &acoustic();
+	void excite_phase(bool moved);
+	void retune(double rate);
+
+	std::unique_ptr<acoustics> m_acoustics;
+	sound_stream *m_stream;
 };
 
 class reel_device : public stepper_device
