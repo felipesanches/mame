@@ -26,6 +26,7 @@
 
 #include "emu.h"
 #include "cpu/avr8/avr8.h"
+#include "machine/a4982.h"
 #include "sound/dac.h"
 #include "video/hd44780.h"
 #include "emupal.h"
@@ -176,11 +177,19 @@ public:
 		m_maincpu(*this, "maincpu"),
 		m_lcdc(*this, "hd44780"),
 		m_dac(*this, "dac"),
-		m_io_keypad(*this, "keypad")
+		m_io_keypad(*this, "keypad"),
+		m_stepper(*this, "stepper%u", 0U),
+		m_axis_out(*this, "axis_%u_um"),
+		m_endstop_out(*this, "endstop_%u"),
+		m_motor_out(*this, "motor_%u_on")
 	{
 	}
 
 	void replicator(machine_config &config);
+
+	enum : int { AXIS_X, AXIS_Y, AXIS_Z, AXIS_A, AXIS_B, AXIS_COUNT };
+
+	enum : int { ES_X_MAX, ES_Y_MAX, ES_Z_MIN, ES_COUNT };
 
 private:
 	virtual void machine_start() override ATTR_COLD;
@@ -215,6 +224,10 @@ private:
 	void port_k_w(uint8_t data);
 	void port_l_w(uint8_t data);
 
+	template <int Axis> void step_taken(uint64_t position);
+	void update_endstops();
+	double axis_mm(int axis) const;
+
 	uint8_t m_port_a;
 	uint8_t m_port_b;
 	uint8_t m_port_c;
@@ -233,7 +246,87 @@ private:
 	required_device<hd44780_device> m_lcdc;
 	required_device<dac_bit_interface> m_dac;
 	required_ioport m_io_keypad;
+	required_device_array<a4982_device, AXIS_COUNT> m_stepper;
+
+	output_finder<AXIS_COUNT> m_axis_out;
+	output_finder<ES_COUNT> m_endstop_out;
+	output_finder<AXIS_COUNT> m_motor_out;
+
+	int64_t m_position[AXIS_COUNT]{};
+	int64_t m_last_translator[AXIS_COUNT]{};
+	uint8_t m_endstops = 0;
 };
+
+struct rep1_axis
+{
+	double steps_per_mm;
+	double travel_mm;
+	double overtravel_mm;
+	double direction;
+};
+
+static constexpr rep1_axis AXES[replicator_state::AXIS_COUNT] = {
+	{ 94.139704, 225.0, 3.0, -1.0 },
+	{ 94.139704, 145.0, 3.0, -1.0 },
+	{ 400.0,     150.0, 2.0, -1.0 },
+	{ 96.275202,   0.0, 0.0, +1.0 },
+	{ 96.275202,   0.0, 0.0, -1.0 }
+};
+
+static constexpr double POWER_ON_POSE[3] = { 112.0, 72.0, 100.0 };
+
+template <int Axis>
+void replicator_state::step_taken(uint64_t position)
+{
+	const int64_t now = int64_t(position);
+	const int64_t delta = now - m_last_translator[Axis];
+	m_last_translator[Axis] = now;
+
+	if (!m_stepper[Axis]->outputs_enabled())
+		return;
+
+	m_position[Axis] += (AXES[Axis].direction < 0.0) ? -delta : delta;
+
+	if (AXES[Axis].travel_mm > 0.0)
+	{
+		const int64_t low = int64_t(-AXES[Axis].overtravel_mm * AXES[Axis].steps_per_mm);
+		const int64_t high = int64_t((AXES[Axis].travel_mm + AXES[Axis].overtravel_mm) * AXES[Axis].steps_per_mm);
+		m_position[Axis] = std::clamp(m_position[Axis], low, high);
+	}
+
+	update_endstops();
+}
+
+double replicator_state::axis_mm(int axis) const
+{
+	return double(m_position[axis]) / AXES[axis].steps_per_mm;
+}
+
+void replicator_state::update_endstops()
+{
+	static constexpr double TRIP = 0.5;
+
+	uint8_t state = 0;
+	if (axis_mm(AXIS_X) >= AXES[AXIS_X].travel_mm - TRIP)
+		state |= 1 << ES_X_MAX;
+	if (axis_mm(AXIS_Y) >= AXES[AXIS_Y].travel_mm - TRIP)
+		state |= 1 << ES_Y_MAX;
+	if (axis_mm(AXIS_Z) <= TRIP)
+		state |= 1 << ES_Z_MIN;
+
+	if (state != m_endstops)
+	{
+		m_endstops = state;
+		for (int i = 0; i < ES_COUNT; i++)
+			m_endstop_out[i] = BIT(state, i);
+	}
+
+	for (int axis = 0; axis < AXIS_COUNT; axis++)
+	{
+		m_axis_out[axis] = int32_t(1000.0 * axis_mm(axis));
+		m_motor_out[axis] = m_stepper[axis]->outputs_enabled() ? 1 : 0;
+	}
+}
 
 uint8_t replicator_state::port_a_r()
 {
@@ -298,7 +391,15 @@ uint8_t replicator_state::port_k_r()
 uint8_t replicator_state::port_l_r()
 {
 	LOGMASKED(LOG_PORT_L, "%s: Port L READ (HBP; EXTRA-FET; X-MIN/MAX; Y-MIN/MAX; Z-MIN/MAX)\n", machine().describe_context());
-	return 0;
+
+	uint8_t data = X_MIN | Y_MIN | Z_MAX | (m_port_l & (HBP | EXTRA_FET));
+	if (!BIT(m_endstops, ES_X_MAX))
+		data |= X_MAX;
+	if (!BIT(m_endstops, ES_Y_MAX))
+		data |= Y_MAX;
+	if (!BIT(m_endstops, ES_Z_MIN))
+		data |= Z_MIN;
+	return data;
 }
 
 void replicator_state::port_a_w(uint8_t data)
@@ -320,6 +421,14 @@ void replicator_state::port_a_w(uint8_t data)
 		LOGMASKED(LOG_PORT_A, "%s: [A] B_AXIS_DIR: %d\n", machine().describe_context(), data & B_AXIS_DIR ? 1 : 0);
 	if (changed & B_AXIS_STEP)
 		LOGMASKED(LOG_PORT_A, "%s: [A] B_AXIS_STEP: %d\n", machine().describe_context(), data & B_AXIS_STEP ? 1 : 0);
+
+	m_stepper[AXIS_A]->enable_w(BIT(data, 4));
+	m_stepper[AXIS_A]->dir_w(BIT(data, 2));
+	m_stepper[AXIS_A]->step_w(BIT(data, 3));
+	m_stepper[AXIS_B]->dir_w(BIT(data, 6));
+	m_stepper[AXIS_B]->step_w(BIT(data, 7));
+	if (changed & A_AXIS_EN)
+		update_endstops();
 
 	m_port_a = data;
 }
@@ -466,6 +575,15 @@ void replicator_state::port_f_w(uint8_t data)
 	if (changed & Y_AXIS_POT)
 		LOGMASKED(LOG_PORT_F, "%s: [F] Y_AXIS_POT: %d\n", machine().describe_context(), data & Y_AXIS_POT ? 1 : 0);
 
+	m_stepper[AXIS_X]->enable_w(BIT(data, 2));
+	m_stepper[AXIS_X]->dir_w(BIT(data, 0));
+	m_stepper[AXIS_X]->step_w(BIT(data, 1));
+	m_stepper[AXIS_Y]->enable_w(BIT(data, 6));
+	m_stepper[AXIS_Y]->dir_w(BIT(data, 4));
+	m_stepper[AXIS_Y]->step_w(BIT(data, 5));
+	if (changed & (X_AXIS_EN | Y_AXIS_EN))
+		update_endstops();
+
 	m_port_f = data;
 }
 
@@ -491,6 +609,10 @@ void replicator_state::port_g_w(uint8_t data)
 	{
 		m_dac->write(BIT(data, 5));
 	}
+
+	m_stepper[AXIS_B]->enable_w(BIT(data, 2));
+	if (changed & B_AXIS_EN)
+		update_endstops();
 
 	m_port_g = data;
 }
@@ -569,6 +691,12 @@ void replicator_state::port_k_w(uint8_t data)
 	if (changed & HBP_THERM)
 		LOGMASKED(LOG_PORT_K, "%s: [K] HBP_THERM: %d\n", machine().describe_context(), data & HBP_THERM ? 1 : 0);
 
+	m_stepper[AXIS_Z]->enable_w(BIT(data, 2));
+	m_stepper[AXIS_Z]->dir_w(BIT(data, 0));
+	m_stepper[AXIS_Z]->step_w(BIT(data, 1));
+	if (changed & Z_AXIS_EN)
+		update_endstops();
+
 	m_port_k = data;
 }
 
@@ -632,6 +760,13 @@ INPUT_PORTS_END
 
 void replicator_state::machine_start()
 {
+	m_axis_out.resolve();
+	m_endstop_out.resolve();
+	m_motor_out.resolve();
+
+	save_item(NAME(m_position));
+	save_item(NAME(m_last_translator));
+	save_item(NAME(m_endstops));
 	save_item(NAME(m_shift_register_value));
 	save_item(NAME(m_port_a));
 	save_item(NAME(m_port_b));
@@ -660,6 +795,18 @@ void replicator_state::machine_reset()
 	m_port_j = 0;
 	m_port_k = 0;
 	m_port_l = 0;
+
+	for (int axis = 0; axis < AXIS_COUNT; axis++)
+	{
+		m_position[axis] = (axis < 3) ? int64_t(POWER_ON_POSE[axis] * AXES[axis].steps_per_mm) : 0;
+		m_last_translator[axis] = 0;
+		m_stepper[axis]->enable_w(1);
+		m_stepper[axis]->ms1_w(1);
+		m_stepper[axis]->ms2_w(1);
+	}
+
+	m_endstops = 0xff;
+	update_endstops();
 }
 
 void replicator_state::palette_init(palette_device &palette) const
@@ -721,6 +868,14 @@ void replicator_state::replicator(machine_config &config)
 	m_maincpu->gpio_out<atmega1280_device::GPIOL>().set(FUNC(replicator_state::port_l_w));
 
 	/*TODO: Add an ATMEGA8U2 for USB-Serial communications */
+
+	for (int axis = 0; axis < AXIS_COUNT; axis++)
+		A4982(config, m_stepper[axis]);
+	m_stepper[AXIS_X]->step_cb().set(FUNC(replicator_state::step_taken<AXIS_X>));
+	m_stepper[AXIS_Y]->step_cb().set(FUNC(replicator_state::step_taken<AXIS_Y>));
+	m_stepper[AXIS_Z]->step_cb().set(FUNC(replicator_state::step_taken<AXIS_Z>));
+	m_stepper[AXIS_A]->step_cb().set(FUNC(replicator_state::step_taken<AXIS_A>));
+	m_stepper[AXIS_B]->step_cb().set(FUNC(replicator_state::step_taken<AXIS_B>));
 
 	/* video hardware */
 	screen_device &screen(SCREEN(config, "screen", SCREEN_TYPE_LCD));
