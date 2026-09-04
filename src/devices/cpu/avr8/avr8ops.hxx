@@ -404,6 +404,7 @@ void avr8_base_device::populate_ops()
 						break;
 					case 0x0010:    // EICALL
 						m_op_funcs[op] = &avr8_base_device::op_eicall;
+						m_op_cycles[op] = 4;
 						break;
 					default:
 						m_op_funcs[op] = &avr8_base_device::op_unimpl;
@@ -1216,7 +1217,8 @@ void avr8_base_device::op_icall(uint16_t op)
 
 void avr8_base_device::op_eicall(uint16_t op)
 {
-	op_unimpl(op);
+	push_pc((m_pc >> 1) + 1);
+	m_pc = ((m_r[EIND] << 16 | ZREG) << 1) - 2;
 }
 
 void avr8_base_device::op_adiw(uint16_t op)
