@@ -855,6 +855,9 @@ public:
 	// ADC
 	template<uint8_t Pin> auto adc_in() { return m_adc_in_cb[Pin].bind(); }
 
+	auto spi_out() { return m_spi_out_cb.bind(); }
+	auto spi_in() { return m_spi_in_cb.bind(); }
+
 protected:
 	avr8_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock, const device_type type, uint32_t address_mask, address_map_constructor internal_map);
 
@@ -954,6 +957,9 @@ protected:
 	uint8_t m_spi_in;
 	bool m_spsr_read_with_spif;
 	uint8_t m_spi_mosi_mask;
+
+	devcb_write8 m_spi_out_cb;
+	devcb_read8 m_spi_in_cb;
 
 	// timers
 	void gtccr_w(uint8_t data);
