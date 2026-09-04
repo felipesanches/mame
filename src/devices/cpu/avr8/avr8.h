@@ -517,6 +517,67 @@ protected:
 		ATMEGA644_INT_SPM_RDY
 	};
 
+	enum : uint8_t
+	{
+		ATMEGA2560_INT_RESET = 0,
+		ATMEGA2560_INT_INT0,
+		ATMEGA2560_INT_INT1,
+		ATMEGA2560_INT_INT2,
+		ATMEGA2560_INT_INT3,
+		ATMEGA2560_INT_INT4,
+		ATMEGA2560_INT_INT5,
+		ATMEGA2560_INT_INT6,
+		ATMEGA2560_INT_INT7,
+		ATMEGA2560_INT_PCINT0,
+		ATMEGA2560_INT_PCINT1,
+		ATMEGA2560_INT_PCINT2,
+		ATMEGA2560_INT_WDT,
+		ATMEGA2560_INT_T2COMPA,
+		ATMEGA2560_INT_T2COMPB,
+		ATMEGA2560_INT_T2OVF,
+		ATMEGA2560_INT_T1CAPT,
+		ATMEGA2560_INT_T1COMPA,
+		ATMEGA2560_INT_T1COMPB,
+		ATMEGA2560_INT_T1COMPC,
+		ATMEGA2560_INT_T1OVF,
+		ATMEGA2560_INT_T0COMPA,
+		ATMEGA2560_INT_T0COMPB,
+		ATMEGA2560_INT_T0OVF,
+		ATMEGA2560_INT_SPI_STC,
+		ATMEGA2560_INT_USART0_RX,
+		ATMEGA2560_INT_USART0_UDRE,
+		ATMEGA2560_INT_USART0_TX,
+		ATMEGA2560_INT_ANALOG_COMP,
+		ATMEGA2560_INT_ADC,
+		ATMEGA2560_INT_EE_RDY,
+		ATMEGA2560_INT_T3CAPT,
+		ATMEGA2560_INT_T3COMPA,
+		ATMEGA2560_INT_T3COMPB,
+		ATMEGA2560_INT_T3COMPC,
+		ATMEGA2560_INT_T3OVF,
+		ATMEGA2560_INT_USART1_RX,
+		ATMEGA2560_INT_USART1_UDRE,
+		ATMEGA2560_INT_USART1_TX,
+		ATMEGA2560_INT_TWI,
+		ATMEGA2560_INT_SPM_RDY,
+		ATMEGA2560_INT_T4CAPT,
+		ATMEGA2560_INT_T4COMPA,
+		ATMEGA2560_INT_T4COMPB,
+		ATMEGA2560_INT_T4COMPC,
+		ATMEGA2560_INT_T4OVF,
+		ATMEGA2560_INT_T5CAPT,
+		ATMEGA2560_INT_T5COMPA,
+		ATMEGA2560_INT_T5COMPB,
+		ATMEGA2560_INT_T5COMPC,
+		ATMEGA2560_INT_T5OVF,
+		ATMEGA2560_INT_USART2_RX,
+		ATMEGA2560_INT_USART2_UDRE,
+		ATMEGA2560_INT_USART2_TX,
+		ATMEGA2560_INT_USART3_RX,
+		ATMEGA2560_INT_USART3_UDRE,
+		ATMEGA2560_INT_USART3_TX
+	};
+
 	// lock bit masks
 	enum : uint8_t
 	{
@@ -765,6 +826,7 @@ protected:
 
 	static const interrupt_condition s_int_conditions[INTIDX_COUNT];
 	static const interrupt_condition s_mega644_int_conditions[INTIDX_COUNT];
+	static const interrupt_condition s_mega2560_int_conditions[INTIDX_COUNT];
 };
 
 // ======================> avr8_device
@@ -1167,7 +1229,7 @@ public:
 	void atmega1280_internal_map(address_map &map) ATTR_COLD;
 
 protected:
-	virtual const interrupt_condition *int_conditions() const override { return s_mega644_int_conditions; }
+	virtual const interrupt_condition *int_conditions() const override { return s_mega2560_int_conditions; }
 	virtual unsigned int_vector_scale() const override { return 2; }
 };
 
@@ -1182,7 +1244,7 @@ public:
 	void atmega2560_internal_map(address_map &map) ATTR_COLD;
 
 protected:
-	virtual const interrupt_condition *int_conditions() const override { return s_mega644_int_conditions; }
+	virtual const interrupt_condition *int_conditions() const override { return s_mega2560_int_conditions; }
 	virtual unsigned int_vector_scale() const override { return 2; }
 };
 
