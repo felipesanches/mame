@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -21,10 +22,13 @@
 
 namespace util::xml { class data_node; }
 
+struct scene3d_gl;
+
 class scene3d_renderer
 {
 public:
 	scene3d_renderer(device_t &device, memory_region *scene, memory_region *meshes);
+	~scene3d_renderer();
 
 	int camera_count() const { return int(m_cameras.size()); }
 	void set_camera(int index) { m_camera = index; m_dirty = true; }
@@ -100,6 +104,11 @@ private:
 	bool project(const vec3 &world, float &sx, float &sy, float &sz) const;
 	void raster_face(bitmap_rgb32 &bitmap, const rectangle &cliprect, const vec3 v[3], rgb_t colour);
 
+	bool gl_available();
+	bool gl_init(scene3d_gl &gl);
+	bool gl_draw(scene3d_gl &gl, bitmap_rgb32 &bitmap, const rectangle &cliprect);
+	bool gl_render(bitmap_rgb32 &bitmap, const rectangle &cliprect);
+
 	device_t &m_device;
 	bool m_loaded = false;
 	bool m_bound = false;
@@ -124,6 +133,9 @@ private:
 	float m_view[3][4] = { };
 	float m_focal = 0.0f;
 	vec3 m_light_world;
+
+	std::unique_ptr<scene3d_gl> m_gl;
+	bool m_gl_tried = false;
 
 	std::vector<float> m_depth;
 	bitmap_rgb32 m_cache;
