@@ -18,11 +18,93 @@
 
 #include <algorithm>
 #include <cmath>
+#include <condition_variable>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
+#include <map>
+#include <mutex>
+#include <thread>
 
+#if defined(__unix__) || defined(__APPLE__)
+#include <dlfcn.h>
+#define SCENE3D_HAVE_DL 1
+#endif
+
+
+using egl_enum = unsigned int;
+using egl_int = int;
+using gl_enum = unsigned int;
+using gl_uint = unsigned int;
+using gl_int = int;
+using gl_sizei = int;
+using gl_bitfield = unsigned int;
+using gl_boolean = unsigned char;
+using gl_float = float;
+using gl_char = char;
+using gl_sizeiptr = std::intptr_t;
 
 namespace {
+
+constexpr egl_enum EGL_PLATFORM_SURFACELESS_MESA = 0x31DD;
+constexpr egl_int EGL_NONE_ = 0x3038;
+constexpr egl_int EGL_SURFACE_TYPE = 0x3033;
+constexpr egl_int EGL_PBUFFER_BIT = 0x0001;
+constexpr egl_int EGL_RENDERABLE_TYPE = 0x3040;
+constexpr egl_int EGL_OPENGL_ES3_BIT = 0x0040;
+constexpr egl_int EGL_RED_SIZE = 0x3024;
+constexpr egl_int EGL_GREEN_SIZE = 0x3023;
+constexpr egl_int EGL_BLUE_SIZE = 0x3022;
+constexpr egl_int EGL_DEPTH_SIZE = 0x3025;
+constexpr egl_int EGL_WIDTH = 0x3057;
+constexpr egl_int EGL_HEIGHT = 0x3056;
+constexpr egl_enum EGL_OPENGL_ES_API = 0x30A0;
+constexpr egl_int EGL_CONTEXT_CLIENT_VERSION = 0x3098;
+
+constexpr gl_enum GL_FRAGMENT_SHADER = 0x8B30;
+constexpr gl_enum GL_VERTEX_SHADER = 0x8B31;
+constexpr gl_enum GL_COMPILE_STATUS = 0x8B81;
+constexpr gl_enum GL_LINK_STATUS = 0x8B82;
+constexpr gl_enum GL_ARRAY_BUFFER = 0x8892;
+constexpr gl_enum GL_STATIC_DRAW = 0x88E4;
+constexpr gl_enum GL_FLOAT = 0x1406;
+constexpr gl_enum GL_FRAMEBUFFER = 0x8D40;
+constexpr gl_enum GL_RENDERBUFFER = 0x8D41;
+constexpr gl_enum GL_COLOR_ATTACHMENT0 = 0x8CE0;
+constexpr gl_enum GL_DEPTH_ATTACHMENT = 0x8D00;
+constexpr gl_enum GL_RGBA8 = 0x8058;
+constexpr gl_enum GL_DEPTH_COMPONENT24 = 0x81A6;
+constexpr gl_enum GL_FRAMEBUFFER_COMPLETE = 0x8CD5;
+constexpr gl_enum GL_DEPTH_TEST = 0x0B71;
+constexpr gl_enum GL_CULL_FACE = 0x0B44;
+constexpr gl_enum GL_BACK = 0x0405;
+constexpr gl_enum GL_CCW = 0x0901;
+constexpr gl_enum GL_TRIANGLES = 0x0004;
+constexpr gl_enum GL_RGBA = 0x1908;
+constexpr gl_enum GL_UNSIGNED_BYTE = 0x1401;
+constexpr gl_bitfield GL_COLOR_BUFFER_BIT = 0x00004000;
+constexpr gl_bitfield GL_DEPTH_BUFFER_BIT = 0x00000100;
+constexpr gl_enum GL_RENDERER = 0x1F01;
+constexpr gl_enum GL_VERSION = 0x1F02;
+
+const char *const GL_VERTEX_SRC =
+	"#version 300 es\n"
+	"in vec3 p;in vec3 nrm;in vec3 cen;in vec3 col;\n"
+	"uniform mat4 u_mvp;uniform mat4 u_model;uniform mat3 u_nrm;uniform vec3 u_tint;\n"
+	"flat out vec3 v_col;flat out vec3 v_wn;flat out vec3 v_wc;\n"
+	"void main(){gl_Position=u_mvp*vec4(p,1.0);v_col=col*u_tint;\n"
+	"v_wn=normalize(u_nrm*nrm);v_wc=(u_model*vec4(cen,1.0)).xyz;}\n";
+const char *const GL_FRAGMENT_SRC =
+	"#version 300 es\n"
+	"precision highp float;\n"
+	"flat in vec3 v_col;flat in vec3 v_wn;flat in vec3 v_wc;\n"
+	"uniform int u_haslight;uniform vec3 u_light;\n"
+	"out vec4 o;\n"
+	"void main(){vec3 dir=vec3(-0.4,-0.5,0.77);\n"
+	"if(u_haslight!=0){dir=normalize(u_light-v_wc);}\n"
+	"float lam=clamp(0.35+0.65*abs(dot(normalize(v_wn),dir)),0.0,1.0);\n"
+	"o=vec4(clamp(v_col,0.0,1.0)*lam,1.0);}\n";
 
 constexpr float PI_F = 3.14159265358979f;
 constexpr float NEAR_PLANE = 0.01f;
@@ -112,11 +194,133 @@ bool parse_floats(const char *text, float *out, int count)
 }
 
 
+struct scene3d_gl
+{
+	void *libegl = nullptr;
+	void *libgl = nullptr;
+	void *display = nullptr;
+	void *surface = nullptr;
+	void *context = nullptr;
+
+	void *(*eglGetProcAddress)(const char *) = nullptr;
+	void *(*eglGetPlatformDisplay)(egl_enum, void *, const egl_int *) = nullptr;
+	unsigned (*eglInitialize)(void *, egl_int *, egl_int *) = nullptr;
+	unsigned (*eglBindAPI)(egl_enum) = nullptr;
+	unsigned (*eglChooseConfig)(void *, const egl_int *, void **, egl_int, egl_int *) = nullptr;
+	void *(*eglCreatePbufferSurface)(void *, void *, const egl_int *) = nullptr;
+	void *(*eglCreateContext)(void *, void *, void *, const egl_int *) = nullptr;
+	unsigned (*eglMakeCurrent)(void *, void *, void *, void *) = nullptr;
+	egl_int (*eglGetError)() = nullptr;
+
+	const unsigned char *(*glGetString)(gl_enum) = nullptr;
+	gl_uint (*glCreateShader)(gl_enum) = nullptr;
+	void (*glShaderSource)(gl_uint, gl_sizei, const gl_char *const *, const gl_int *) = nullptr;
+	void (*glCompileShader)(gl_uint) = nullptr;
+	void (*glGetShaderiv)(gl_uint, gl_enum, gl_int *) = nullptr;
+	void (*glGetShaderInfoLog)(gl_uint, gl_sizei, gl_sizei *, gl_char *) = nullptr;
+	gl_uint (*glCreateProgram)() = nullptr;
+	void (*glAttachShader)(gl_uint, gl_uint) = nullptr;
+	void (*glBindAttribLocation)(gl_uint, gl_uint, const gl_char *) = nullptr;
+	void (*glLinkProgram)(gl_uint) = nullptr;
+	void (*glGetProgramiv)(gl_uint, gl_enum, gl_int *) = nullptr;
+	void (*glUseProgram)(gl_uint) = nullptr;
+	gl_int (*glGetUniformLocation)(gl_uint, const gl_char *) = nullptr;
+	void (*glGenBuffers)(gl_sizei, gl_uint *) = nullptr;
+	void (*glBindBuffer)(gl_enum, gl_uint) = nullptr;
+	void (*glBufferData)(gl_enum, gl_sizeiptr, const void *, gl_enum) = nullptr;
+	void (*glEnableVertexAttribArray)(gl_uint) = nullptr;
+	void (*glVertexAttribPointer)(gl_uint, gl_int, gl_enum, gl_boolean, gl_sizei, const void *) = nullptr;
+	void (*glUniformMatrix4fv)(gl_int, gl_sizei, gl_boolean, const gl_float *) = nullptr;
+	void (*glUniformMatrix3fv)(gl_int, gl_sizei, gl_boolean, const gl_float *) = nullptr;
+	void (*glUniform3f)(gl_int, gl_float, gl_float, gl_float) = nullptr;
+	void (*glUniform1i)(gl_int, gl_int) = nullptr;
+	void (*glGenFramebuffers)(gl_sizei, gl_uint *) = nullptr;
+	void (*glBindFramebuffer)(gl_enum, gl_uint) = nullptr;
+	void (*glGenRenderbuffers)(gl_sizei, gl_uint *) = nullptr;
+	void (*glBindRenderbuffer)(gl_enum, gl_uint) = nullptr;
+	void (*glRenderbufferStorage)(gl_enum, gl_enum, gl_sizei, gl_sizei) = nullptr;
+	void (*glFramebufferRenderbuffer)(gl_enum, gl_enum, gl_enum, gl_uint) = nullptr;
+	gl_enum (*glCheckFramebufferStatus)(gl_enum) = nullptr;
+	void (*glViewport)(gl_int, gl_int, gl_sizei, gl_sizei) = nullptr;
+	void (*glClearColor)(gl_float, gl_float, gl_float, gl_float) = nullptr;
+	void (*glClear)(gl_bitfield) = nullptr;
+	void (*glEnable)(gl_enum) = nullptr;
+	void (*glCullFace)(gl_enum) = nullptr;
+	void (*glFrontFace)(gl_enum) = nullptr;
+	void (*glDrawArrays)(gl_enum, gl_int, gl_sizei) = nullptr;
+	void (*glReadPixels)(gl_int, gl_int, gl_sizei, gl_sizei, gl_enum, gl_enum, void *) = nullptr;
+	void (*glFinish)() = nullptr;
+
+	gl_uint program = 0;
+	gl_int u_mvp = -1, u_model = -1, u_nrm = -1, u_tint = -1, u_haslight = -1, u_light = -1;
+	gl_uint fbo = 0, colour_rb = 0, depth_rb = 0;
+	int fbo_width = 0, fbo_height = 0;
+
+	std::map<int, std::pair<gl_uint, gl_sizei> > mesh_cache;
+	std::vector<uint8_t> pixels;
+
+	std::thread worker;
+	std::mutex mtx;
+	std::condition_variable cv;
+	std::function<void()> job;
+	bool have_job = false, done = false, stop = false, started = false;
+
+	void start()
+	{
+		worker = std::thread([this] ()
+		{
+			std::unique_lock<std::mutex> lock(mtx);
+			while (true)
+			{
+				cv.wait(lock, [this] () { return have_job || stop; });
+				if (stop)
+					break;
+				std::function<void()> j = std::move(job);
+				have_job = false;
+				lock.unlock();
+				j();
+				lock.lock();
+				done = true;
+				cv.notify_all();
+			}
+		});
+		started = true;
+	}
+
+	void exec(std::function<void()> f)
+	{
+		std::unique_lock<std::mutex> lock(mtx);
+		job = std::move(f);
+		have_job = true;
+		done = false;
+		cv.notify_all();
+		cv.wait(lock, [this] () { return done; });
+	}
+
+	~scene3d_gl()
+	{
+		if (started)
+		{
+			{
+				std::unique_lock<std::mutex> lock(mtx);
+				stop = true;
+				cv.notify_all();
+			}
+			worker.join();
+		}
+	}
+};
+
+
 scene3d_renderer::scene3d_renderer(device_t &device, memory_region *scene, memory_region *meshes)
 	: m_device(device)
 {
 	load_meshes(meshes);
 	m_loaded = load_scene(scene);
+}
+
+scene3d_renderer::~scene3d_renderer()
+{
 }
 
 bool scene3d_renderer::load_meshes(memory_region *region)
@@ -613,6 +817,349 @@ void scene3d_renderer::draw_node(bitmap_rgb32 &bitmap, const rectangle &cliprect
 }
 
 
+namespace {
+
+void mat4_from_34(const float m[12], float out[16])
+{
+	std::memcpy(out, m, 12 * sizeof(float));
+	out[12] = out[13] = out[14] = 0.0f;
+	out[15] = 1.0f;
+}
+
+void mat4_mul(const float a[16], const float b[16], float out[16])
+{
+	float t[16];
+	for (int r = 0; r < 4; r++)
+		for (int c = 0; c < 4; c++)
+			t[r * 4 + c] = a[r * 4 + 0] * b[0 * 4 + c] + a[r * 4 + 1] * b[1 * 4 + c]
+					+ a[r * 4 + 2] * b[2 * 4 + c] + a[r * 4 + 3] * b[3 * 4 + c];
+	std::memcpy(out, t, sizeof(t));
+}
+
+void normal_matrix(const float m[12], float out[9])
+{
+	const float a = m[0], b = m[1], c = m[2];
+	const float d = m[4], e = m[5], f = m[6];
+	const float g = m[8], h = m[9], i = m[10];
+	const float c00 = e * i - f * h, c01 = -(d * i - f * g), c02 = d * h - e * g;
+	const float c10 = -(b * i - c * h), c11 = a * i - c * g, c12 = -(a * h - b * g);
+	const float c20 = b * f - c * e, c21 = -(a * f - c * d), c22 = a * e - b * d;
+	const float det = a * c00 + b * c01 + c * c02;
+	if (std::fabs(det) < 1e-20f)
+	{
+		out[0] = out[4] = out[8] = 1.0f;
+		out[1] = out[2] = out[3] = out[5] = out[6] = out[7] = 0.0f;
+		return;
+	}
+	const float id = 1.0f / det;
+	out[0] = c00 * id; out[1] = c01 * id; out[2] = c02 * id;
+	out[3] = c10 * id; out[4] = c11 * id; out[5] = c12 * id;
+	out[6] = c20 * id; out[7] = c21 * id; out[8] = c22 * id;
+}
+
+}
+
+
+bool scene3d_renderer::gl_available()
+{
+	if (m_gl_tried)
+		return bool(m_gl);
+	m_gl_tried = true;
+
+	if (std::getenv("SCENE3D_SOFT"))
+	{
+		osd_printf_verbose("scene3d: SCENE3D_SOFT set, using the software renderer\n");
+		return false;
+	}
+
+#ifndef SCENE3D_HAVE_DL
+	osd_printf_verbose("scene3d: no runtime GL loader on this platform, using the software renderer\n");
+	return false;
+#else
+	auto gl = std::make_unique<scene3d_gl>();
+	gl->start();
+	bool ok = false;
+	gl->exec([&] () { ok = gl_init(*gl); });
+	if (!ok)
+		return false;
+	m_gl = std::move(gl);
+	return true;
+#endif
+}
+
+bool scene3d_renderer::gl_init(scene3d_gl &gl)
+{
+#ifdef SCENE3D_HAVE_DL
+	gl.libegl = dlopen("libEGL.so.1", RTLD_NOW | RTLD_LOCAL);
+	gl.libgl = dlopen("libGLESv2.so.2", RTLD_NOW | RTLD_LOCAL);
+	if (!gl.libegl || !gl.libgl)
+	{
+		osd_printf_verbose("scene3d: no EGL/GLES runtime, using the software renderer\n");
+		return false;
+	}
+
+	gl.eglGetProcAddress = reinterpret_cast<decltype(gl.eglGetProcAddress)>(dlsym(gl.libegl, "eglGetProcAddress"));
+	if (!gl.eglGetProcAddress)
+		return false;
+
+	bool ok = true;
+	auto egl = [&] (const char *name) { void *p = gl.eglGetProcAddress(name); if (!p) ok = false; return p; };
+	auto ges = [&] (const char *name)
+	{
+		void *p = dlsym(gl.libgl, name);
+		if (!p) p = gl.eglGetProcAddress(name);
+		if (!p) ok = false;
+		return p;
+	};
+#define EGLSYM(f) gl.f = reinterpret_cast<decltype(gl.f)>(egl(#f))
+#define GLSYM(f) gl.f = reinterpret_cast<decltype(gl.f)>(ges(#f))
+	EGLSYM(eglGetPlatformDisplay); EGLSYM(eglInitialize); EGLSYM(eglBindAPI);
+	EGLSYM(eglChooseConfig); EGLSYM(eglCreatePbufferSurface); EGLSYM(eglCreateContext);
+	EGLSYM(eglMakeCurrent); EGLSYM(eglGetError);
+	GLSYM(glGetString); GLSYM(glCreateShader); GLSYM(glShaderSource); GLSYM(glCompileShader);
+	GLSYM(glGetShaderiv); GLSYM(glGetShaderInfoLog); GLSYM(glCreateProgram); GLSYM(glAttachShader);
+	GLSYM(glBindAttribLocation); GLSYM(glLinkProgram); GLSYM(glGetProgramiv); GLSYM(glUseProgram);
+	GLSYM(glGetUniformLocation); GLSYM(glGenBuffers); GLSYM(glBindBuffer); GLSYM(glBufferData);
+	GLSYM(glEnableVertexAttribArray); GLSYM(glVertexAttribPointer); GLSYM(glUniformMatrix4fv);
+	GLSYM(glUniformMatrix3fv); GLSYM(glUniform3f); GLSYM(glUniform1i); GLSYM(glGenFramebuffers);
+	GLSYM(glBindFramebuffer); GLSYM(glGenRenderbuffers); GLSYM(glBindRenderbuffer);
+	GLSYM(glRenderbufferStorage); GLSYM(glFramebufferRenderbuffer); GLSYM(glCheckFramebufferStatus);
+	GLSYM(glViewport); GLSYM(glClearColor); GLSYM(glClear); GLSYM(glEnable); GLSYM(glCullFace);
+	GLSYM(glFrontFace); GLSYM(glDrawArrays); GLSYM(glReadPixels); GLSYM(glFinish);
+#undef EGLSYM
+#undef GLSYM
+	if (!ok)
+	{
+		osd_printf_verbose("scene3d: EGL/GLES entry points missing, using the software renderer\n");
+		return false;
+	}
+
+	gl.display = gl.eglGetPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, nullptr, nullptr);
+	egl_int major = 0, minor = 0;
+	if (!gl.display || !gl.eglInitialize(gl.display, &major, &minor))
+	{
+		osd_printf_verbose("scene3d: eglInitialize failed, using the software renderer\n");
+		return false;
+	}
+	gl.eglBindAPI(EGL_OPENGL_ES_API);
+
+	const egl_int config_attr[] = {
+		EGL_SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+		EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_DEPTH_SIZE, 24, EGL_NONE_ };
+	void *config = nullptr;
+	egl_int configs = 0;
+	if (!gl.eglChooseConfig(gl.display, config_attr, &config, 1, &configs) || configs < 1)
+	{
+		osd_printf_verbose("scene3d: eglChooseConfig found no ES3 config, using the software renderer\n");
+		return false;
+	}
+	const egl_int pbuffer_attr[] = { EGL_WIDTH, 16, EGL_HEIGHT, 16, EGL_NONE_ };
+	gl.surface = gl.eglCreatePbufferSurface(gl.display, config, pbuffer_attr);
+	const egl_int context_attr[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE_ };
+	gl.context = gl.eglCreateContext(gl.display, config, nullptr, context_attr);
+	if (!gl.surface || !gl.context || !gl.eglMakeCurrent(gl.display, gl.surface, gl.surface, gl.context))
+	{
+		osd_printf_verbose("scene3d: could not make an ES3 context current (egl 0x%x), using the software renderer\n",
+				unsigned(gl.eglGetError()));
+		return false;
+	}
+
+	const auto compile = [&] (gl_enum type, const char *src)
+	{
+		gl_uint s = gl.glCreateShader(type);
+		gl.glShaderSource(s, 1, &src, nullptr);
+		gl.glCompileShader(s);
+		gl_int status = 0;
+		gl.glGetShaderiv(s, GL_COMPILE_STATUS, &status);
+		if (!status)
+		{
+			char log[512] = { };
+			gl.glGetShaderInfoLog(s, sizeof(log), nullptr, log);
+			m_device.logerror("scene3d: shader compile failed: %s\n", log);
+		}
+		return s;
+	};
+	gl.program = gl.glCreateProgram();
+	gl.glAttachShader(gl.program, compile(GL_VERTEX_SHADER, GL_VERTEX_SRC));
+	gl.glAttachShader(gl.program, compile(GL_FRAGMENT_SHADER, GL_FRAGMENT_SRC));
+	gl.glBindAttribLocation(gl.program, 0, "p");
+	gl.glBindAttribLocation(gl.program, 1, "nrm");
+	gl.glBindAttribLocation(gl.program, 2, "cen");
+	gl.glBindAttribLocation(gl.program, 3, "col");
+	gl.glLinkProgram(gl.program);
+	gl_int linked = 0;
+	gl.glGetProgramiv(gl.program, GL_LINK_STATUS, &linked);
+	if (!linked)
+	{
+		osd_printf_verbose("scene3d: shader link failed, using the software renderer\n");
+		return false;
+	}
+	gl.u_mvp = gl.glGetUniformLocation(gl.program, "u_mvp");
+	gl.u_model = gl.glGetUniformLocation(gl.program, "u_model");
+	gl.u_nrm = gl.glGetUniformLocation(gl.program, "u_nrm");
+	gl.u_tint = gl.glGetUniformLocation(gl.program, "u_tint");
+	gl.u_haslight = gl.glGetUniformLocation(gl.program, "u_haslight");
+	gl.u_light = gl.glGetUniformLocation(gl.program, "u_light");
+
+	const unsigned char *const version = gl.glGetString(GL_VERSION);
+	const unsigned char *const renderer = gl.glGetString(GL_RENDERER);
+	osd_printf_verbose("scene3d: GL backend active, GL_VERSION=%s GL_RENDERER=%s\n",
+			version ? reinterpret_cast<const char *>(version) : "?",
+			renderer ? reinterpret_cast<const char *>(renderer) : "?");
+	return true;
+#else
+	return false;
+#endif
+}
+
+bool scene3d_renderer::gl_render(bitmap_rgb32 &bitmap, const rectangle &cliprect)
+{
+	bool ok = false;
+	m_gl->exec([&] () { ok = gl_draw(*m_gl, bitmap, cliprect); });
+	if (!ok)
+		m_gl.reset();
+	return ok;
+}
+
+bool scene3d_renderer::gl_draw(scene3d_gl &gl, bitmap_rgb32 &bitmap, const rectangle &cliprect)
+{
+	const int width = bitmap.width();
+	const int height = bitmap.height();
+
+	if (!gl.fbo || gl.fbo_width != width || gl.fbo_height != height)
+	{
+		if (!gl.fbo)
+		{
+			gl.glGenFramebuffers(1, &gl.fbo);
+			gl.glGenRenderbuffers(1, &gl.colour_rb);
+			gl.glGenRenderbuffers(1, &gl.depth_rb);
+		}
+		gl.glBindFramebuffer(GL_FRAMEBUFFER, gl.fbo);
+		gl.glBindRenderbuffer(GL_RENDERBUFFER, gl.colour_rb);
+		gl.glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, width, height);
+		gl.glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, gl.colour_rb);
+		gl.glBindRenderbuffer(GL_RENDERBUFFER, gl.depth_rb);
+		gl.glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+		gl.glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, gl.depth_rb);
+		if (gl.glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+		{
+			osd_printf_verbose("scene3d: GL framebuffer incomplete, falling back to software\n");
+			return false;
+		}
+		gl.fbo_width = width;
+		gl.fbo_height = height;
+	}
+	gl.glBindFramebuffer(GL_FRAMEBUFFER, gl.fbo);
+	gl.glViewport(0, 0, width, height);
+
+	float proj[16] = { };
+	const float near_z = NEAR_PLANE, far_z = 100000.0f;
+	proj[0] = 2.0f * m_focal / float(width);
+	proj[5] = 2.0f * m_focal / float(height);
+	proj[10] = (far_z + near_z) / (far_z - near_z);
+	proj[11] = -2.0f * far_z * near_z / (far_z - near_z);
+	proj[14] = 1.0f;
+
+	float view12[12];
+	for (int r = 0; r < 3; r++)
+		for (int c = 0; c < 4; c++)
+			view12[r * 4 + c] = m_view[r][c];
+	float view[16];
+	mat4_from_34(view12, view);
+
+	gl.glUseProgram(gl.program);
+	gl.glClearColor(BACKGROUND.r() / 255.0f, BACKGROUND.g() / 255.0f, BACKGROUND.b() / 255.0f, 1.0f);
+	gl.glEnable(GL_DEPTH_TEST);
+	gl.glEnable(GL_CULL_FACE);
+	gl.glCullFace(GL_BACK);
+	gl.glFrontFace(GL_CCW);
+	gl.glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	for (const node &n : m_nodes)
+	{
+		if (n.mesh < 0)
+			continue;
+
+		auto found = gl.mesh_cache.find(n.mesh);
+		if (found == gl.mesh_cache.end())
+		{
+			const mesh &me = m_meshes[n.mesh];
+			std::vector<float> data;
+			data.reserve(size_t(me.count) * 3 * 12);
+			const u8 *tri = m_tris + size_t(me.first) * TRI_BYTES;
+			for (u32 j = 0; j < me.count; j++, tri += TRI_BYTES)
+			{
+				const float cr = tri[0] / 255.0f, cg = tri[1] / 255.0f, cb = tri[2] / 255.0f;
+				vec3 q[3];
+				for (int k = 0; k < 3; k++)
+					q[k] = { float(rd16(tri + 4 + k * 6)), float(rd16(tri + 6 + k * 6)), float(rd16(tri + 8 + k * 6)) };
+				const vec3 e0 = q[1] - q[0], e1 = q[2] - q[0];
+				const vec3 nr{ e0.y * e1.z - e0.z * e1.y, e0.z * e1.x - e0.x * e1.z, e0.x * e1.y - e0.y * e1.x };
+				const vec3 cen = (q[0] + q[1] + q[2]) * (1.0f / 3.0f);
+				for (int k = 0; k < 3; k++)
+				{
+					const float vtx[12] = { q[k].x, q[k].y, q[k].z, nr.x, nr.y, nr.z,
+							cen.x, cen.y, cen.z, cr, cg, cb };
+					data.insert(data.end(), vtx, vtx + 12);
+				}
+			}
+			gl_uint vbo = 0;
+			gl.glGenBuffers(1, &vbo);
+			gl.glBindBuffer(GL_ARRAY_BUFFER, vbo);
+			gl.glBufferData(GL_ARRAY_BUFFER, gl_sizeiptr(data.size() * sizeof(float)), data.data(), GL_STATIC_DRAW);
+			found = gl.mesh_cache.emplace(n.mesh, std::make_pair(vbo, gl_sizei(me.count * 3))).first;
+		}
+		if (!found->second.second)
+			continue;
+
+		const mesh &me = m_meshes[n.mesh];
+		float dq[12], model34[16];
+		mat_identity(dq);
+		dq[0] = me.scale.x;  dq[3]  = me.origin.x;
+		dq[5] = me.scale.y;  dq[7]  = me.origin.y;
+		dq[10] = me.scale.z; dq[11] = me.origin.z;
+		float model12[12];
+		mat_mul(n.world, dq, model12);
+		mat4_from_34(model12, model34);
+
+		float mv[16], mvp[16], nrm[9];
+		mat4_mul(view, model34, mv);
+		mat4_mul(proj, mv, mvp);
+		normal_matrix(model12, nrm);
+
+		gl.glBindBuffer(GL_ARRAY_BUFFER, found->second.first);
+		for (gl_uint a = 0; a < 4; a++)
+		{
+			gl.glEnableVertexAttribArray(a);
+			gl.glVertexAttribPointer(a, 3, GL_FLOAT, 0, 48, reinterpret_cast<const void *>(std::uintptr_t(a) * 12));
+		}
+		gl.glUniformMatrix4fv(gl.u_mvp, 1, 1, mvp);
+		gl.glUniformMatrix4fv(gl.u_model, 1, 1, model34);
+		gl.glUniformMatrix3fv(gl.u_nrm, 1, 1, nrm);
+		gl.glUniform3f(gl.u_tint, n.tint.x, n.tint.y, n.tint.z);
+		gl.glUniform1i(gl.u_haslight, m_light >= 0 ? 1 : 0);
+		gl.glUniform3f(gl.u_light, m_light_world.x, m_light_world.y, m_light_world.z);
+		gl.glDrawArrays(GL_TRIANGLES, 0, found->second.second);
+	}
+
+	gl.glFinish();
+	gl.pixels.resize(size_t(width) * height * 4);
+	gl.glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, gl.pixels.data());
+
+	for (int y = cliprect.top(); y <= cliprect.bottom(); y++)
+	{
+		const uint8_t *src = &gl.pixels[size_t(height - 1 - y) * width * 4];
+		u32 *dst = &bitmap.pix(y, 0);
+		for (int x = cliprect.left(); x <= cliprect.right(); x++)
+		{
+			const uint8_t *p = src + size_t(x) * 4;
+			dst[x] = (u32(p[0]) << 16) | (u32(p[1]) << 8) | u32(p[2]);
+		}
+	}
+	return true;
+}
+
+
 u32 scene3d_renderer::render(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
 {
 	if (!m_bound)
@@ -641,6 +1188,14 @@ u32 scene3d_renderer::render(screen_device &screen, bitmap_rgb32 &bitmap, const 
 	m_height = height;
 	update_world();
 	setup_view(width, height);
+
+	if (gl_available() && gl_render(bitmap, cliprect))
+	{
+		m_dirty = false;
+		m_have_frame = true;
+		m_frame_live = true;
+		return 0;
+	}
 
 	const bool stale = !m_cache_valid
 			|| std::memcmp(m_cache_view, m_view, sizeof(m_view))
