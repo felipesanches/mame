@@ -1877,6 +1877,18 @@ void lua_engine::initialize()
 			});
 	screen_dev_type.set_function("set_camera", &screen_device::set_camera);
 	screen_dev_type["camera_count"] = sol::property(&screen_device::camera_count);
+	screen_dev_type.set_function("scene3d_orbit", &screen_device::scene3d_orbit);
+	screen_dev_type.set_function("scene3d_zoom", &screen_device::scene3d_zoom);
+	screen_dev_type.set_function("scene3d_pan", &screen_device::scene3d_pan);
+	screen_dev_type.set_function("scene3d_reset_view", &screen_device::scene3d_reset_view);
+	screen_dev_type.set_function("scene3d_pick", &screen_device::scene3d_pick);
+	screen_dev_type.set_function(
+			"scene3d_node_id",
+			[] (screen_device &sdev, int index) -> std::string
+			{
+				const char *const id = sdev.scene3d_node_id(index);
+				return id ? std::string(id) : std::string();
+			});
 	screen_dev_type.set_function("pixel", &screen_device::pixel);
 	screen_dev_type.set_function(
 			"pixels",
