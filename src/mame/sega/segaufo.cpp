@@ -62,8 +62,10 @@ TODO:
 #include "sound/upd7759.h"
 #include "sound/ymopn.h"
 
+#include "screen.h"
 #include "speaker.h"
 
+#include <cmath>
 #include <iomanip>
 #include <sstream>
 
@@ -100,6 +102,7 @@ public:
 		m_maincpu(*this, "maincpu"),
 		m_io(*this, "io%u", 1),
 		m_upd(*this, "upd"),
+		m_scene(*this, "scene"),
 		m_inputs(*this, "IN%u", 1),
 		m_counters(*this, "counter%u", 0U),
 		m_digits(*this, "digit%u", 0U),
@@ -122,6 +125,7 @@ private:
 	required_device<cpu_device> m_maincpu;
 	required_device_array<sega_315_5296_device, 2> m_io;
 	optional_device<upd7759_device> m_upd;
+	required_device<screen_device> m_scene;
 	optional_ioport_array<2> m_inputs;
 	output_finder<2 * 4> m_counters;
 	output_finder<2> m_digits;
@@ -1022,6 +1026,14 @@ void ufo_state::newufo(machine_config &config)
 	pit.out_handler<2>().set(FUNC(ufo_state::pit_out2));
 
 	// sound hardware
+	screen_device &scene(SCREEN(config, "scene", SCREEN_TYPE_3D));
+	scene.set_scene_region("scene");
+	scene.set_mesh_region("meshes");
+	scene.set_refresh_hz(20);
+	scene.set_size(400, 300);
+	scene.set_visarea_full();
+	scene.set_camera(3);
+
 	SPEAKER(config, "mono").front_center();
 
 	ym3438_device &ym(YM3438(config, "ym", 16_MHz_XTAL/2));
@@ -1120,21 +1132,37 @@ void ufo_state::ufo800(machine_config &config)
 ROM_START( newufo )
 	ROM_REGION( 0x10000, "maincpu", 0 )
 	ROM_LOAD( "epr-13896.ic21",  0x000000, 0x010000, CRC(ca94be57) SHA1(acb6a22940c5e9ce639c7c30eb3948324b223090) )
+	ROM_REGION( 4074, "scene", 0 )
+	ROM_LOAD( "newufo.3dlay", 0, 4074, CRC(6b8f9d87) SHA1(59c15743098db93f49139b0ab994799fa605b145) )
+	ROM_REGION( 198776, "meshes", 0 )
+	ROM_LOAD( "newufo_meshes.bin", 0, 198776, CRC(5e25be45) SHA1(df91ecbd30466f918ef55e8bf8f029bdf34b2e43) )
 ROM_END
 
 ROM_START( newufo_sonic )
 	ROM_REGION( 0x10000, "maincpu", 0 )
 	ROM_LOAD( "epr-14124.ic21",  0x000000, 0x010000, CRC(2bdbad89) SHA1(10de4b266471a68083ec4bc439b301b6587ccfd6) )
+	ROM_REGION( 4074, "scene", 0 )
+	ROM_LOAD( "newufo.3dlay", 0, 4074, CRC(6b8f9d87) SHA1(59c15743098db93f49139b0ab994799fa605b145) )
+	ROM_REGION( 198776, "meshes", 0 )
+	ROM_LOAD( "newufo_meshes.bin", 0, 198776, CRC(5e25be45) SHA1(df91ecbd30466f918ef55e8bf8f029bdf34b2e43) )
 ROM_END
 
 ROM_START( newufo_nfl )
 	ROM_REGION( 0x10000, "maincpu", 0 )
 	ROM_LOAD( "epr-15261.ic21",  0x000000, 0x010000, CRC(338c00d3) SHA1(03152956c6f1e4d5a1a11ee49f94a8c5eb550815) )
+	ROM_REGION( 4074, "scene", 0 )
+	ROM_LOAD( "newufo.3dlay", 0, 4074, CRC(6b8f9d87) SHA1(59c15743098db93f49139b0ab994799fa605b145) )
+	ROM_REGION( 198776, "meshes", 0 )
+	ROM_LOAD( "newufo_meshes.bin", 0, 198776, CRC(5e25be45) SHA1(df91ecbd30466f918ef55e8bf8f029bdf34b2e43) )
 ROM_END
 
 ROM_START( newufo_xmas )
 	ROM_REGION( 0x10000, "maincpu", 0 )
 	ROM_LOAD( "epr-15340.ic21",  0x000000, 0x010000, CRC(6287c9ac) SHA1(bc6bc84bb432424e1d25e01113e8e331fa64f96f) )
+	ROM_REGION( 4074, "scene", 0 )
+	ROM_LOAD( "newufo.3dlay", 0, 4074, CRC(6b8f9d87) SHA1(59c15743098db93f49139b0ab994799fa605b145) )
+	ROM_REGION( 198776, "meshes", 0 )
+	ROM_LOAD( "newufo_meshes.bin", 0, 198776, CRC(5e25be45) SHA1(df91ecbd30466f918ef55e8bf8f029bdf34b2e43) )
 ROM_END
 
 
