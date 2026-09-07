@@ -15,6 +15,7 @@
 
 #include "rendertypes.h"
 
+#include <functional>
 #include <type_traits>
 #include <utility>
 
@@ -383,6 +384,16 @@ public:
 	screen_bitmap &curbitmap() { return m_bitmap[m_curtexture]; }
 	int camera_count() const;
 	void set_camera(int index);
+	void scene3d_orbit(float dyaw, float dpitch);
+	void scene3d_zoom(float factor);
+	void scene3d_pan(float dx, float dy);
+	void scene3d_reset_view();
+	int scene3d_pick(float nx, float ny);
+	const char *scene3d_node_id(int index);
+	void scene3d_set_model_texture(const char *node_id, const bitmap_argb32 &tex);
+
+	// install a handler invoked when the user clicks a 3D scene node (node index, or -1)
+	void set_scene3d_pick_handler(std::function<void (int)> &&handler) { m_scene3d_pick_handler = std::move(handler); }
 
 	// dynamic configuration
 	void configure(int width, int height, const rectangle &visarea, attoseconds_t frame_period);
@@ -435,6 +446,7 @@ private:
 
 	// device-level overrides
 	virtual void device_validity_check(validity_checker &valid) const override;
+	virtual ioport_constructor device_input_ports() const override;
 	virtual void device_config_complete() override;
 	virtual void device_resolve_objects() override ATTR_COLD;
 	virtual void device_start() override ATTR_COLD;
@@ -481,6 +493,18 @@ private:
 	render_container *  m_container;                // pointer to our container
 	std::unique_ptr<svg_renderer> m_svg; // the svg renderer
 	std::unique_ptr<scene3d_renderer> m_scene3d; // the 3D scene renderer
+
+	// shared 3D-scene camera input (only wired for SCREEN_TYPE_3D)
+	void scene3d_poll_input();
+	std::function<void (int)> m_scene3d_pick_handler; // driver hook for a click on a scene node
+	u16                 m_scene3d_last_mx = 0;      // last relative-mouse X reading
+	u16                 m_scene3d_last_my = 0;      // last relative-mouse Y reading
+	u8                  m_scene3d_last_wheel = 0;   // last mouse-wheel reading
+	bool                m_scene3d_orbit_prev = false; // orbit button held last poll
+	bool                m_scene3d_pan_prev = false; // pan button held last poll
+	bool                m_scene3d_click_prev = false; // click button held last poll
+	u16                 m_scene3d_press_x = 0;      // crosshair X when the click button went down
+	u16                 m_scene3d_press_y = 0;      // crosshair Y when the click button went down
 	// dimensions
 	int                 m_max_width;                // maximum width encountered
 	int                 m_width;                    // current width (HTOTAL)
