@@ -360,4 +360,8 @@ license:CC0-1.0
 		</element>
 
 	</view>
+
+	<view name="3D View">
+		<screen index="0"><bounds x="0" y="0" width="285" height="160" /></screen>
+	</view>
 </mamelayout>

@@ -25,9 +25,16 @@
 #include "machine/timer.h"
 #include "sound/msm5205.h"
 #include "sound/ymopl.h"
+#include "render.h"
+#include "rendersw.hxx"
+#include "screen.h"
 #include "speaker.h"
 
 #include "wackygtr.lh"
+
+#include <cmath>
+#include <cstdlib>
+#include <cstring>
 
 
 namespace {
@@ -43,6 +50,8 @@ public:
 		m_ticket(*this, "ticket"),
 		m_stepper(*this, "stepper%u", 0U),
 		m_samples(*this, "oki"),
+		m_scene(*this, "scene"),
+		m_in2(*this, "IN2"),
 		m_alligator(*this, "alligator%u", 0U),
 		m_digit(*this, "digit%u", 0U),
 		m_lamps(*this, "lamp%u", 0U)
@@ -50,6 +59,7 @@ public:
 
 	ioport_value alligators_rear_sensors_r();
 	ioport_value alligators_front_sensors_r();
+	ioport_value in2_hits_r();
 
 	void wackygtr(machine_config &config);
 
@@ -77,6 +87,9 @@ private:
 	void firq_ack_w(uint8_t data)           { m_maincpu->set_input_line(M6809_FIRQ_LINE, CLEAR_LINE); }
 
 	TIMER_DEVICE_CALLBACK_MEMBER(nmi_timer)     { m_maincpu->pulse_input_line(INPUT_LINE_NMI, attotime::zero); }
+	TIMER_DEVICE_CALLBACK_MEMBER(scene_tick);
+	void update_panel_texture();
+	void on_scene_pick(int node);
 
 	void program_map(address_map &map) ATTR_COLD;
 
@@ -86,6 +99,8 @@ private:
 	required_device<ticket_dispenser_device> m_ticket;
 	required_device_array<stepper_device, 5> m_stepper;
 	required_memory_region m_samples;
+	required_device<screen_device> m_scene;
+	required_ioport m_in2;
 	output_finder<5> m_alligator;
 	output_finder<8> m_digit;
 	output_finder<32> m_lamps;
@@ -96,6 +111,11 @@ private:
 
 	uint8_t   m_alligators_ctrl;
 	uint8_t   m_motors_phase[5] = { };
+
+	uint8_t   m_hit_timer[5] = { };
+
+	render_target *m_panel_target = nullptr;
+	bitmap_argb32 m_panel_bitmap;
 };
 
 
@@ -182,6 +202,15 @@ ioport_value wackygtr_state::alligators_front_sensors_r()
 	return sensors;
 }
 
+ioport_value wackygtr_state::in2_hits_r()
+{
+	ioport_value value = m_in2->read();
+	for (int i = 0; i < 5; i++)
+		if (m_hit_timer[i])
+			value &= ~(ioport_value(1) << i);
+	return value;
+}
+
 void wackygtr_state::machine_start()
 {
 	m_alligator.resolve();
@@ -193,6 +222,56 @@ void wackygtr_state::machine_start()
 	save_item(NAME(m_adpcm_ctrl));
 	save_item(NAME(m_alligators_ctrl));
 	save_item(NAME(m_motors_phase));
+	save_item(NAME(m_hit_timer));
+
+	m_panel_target = machine().render().target_alloc(&layout_wackygtr, RENDER_CREATE_HIDDEN);
+	m_panel_target->set_view(m_panel_target->configured_view("Default Layout", 0, 1));
+	m_panel_target->set_screen_overlay_enabled(false);
+
+	m_scene->set_scene3d_pick_handler([this] (int node) { on_scene_pick(node); });
+}
+
+void wackygtr_state::on_scene_pick(int node)
+{
+	const char *const id = m_scene->scene3d_node_id(node);
+	if (id && !std::strncmp(id, "gator", 5) && id[5] >= '0' && id[5] <= '4')
+		m_hit_timer[id[5] - '0'] = 8;
+}
+
+void wackygtr_state::update_panel_texture()
+{
+	// The score panel is the top of the Default Layout view: the whole view
+	// spans 285x304 layout units and the scoreboard is its top 160.  Render
+	// the view at that aspect and texture just the scoreboard band onto the
+	// cabinet, leaving the alligator artwork below it out of the texture.
+	constexpr int W = 512;
+	constexpr int H = W * 304 / 285;
+	constexpr int PANEL_H = H * 160 / 304;
+
+	if (!m_panel_target)
+		return;
+
+	if (m_panel_bitmap.width() != W || m_panel_bitmap.height() != H)
+		m_panel_bitmap.allocate(W, H);
+
+	m_panel_target->set_bounds(W, H);
+	render_primitive_list &primlist = m_panel_target->get_primitives();
+	primlist.acquire_lock();
+	software_renderer<u32, 0, 0, 0, 16, 8, 0, false, false>::draw_primitives(
+			primlist, &m_panel_bitmap.pix(0), W, H, m_panel_bitmap.rowpixels());
+	primlist.release_lock();
+
+	bitmap_argb32 scoreboard(m_panel_bitmap, rectangle(0, W - 1, 0, PANEL_H - 1));
+	m_scene->scene3d_set_model_texture("scorepanel", scoreboard);
+}
+
+TIMER_DEVICE_CALLBACK_MEMBER(wackygtr_state::scene_tick)
+{
+	update_panel_texture();
+
+	for (int i = 0; i < 5; i++)
+		if (m_hit_timer[i])
+			m_hit_timer[i]--;
 }
 
 void wackygtr_state::machine_reset()
@@ -295,10 +374,19 @@ void wackygtr_state::wackygtr(machine_config &config)
 
 	TIMER(config, "nmi_timer").configure_periodic(FUNC(wackygtr_state::nmi_timer), attotime::from_hz(100)); // FIXME
 
+	TIMER(config, "scene_timer").configure_periodic(FUNC(wackygtr_state::scene_tick), attotime::from_hz(60));
+
 	/* Video */
 	config.set_default_layout(layout_wackygtr);
 
 	/* Sound */
+	screen_device &scene(SCREEN(config, "scene", SCREEN_TYPE_3D));
+	scene.set_scene_region("scene");
+	scene.set_mesh_region("meshes");
+	scene.set_refresh_hz(20);
+	scene.set_size(1140, 640);
+	scene.set_visarea_full();
+
 	SPEAKER(config, "mono").front_center();
 	MSM5205(config, m_msm, XTAL(384'000));
 	m_msm->vck_legacy_callback().set(FUNC(wackygtr_state::adpcm_int));  /* IRQ handler */
@@ -321,7 +409,7 @@ void wackygtr_state::wackygtr(machine_config &config)
 	i8255_device &ppi2(I8255(config, "i8255_2"));
 	ppi2.in_pa_callback().set_ioport("IN0");
 	ppi2.in_pb_callback().set_ioport("IN1");
-	ppi2.in_pc_callback().set_ioport("IN2");
+	ppi2.in_pc_callback().set(FUNC(wackygtr_state::in2_hits_r));
 
 	PIT8253(config, m_pit8253[0], 0);
 	m_pit8253[0]->set_clk<0>(XTAL(3'579'545)/16);  // this is a guess
@@ -355,6 +443,10 @@ ROM_START( wackygtr )
 
 	ROM_REGION(0x10000, "oki", 0)
 	ROM_LOAD("wp3-vo0.2h", 0x0000, 0x10000, CRC(91c7986f) SHA1(bc9fa0d41c1caa0f909a349f511d022b7e42c6cd))
+	ROM_REGION( 3433, "scene", 0 )
+	ROM_LOAD( "wackygtr.3dlay", 0, 3433, CRC(d73942f8) SHA1(8036776b877971195158c0043854b5d1fae54279) )
+	ROM_REGION( 149516, "meshes", 0 )
+	ROM_LOAD( "wackygtr_meshes.bin", 0, 149516, CRC(46ad9871) SHA1(d29f9ba0c24a0e5f6ab65127d7b3c6c1ed331605) )
 ROM_END
 
 } // anonymous namespace
