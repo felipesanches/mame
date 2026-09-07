@@ -87,24 +87,36 @@ constexpr gl_bitfield GL_COLOR_BUFFER_BIT = 0x00004000;
 constexpr gl_bitfield GL_DEPTH_BUFFER_BIT = 0x00000100;
 constexpr gl_enum GL_RENDERER = 0x1F01;
 constexpr gl_enum GL_VERSION = 0x1F02;
+constexpr gl_enum GL_TEXTURE_2D = 0x0DE1;
+constexpr gl_enum GL_TEXTURE0 = 0x84C0;
+constexpr gl_enum GL_TEXTURE_MIN_FILTER = 0x2801;
+constexpr gl_enum GL_TEXTURE_MAG_FILTER = 0x2800;
+constexpr gl_enum GL_TEXTURE_WRAP_S = 0x2802;
+constexpr gl_enum GL_TEXTURE_WRAP_T = 0x2803;
+constexpr gl_int GL_LINEAR = 0x2601;
+constexpr gl_int GL_CLAMP_TO_EDGE = 0x812F;
 
 const char *const GL_VERTEX_SRC =
 	"#version 300 es\n"
 	"in vec3 p;in vec3 nrm;in vec3 cen;in vec3 col;\n"
 	"uniform mat4 u_mvp;uniform mat4 u_model;uniform mat3 u_nrm;uniform vec3 u_tint;\n"
-	"flat out vec3 v_col;flat out vec3 v_wn;flat out vec3 v_wc;\n"
+	"uniform vec3 u_uvmin;uniform vec3 u_uax;uniform vec3 u_vax;\n"
+	"flat out vec3 v_col;flat out vec3 v_wn;flat out vec3 v_wc;out vec2 v_uv;\n"
 	"void main(){gl_Position=u_mvp*vec4(p,1.0);v_col=col*u_tint;\n"
-	"v_wn=normalize(u_nrm*nrm);v_wc=(u_model*vec4(cen,1.0)).xyz;}\n";
+	"v_wn=normalize(u_nrm*nrm);v_wc=(u_model*vec4(cen,1.0)).xyz;\n"
+	"v_uv=vec2(dot(p-u_uvmin,u_uax),dot(p-u_uvmin,u_vax));}\n";
 const char *const GL_FRAGMENT_SRC =
 	"#version 300 es\n"
 	"precision highp float;\n"
-	"flat in vec3 v_col;flat in vec3 v_wn;flat in vec3 v_wc;\n"
+	"flat in vec3 v_col;flat in vec3 v_wn;flat in vec3 v_wc;in vec2 v_uv;\n"
 	"uniform int u_haslight;uniform vec3 u_light;\n"
+	"uniform int u_textured;uniform sampler2D u_tex;\n"
 	"out vec4 o;\n"
 	"void main(){vec3 dir=vec3(-0.4,-0.5,0.77);\n"
 	"if(u_haslight!=0){dir=normalize(u_light-v_wc);}\n"
 	"float lam=clamp(0.35+0.65*abs(dot(normalize(v_wn),dir)),0.0,1.0);\n"
-	"o=vec4(clamp(v_col,0.0,1.0)*lam,1.0);}\n";
+	"vec3 base=(u_textured!=0)?texture(u_tex,v_uv).rgb:clamp(v_col,0.0,1.0);\n"
+	"o=vec4(base*lam,1.0);}\n";
 
 constexpr float PI_F = 3.14159265358979f;
 constexpr float NEAR_PLANE = 0.01f;
@@ -250,13 +262,21 @@ struct scene3d_gl
 	void (*glDrawArrays)(gl_enum, gl_int, gl_sizei) = nullptr;
 	void (*glReadPixels)(gl_int, gl_int, gl_sizei, gl_sizei, gl_enum, gl_enum, void *) = nullptr;
 	void (*glFinish)() = nullptr;
+	void (*glGenTextures)(gl_sizei, gl_uint *) = nullptr;
+	void (*glBindTexture)(gl_enum, gl_uint) = nullptr;
+	void (*glActiveTexture)(gl_enum) = nullptr;
+	void (*glTexImage2D)(gl_enum, gl_int, gl_int, gl_sizei, gl_sizei, gl_int, gl_enum, gl_enum, const void *) = nullptr;
+	void (*glTexParameteri)(gl_enum, gl_enum, gl_int) = nullptr;
 
 	gl_uint program = 0;
 	gl_int u_mvp = -1, u_model = -1, u_nrm = -1, u_tint = -1, u_haslight = -1, u_light = -1;
+	gl_int u_textured = -1, u_tex = -1, u_uvmin = -1, u_uax = -1, u_vax = -1;
 	gl_uint fbo = 0, colour_rb = 0, depth_rb = 0;
 	int fbo_width = 0, fbo_height = 0;
 
 	std::map<int, std::pair<gl_uint, gl_sizei> > mesh_cache;
+	std::map<int, gl_uint> tex_cache;
+	std::vector<uint8_t> texbuf;
 	std::vector<uint8_t> pixels;
 
 	std::thread worker;
@@ -641,6 +661,40 @@ void scene3d_renderer::world_point(const float m[12], const vec3 &p, vec3 &out) 
 	out.z = m[8] * p.x + m[9] * p.y + m[10] * p.z + m[11];
 }
 
+void scene3d_renderer::orbit(float dyaw, float dpitch)
+{
+	m_orbit_yaw += dyaw;
+	m_orbit_pitch = clampf(m_orbit_pitch + dpitch, -1.5f, 1.5f);
+	m_dirty = true;
+	m_cache_valid = false;
+}
+
+void scene3d_renderer::zoom(float factor)
+{
+	m_orbit_zoom = clampf(m_orbit_zoom * factor, 0.2f, 5.0f);
+	m_dirty = true;
+	m_cache_valid = false;
+}
+
+void scene3d_renderer::pan(float dx, float dy)
+{
+	m_pan_x += dx;
+	m_pan_y += dy;
+	m_dirty = true;
+	m_cache_valid = false;
+}
+
+void scene3d_renderer::reset_view()
+{
+	m_orbit_yaw = 0.0f;
+	m_orbit_pitch = 0.0f;
+	m_orbit_zoom = 1.0f;
+	m_pan_x = 0.0f;
+	m_pan_y = 0.0f;
+	m_dirty = true;
+	m_cache_valid = false;
+}
+
 void scene3d_renderer::setup_view(int width, int height)
 {
 	const camera &c = m_cameras[std::clamp(m_camera, 0, int(m_cameras.size()) - 1)];
@@ -661,6 +715,26 @@ void scene3d_renderer::setup_view(int width, int height)
 		return { a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x };
 	};
 
+	{
+		vec3 v = eye - target;
+		const float cy = std::cos(m_orbit_yaw), sy = std::sin(m_orbit_yaw);
+		v = { v.x * cy - v.y * sy, v.x * sy + v.y * cy, v.z };
+		vec3 forward = v * -1.0f;
+		normalise(forward);
+		vec3 axis = cross(forward, { 0.0f, 0.0f, 1.0f });
+		if (normalise(axis) > 1e-6f)
+		{
+			const float cp = std::cos(m_orbit_pitch), sp = std::sin(m_orbit_pitch);
+			const float d = axis.x * v.x + axis.y * v.y + axis.z * v.z;
+			const vec3 cr = cross(axis, v);
+			v = { v.x * cp + cr.x * sp + axis.x * d * (1.0f - cp),
+				  v.y * cp + cr.y * sp + axis.y * d * (1.0f - cp),
+				  v.z * cp + cr.z * sp + axis.z * d * (1.0f - cp) };
+		}
+		v = v * m_orbit_zoom;
+		eye = target + v;
+	}
+
 	vec3 fwd = target - eye;
 	if (normalise(fwd) <= 1e-9f)
 		fwd = { 0.0f, 1.0f, 0.0f };
@@ -672,6 +746,13 @@ void scene3d_renderer::setup_view(int width, int height)
 	}
 	const vec3 up = cross(right, fwd);
 
+	if (m_pan_x != 0.0f || m_pan_y != 0.0f)
+	{
+		const vec3 rel = eye - target;
+		const float dist = std::sqrt(rel.x * rel.x + rel.y * rel.y + rel.z * rel.z);
+		eye = eye + right * (m_pan_x * dist) + up * (m_pan_y * dist);
+	}
+
 	m_view[0][0] = right.x; m_view[0][1] = right.y; m_view[0][2] = right.z;
 	m_view[1][0] = up.x;    m_view[1][1] = up.y;    m_view[1][2] = up.z;
 	m_view[2][0] = fwd.x;   m_view[2][1] = fwd.y;   m_view[2][2] = fwd.z;
@@ -681,11 +762,125 @@ void scene3d_renderer::setup_view(int width, int height)
 
 	const float half = clampf(c.fov, 1.0f, 179.0f) * 0.5f * PI_F / 180.0f;
 	m_focal = float(width) * 0.5f / std::tan(half);
+	m_eye = eye;
 
 	if (m_light >= 0)
 		world_point(m_nodes[m_light].world, m_light_pos, m_light_world);
 }
 
+
+const char *scene3d_renderer::node_id(int index) const
+{
+	if (index < 0 || index >= int(m_nodes.size()))
+		return nullptr;
+	return m_nodes[index].id.c_str();
+}
+
+int scene3d_renderer::pick(float nx, float ny) const
+{
+	if (!m_loaded || m_width <= 0 || m_height <= 0 || m_focal <= 0.0f)
+		return -1;
+
+	const vec3 right{ m_view[0][0], m_view[0][1], m_view[0][2] };
+	const vec3 up{ m_view[1][0], m_view[1][1], m_view[1][2] };
+	const vec3 fwd{ m_view[2][0], m_view[2][1], m_view[2][2] };
+
+	const float sx = nx * float(m_width);
+	const float sy = ny * float(m_height);
+	const float a = (sx - float(m_width) * 0.5f) / m_focal;
+	const float b = -(sy - float(m_height) * 0.5f) / m_focal;
+
+	vec3 dir{ right.x * a + up.x * b + fwd.x,
+			  right.y * a + up.y * b + fwd.y,
+			  right.z * a + up.z * b + fwd.z };
+	const float dl = std::sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
+	if (dl <= 1e-9f)
+		return -1;
+	dir = dir * (1.0f / dl);
+
+	const vec3 origin = m_eye;
+	int best_node = -1;
+	float best_t = 1e30f;
+
+	for (size_t ni = 0; ni < m_nodes.size(); ni++)
+	{
+		const node &n = m_nodes[ni];
+		if (n.mesh < 0)
+			continue;
+
+		const mesh &me = m_meshes[n.mesh];
+		float dq[12], m[12];
+		mat_identity(dq);
+		dq[0] = me.scale.x;  dq[3]  = me.origin.x;
+		dq[5] = me.scale.y;  dq[7]  = me.origin.y;
+		dq[10] = me.scale.z; dq[11] = me.origin.z;
+		mat_mul(n.world, dq, m);
+
+		const u8 *tri = m_tris + size_t(me.first) * TRI_BYTES;
+		for (u32 j = 0; j < me.count; j++, tri += TRI_BYTES)
+		{
+			vec3 v[3];
+			for (int k = 0; k < 3; k++)
+			{
+				const float q0 = float(rd16(tri + 4 + k * 6));
+				const float q1 = float(rd16(tri + 6 + k * 6));
+				const float q2 = float(rd16(tri + 8 + k * 6));
+				v[k].x = m[0] * q0 + m[1] * q1 + m[2]  * q2 + m[3];
+				v[k].y = m[4] * q0 + m[5] * q1 + m[6]  * q2 + m[7];
+				v[k].z = m[8] * q0 + m[9] * q1 + m[10] * q2 + m[11];
+			}
+
+			const vec3 e1 = v[1] - v[0];
+			const vec3 e2 = v[2] - v[0];
+			const vec3 p{ dir.y * e2.z - dir.z * e2.y,
+						  dir.z * e2.x - dir.x * e2.z,
+						  dir.x * e2.y - dir.y * e2.x };
+			const float det = e1.x * p.x + e1.y * p.y + e1.z * p.z;
+			if (std::fabs(det) < 1e-9f)
+				continue;
+			const float inv = 1.0f / det;
+			const vec3 tv = origin - v[0];
+			const float u = (tv.x * p.x + tv.y * p.y + tv.z * p.z) * inv;
+			if (u < 0.0f || u > 1.0f)
+				continue;
+			const vec3 qc{ tv.y * e1.z - tv.z * e1.y,
+						   tv.z * e1.x - tv.x * e1.z,
+						   tv.x * e1.y - tv.y * e1.x };
+			const float w = (dir.x * qc.x + dir.y * qc.y + dir.z * qc.z) * inv;
+			if (w < 0.0f || u + w > 1.0f)
+				continue;
+			const float t = (e2.x * qc.x + e2.y * qc.y + e2.z * qc.z) * inv;
+			if (t > 1e-4f && t < best_t)
+			{
+				best_t = t;
+				best_node = int(ni);
+			}
+		}
+	}
+
+	return best_node;
+}
+
+void scene3d_renderer::set_model_texture(const char *node_id, const bitmap_argb32 &tex)
+{
+	const int idx = find_node(node_id);
+	if (idx < 0 || m_nodes[idx].mesh < 0 || !tex.valid())
+		return;
+
+	bitmap_argb32 &dst = m_textures[idx];
+	if (dst.width() != tex.width() || dst.height() != tex.height())
+		dst.allocate(tex.width(), tex.height());
+	for (int y = 0; y < tex.height(); y++)
+		std::copy(&tex.pix(y, 0), &tex.pix(y, 0) + tex.width(), &dst.pix(y, 0));
+
+	if (!m_nodes[idx].dynamic)
+	{
+		m_nodes[idx].dynamic = true;
+		m_cache_valid = false;
+	}
+	compute_mesh_bounds(m_meshes[m_nodes[idx].mesh]);
+	m_dirty = true;
+}
 
 bool scene3d_renderer::project(const vec3 &world, float &sx, float &sy, float &sz) const
 {
@@ -702,7 +897,8 @@ bool scene3d_renderer::project(const vec3 &world, float &sx, float &sy, float &s
 	return true;
 }
 
-void scene3d_renderer::raster_face(bitmap_rgb32 &bitmap, const rectangle &cliprect, const vec3 v[3], rgb_t colour)
+void scene3d_renderer::raster_face(bitmap_rgb32 &bitmap, const rectangle &cliprect, const vec3 v[3], rgb_t colour,
+		const bitmap_argb32 *tex, const float uv[3][2])
 {
 	float px[3], py[3], pz[3];
 	for (int i = 0; i < 3; i++)
@@ -742,6 +938,17 @@ void scene3d_renderer::raster_face(bitmap_rgb32 &bitmap, const rectangle &clipre
 	const float lambert = clampf(0.35f + 0.65f * std::fabs(n.x * dir.x + n.y * dir.y + n.z * dir.z), 0.0f, 1.0f);
 	const rgb_t shade(u8(colour.r() * lambert), u8(colour.g() * lambert), u8(colour.b() * lambert));
 
+	const auto texel = [&] (float u, float v) -> rgb_t
+	{
+		const int tw = tex->width(), th = tex->height();
+		int tx = int(clampf(u, 0.0f, 1.0f) * float(tw - 1) + 0.5f);
+		int ty = int(clampf(v, 0.0f, 1.0f) * float(th - 1) + 0.5f);
+		tx = std::min(std::max(tx, 0), tw - 1);
+		ty = std::min(std::max(ty, 0), th - 1);
+		const rgb_t c = tex->pix(ty, tx);
+		return rgb_t(u8(c.r() * lambert), u8(c.g() * lambert), u8(c.b() * lambert));
+	};
+
 	if (min_x == max_x && min_y == max_y)
 	{
 		const float z = (pz[0] + pz[1] + pz[2]) * (1.0f / 3.0f);
@@ -749,7 +956,10 @@ void scene3d_renderer::raster_face(bitmap_rgb32 &bitmap, const rectangle &clipre
 		if (z < depth)
 		{
 			depth = z;
-			bitmap.pix(min_y, min_x) = shade;
+			bitmap.pix(min_y, min_x) = tex
+					? texel((uv[0][0] + uv[1][0] + uv[2][0]) * (1.0f / 3.0f),
+							(uv[0][1] + uv[1][1] + uv[2][1]) * (1.0f / 3.0f))
+					: shade;
 		}
 		return;
 	}
@@ -781,15 +991,63 @@ void scene3d_renderer::raster_face(bitmap_rgb32 &bitmap, const rectangle &clipre
 			if (z < depth[x])
 			{
 				depth[x] = z;
-				line[x] = shade;
+				if (tex)
+				{
+					const float w2 = 1.0f - w0 - w1;
+					line[x] = texel(w2 * uv[0][0] + w1 * uv[1][0] + w0 * uv[2][0],
+									w2 * uv[0][1] + w1 * uv[1][1] + w0 * uv[2][1]);
+				}
+				else
+					line[x] = shade;
 			}
 		}
 	}
 }
 
+void scene3d_renderer::compute_mesh_bounds(mesh &me)
+{
+	if (me.bounds_done)
+		return;
+	me.bounds_done = true;
+
+	vec3 lo{ 1e30f, 1e30f, 1e30f }, hi{ -1e30f, -1e30f, -1e30f };
+	const u8 *tri = m_tris + size_t(me.first) * TRI_BYTES;
+	for (u32 j = 0; j < me.count; j++, tri += TRI_BYTES)
+		for (int k = 0; k < 3; k++)
+		{
+			const float q[3] = { float(rd16(tri + 4 + k * 6)), float(rd16(tri + 6 + k * 6)), float(rd16(tri + 8 + k * 6)) };
+			lo = { std::min(lo.x, q[0]), std::min(lo.y, q[1]), std::min(lo.z, q[2]) };
+			hi = { std::max(hi.x, q[0]), std::max(hi.y, q[1]), std::max(hi.z, q[2]) };
+		}
+	me.bbmin = lo;
+	me.bbmax = hi;
+
+	// each axis is quantised to its own full 0..65535 range, so rank the axes
+	// by physical size (quantised extent scaled back to model units) to plane-
+	// project the texture onto the mesh's two largest faces
+	const float ext[3] = {
+			(hi.x - lo.x) * me.scale.x,
+			(hi.y - lo.y) * me.scale.y,
+			(hi.z - lo.z) * me.scale.z };
+	int order[3] = { 0, 1, 2 };
+	if (ext[order[0]] < ext[order[1]]) std::swap(order[0], order[1]);
+	if (ext[order[1]] < ext[order[2]]) std::swap(order[1], order[2]);
+	if (ext[order[0]] < ext[order[1]]) std::swap(order[0], order[1]);
+	me.uaxis = order[0];
+	me.vaxis = order[1];
+}
+
 void scene3d_renderer::draw_node(bitmap_rgb32 &bitmap, const rectangle &cliprect, const node &n)
 {
-	const mesh &me = m_meshes[n.mesh];
+	mesh &me = m_meshes[n.mesh];
+
+	const bitmap_argb32 *tex = nullptr;
+	const auto found = m_textures.find(int(&n - m_nodes.data()));
+	if (found != m_textures.end() && found->second.valid())
+	{
+		tex = &found->second;
+		compute_mesh_bounds(me);
+	}
 
 	float dq[12], m[12];
 	mat_identity(dq);
@@ -798,21 +1056,32 @@ void scene3d_renderer::draw_node(bitmap_rgb32 &bitmap, const rectangle &cliprect
 	dq[10] = me.scale.z; dq[11] = me.origin.z;
 	mat_mul(n.world, dq, m);
 
+	const float urange = (me.uaxis >= 0) ? ((&me.bbmax.x)[me.uaxis] - (&me.bbmin.x)[me.uaxis]) : 1.0f;
+	const float vrange = (me.vaxis >= 0) ? ((&me.bbmax.x)[me.vaxis] - (&me.bbmin.x)[me.vaxis]) : 1.0f;
+	const float uinv = (urange > 1e-6f) ? 1.0f / urange : 0.0f;
+	const float vinv = (vrange > 1e-6f) ? 1.0f / vrange : 0.0f;
+
 	const u8 *tri = m_tris + size_t(me.first) * TRI_BYTES;
 	for (u32 j = 0; j < me.count; j++, tri += TRI_BYTES)
 	{
 		const rgb_t colour(u8(tri[0] * n.tint.x), u8(tri[1] * n.tint.y), u8(tri[2] * n.tint.z));
 		vec3 v[3];
+		float uv[3][2];
 		for (int k = 0; k < 3; k++)
 		{
-			const float q0 = float(rd16(tri + 4 + k * 6));
-			const float q1 = float(rd16(tri + 6 + k * 6));
-			const float q2 = float(rd16(tri + 8 + k * 6));
-			v[k].x = m[0] * q0 + m[1] * q1 + m[2]  * q2 + m[3];
-			v[k].y = m[4] * q0 + m[5] * q1 + m[6]  * q2 + m[7];
-			v[k].z = m[8] * q0 + m[9] * q1 + m[10] * q2 + m[11];
+			const float q[3] = { float(rd16(tri + 4 + k * 6)), float(rd16(tri + 6 + k * 6)), float(rd16(tri + 8 + k * 6)) };
+			v[k].x = m[0] * q[0] + m[1] * q[1] + m[2]  * q[2] + m[3];
+			v[k].y = m[4] * q[0] + m[5] * q[1] + m[6]  * q[2] + m[7];
+			v[k].z = m[8] * q[0] + m[9] * q[1] + m[10] * q[2] + m[11];
+			if (tex)
+			{
+				uv[k][0] = (q[me.uaxis] - (&me.bbmin.x)[me.uaxis]) * uinv;
+				// image rows run top-down while the V axis runs up in model
+				// space, so flip V to keep the texture upright on the surface
+				uv[k][1] = 1.0f - (q[me.vaxis] - (&me.bbmin.x)[me.vaxis]) * vinv;
+			}
 		}
-		raster_face(bitmap, cliprect, v, colour);
+		raster_face(bitmap, cliprect, v, colour, tex, uv);
 	}
 }
 
@@ -926,6 +1195,8 @@ bool scene3d_renderer::gl_init(scene3d_gl &gl)
 	GLSYM(glRenderbufferStorage); GLSYM(glFramebufferRenderbuffer); GLSYM(glCheckFramebufferStatus);
 	GLSYM(glViewport); GLSYM(glClearColor); GLSYM(glClear); GLSYM(glEnable); GLSYM(glCullFace);
 	GLSYM(glFrontFace); GLSYM(glDrawArrays); GLSYM(glReadPixels); GLSYM(glFinish);
+	GLSYM(glGenTextures); GLSYM(glBindTexture); GLSYM(glActiveTexture);
+	GLSYM(glTexImage2D); GLSYM(glTexParameteri);
 #undef EGLSYM
 #undef GLSYM
 	if (!ok)
@@ -1000,6 +1271,11 @@ bool scene3d_renderer::gl_init(scene3d_gl &gl)
 	gl.u_tint = gl.glGetUniformLocation(gl.program, "u_tint");
 	gl.u_haslight = gl.glGetUniformLocation(gl.program, "u_haslight");
 	gl.u_light = gl.glGetUniformLocation(gl.program, "u_light");
+	gl.u_textured = gl.glGetUniformLocation(gl.program, "u_textured");
+	gl.u_tex = gl.glGetUniformLocation(gl.program, "u_tex");
+	gl.u_uvmin = gl.glGetUniformLocation(gl.program, "u_uvmin");
+	gl.u_uax = gl.glGetUniformLocation(gl.program, "u_uax");
+	gl.u_vax = gl.glGetUniformLocation(gl.program, "u_vax");
 
 	const unsigned char *const version = gl.glGetString(GL_VERSION);
 	const unsigned char *const renderer = gl.glGetString(GL_RENDERER);
@@ -1139,6 +1415,47 @@ bool scene3d_renderer::gl_draw(scene3d_gl &gl, bitmap_rgb32 &bitmap, const recta
 		gl.glUniform3f(gl.u_tint, n.tint.x, n.tint.y, n.tint.z);
 		gl.glUniform1i(gl.u_haslight, m_light >= 0 ? 1 : 0);
 		gl.glUniform3f(gl.u_light, m_light_world.x, m_light_world.y, m_light_world.z);
+
+		const auto tit = m_textures.find(int(&n - m_nodes.data()));
+		if (tit != m_textures.end() && tit->second.valid() && me.uaxis >= 0)
+		{
+			const bitmap_argb32 &tb = tit->second;
+			const int tw = tb.width(), th = tb.height();
+			gl.texbuf.resize(size_t(tw) * th * 4);
+			for (int y = 0; y < th; y++)
+				for (int x = 0; x < tw; x++)
+				{
+					// flip rows on upload so the texture sits upright, matching
+					// the software path's V flip
+					const rgb_t c = tb.pix(th - 1 - y, x);
+					uint8_t *const px = &gl.texbuf[(size_t(y) * tw + x) * 4];
+					px[0] = c.r(); px[1] = c.g(); px[2] = c.b(); px[3] = 0xff;
+				}
+			gl_uint &texid = gl.tex_cache[int(&n - m_nodes.data())];
+			if (!texid)
+				gl.glGenTextures(1, &texid);
+			gl.glActiveTexture(GL_TEXTURE0);
+			gl.glBindTexture(GL_TEXTURE_2D, texid);
+			gl.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tw, th, 0, GL_RGBA, GL_UNSIGNED_BYTE, gl.texbuf.data());
+			gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			gl.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+			float uax[3] = { 0.0f, 0.0f, 0.0f }, vax[3] = { 0.0f, 0.0f, 0.0f };
+			const float ur = (&me.bbmax.x)[me.uaxis] - (&me.bbmin.x)[me.uaxis];
+			const float vr = (&me.bbmax.x)[me.vaxis] - (&me.bbmin.x)[me.vaxis];
+			uax[me.uaxis] = (ur > 1e-6f) ? 1.0f / ur : 0.0f;
+			vax[me.vaxis] = (vr > 1e-6f) ? 1.0f / vr : 0.0f;
+			gl.glUniform1i(gl.u_tex, 0);
+			gl.glUniform3f(gl.u_uvmin, me.bbmin.x, me.bbmin.y, me.bbmin.z);
+			gl.glUniform3f(gl.u_uax, uax[0], uax[1], uax[2]);
+			gl.glUniform3f(gl.u_vax, vax[0], vax[1], vax[2]);
+			gl.glUniform1i(gl.u_textured, 1);
+		}
+		else
+			gl.glUniform1i(gl.u_textured, 0);
+
 		gl.glDrawArrays(GL_TRIANGLES, 0, found->second.second);
 	}
 

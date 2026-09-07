@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include "bitmap.h"
+
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -32,6 +34,15 @@ public:
 
 	int camera_count() const { return int(m_cameras.size()); }
 	void set_camera(int index) { m_camera = index; m_dirty = true; }
+
+	void orbit(float dyaw, float dpitch);
+	void zoom(float factor);
+	void pan(float dx, float dy);
+	void reset_view();
+
+	int pick(float nx, float ny) const;
+	const char *node_id(int index) const;
+	void set_model_texture(const char *node_id, const bitmap_argb32 &tex);
 
 	u32 render(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 
@@ -55,6 +66,9 @@ private:
 		vec3 scale;
 		u32 first;
 		u32 count;
+		vec3 bbmin, bbmax;
+		int uaxis = -1, vaxis = -1;
+		bool bounds_done = false;
 	};
 
 	struct node
@@ -100,9 +114,11 @@ private:
 	void update_world();
 	void world_point(const float m[12], const vec3 &p, vec3 &out) const;
 	void setup_view(int width, int height);
+	void compute_mesh_bounds(mesh &me);
 	void draw_node(bitmap_rgb32 &bitmap, const rectangle &cliprect, const node &n);
 	bool project(const vec3 &world, float &sx, float &sy, float &sz) const;
-	void raster_face(bitmap_rgb32 &bitmap, const rectangle &cliprect, const vec3 v[3], rgb_t colour);
+	void raster_face(bitmap_rgb32 &bitmap, const rectangle &cliprect, const vec3 v[3], rgb_t colour,
+			const bitmap_argb32 *tex, const float uv[3][2]);
 
 	bool gl_available();
 	bool gl_init(scene3d_gl &gl);
@@ -121,10 +137,16 @@ private:
 	std::vector<node> m_nodes;
 	std::vector<motion> m_motions;
 	std::vector<camera> m_cameras;
+	std::unordered_map<int, bitmap_argb32> m_textures;
 	std::unordered_map<std::string, std::vector<int> > m_signals;
 	int m_light = -1;
 	vec3 m_light_pos;
 	int m_camera = 0;
+	float m_orbit_yaw = 0.0f;
+	float m_orbit_pitch = 0.0f;
+	float m_orbit_zoom = 1.0f;
+	float m_pan_x = 0.0f;
+	float m_pan_y = 0.0f;
 
 	bool m_dirty = true;
 	bool m_have_frame = false;
@@ -132,6 +154,7 @@ private:
 	int m_width = 0, m_height = 0;
 	float m_view[3][4] = { };
 	float m_focal = 0.0f;
+	vec3 m_eye;
 	vec3 m_light_world;
 
 	std::unique_ptr<scene3d_gl> m_gl;
