@@ -21,6 +21,8 @@
 #include "nanosvg.h"
 #include "png.h"
 
+#include <cmath>
+#include <cstdlib>
 #include <set>
 
 
@@ -1004,6 +1006,154 @@ void screen_device::set_camera(int index)
 }
 
 
+void screen_device::scene3d_orbit(float dyaw, float dpitch)
+{
+	if (m_type == SCREEN_TYPE_3D && m_scene3d)
+		m_scene3d->orbit(dyaw, dpitch);
+}
+
+
+void screen_device::scene3d_zoom(float factor)
+{
+	if (m_type == SCREEN_TYPE_3D && m_scene3d)
+		m_scene3d->zoom(factor);
+}
+
+
+void screen_device::scene3d_pan(float dx, float dy)
+{
+	if (m_type == SCREEN_TYPE_3D && m_scene3d)
+		m_scene3d->pan(dx, dy);
+}
+
+
+void screen_device::scene3d_reset_view()
+{
+	if (m_type == SCREEN_TYPE_3D && m_scene3d)
+		m_scene3d->reset_view();
+}
+
+
+int screen_device::scene3d_pick(float nx, float ny)
+{
+	return (m_type == SCREEN_TYPE_3D && m_scene3d) ? m_scene3d->pick(nx, ny) : -1;
+}
+
+
+const char *screen_device::scene3d_node_id(int index)
+{
+	return (m_type == SCREEN_TYPE_3D && m_scene3d) ? m_scene3d->node_id(index) : nullptr;
+}
+
+
+void screen_device::scene3d_set_model_texture(const char *node_id, const bitmap_argb32 &tex)
+{
+	if (m_type == SCREEN_TYPE_3D && m_scene3d)
+		m_scene3d->set_model_texture(node_id, tex);
+}
+
+
+//-------------------------------------------------
+//  scene3d camera input - shared for every
+//  SCREEN_TYPE_3D screen: mouse orbit/pan/zoom,
+//  keyboard fallbacks, and click-to-pick
+//-------------------------------------------------
+
+static INPUT_PORTS_START( scene3d_camera )
+	PORT_START("MOUSE0")
+	PORT_BIT( 0xffff, 0x0000, IPT_MOUSE_X ) PORT_SENSITIVITY(60) PORT_KEYDELTA(0) PORT_CODE(MOUSECODE_X) PORT_NAME("3D view: orbit/pan (drag left/right)")
+
+	PORT_START("MOUSE1")
+	PORT_BIT( 0xffff, 0x0000, IPT_MOUSE_Y ) PORT_SENSITIVITY(60) PORT_KEYDELTA(0) PORT_CODE(MOUSECODE_Y) PORT_NAME("3D view: orbit/pan (drag up/down)")
+
+	PORT_START("MOUSE2")
+	PORT_BIT( 0x0001, IP_ACTIVE_HIGH, IPT_BUTTON1 ) PORT_CODE(MOUSECODE_BUTTON1) PORT_NAME("3D view: hold to orbit / click to pick")
+	PORT_BIT( 0x0002, IP_ACTIVE_HIGH, IPT_BUTTON3 ) PORT_CODE(MOUSECODE_BUTTON3) PORT_NAME("3D view: hold middle to pan")
+	PORT_BIT( 0x0ff0, 0x0000, IPT_DIAL_V ) PORT_SENSITIVITY(1) PORT_KEYDELTA(1) PORT_CODE(MOUSECODE_Z) PORT_NAME("3D view: zoom (wheel)")
+
+	PORT_START("VIEW")
+	PORT_BIT( 0x01, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CODE(KEYCODE_LEFT)  PORT_NAME("3D view: orbit left")
+	PORT_BIT( 0x02, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CODE(KEYCODE_RIGHT) PORT_NAME("3D view: orbit right")
+	PORT_BIT( 0x04, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CODE(KEYCODE_UP)    PORT_NAME("3D view: orbit up")
+	PORT_BIT( 0x08, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CODE(KEYCODE_DOWN)  PORT_NAME("3D view: orbit down")
+	PORT_BIT( 0x10, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CODE(KEYCODE_PGUP)  PORT_NAME("3D view: zoom in")
+	PORT_BIT( 0x20, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CODE(KEYCODE_PGDN)  PORT_NAME("3D view: zoom out")
+	PORT_BIT( 0x40, IP_ACTIVE_HIGH, IPT_OTHER ) PORT_CODE(KEYCODE_HOME)  PORT_NAME("3D view: reset camera")
+
+	PORT_START("GUN0")
+	PORT_BIT( 0x0fff, 0x0800, IPT_LIGHTGUN_X ) PORT_CROSSHAIR(X, 1.0, 0.0, 0) PORT_MINMAX(0x000, 0x0fff) PORT_SENSITIVITY(50) PORT_KEYDELTA(10) PORT_CODE(MOUSECODE_X)
+
+	PORT_START("GUN1")
+	PORT_BIT( 0x0fff, 0x0800, IPT_LIGHTGUN_Y ) PORT_CROSSHAIR(Y, 1.0, 0.0, 0) PORT_MINMAX(0x000, 0x0fff) PORT_SENSITIVITY(50) PORT_KEYDELTA(10) PORT_CODE(MOUSECODE_Y)
+INPUT_PORTS_END
+
+
+ioport_constructor screen_device::device_input_ports() const
+{
+	return (m_type == SCREEN_TYPE_3D) ? INPUT_PORTS_NAME(scene3d_camera) : nullptr;
+}
+
+
+void screen_device::scene3d_poll_input()
+{
+	ioport_port *const px = ioport("MOUSE0");
+	ioport_port *const py = ioport("MOUSE1");
+	ioport_port *const pb = ioport("MOUSE2");
+	if (!px || !py || !pb)
+		return;
+
+	const u16 mx = px->read();
+	const u16 my = py->read();
+	const ioport_value buttons = pb->read();
+	const u8 wheel = (buttons >> 4) & 0xff;
+
+	const int dx = s16(mx - m_scene3d_last_mx);
+	const int dy = s16(my - m_scene3d_last_my);
+	m_scene3d_last_mx = mx;
+	m_scene3d_last_my = my;
+
+	const bool orbit = BIT(buttons, 0);
+	const bool pan = BIT(buttons, 1);
+	if (pan)
+		m_scene3d->pan(dx * -0.0020f, dy * 0.0020f);
+	else if (orbit)
+		m_scene3d->orbit(dx * -0.010f, dy * -0.010f);
+
+	const int dw = s8(wheel - m_scene3d_last_wheel);
+	m_scene3d_last_wheel = wheel;
+	if (dw)
+		m_scene3d->zoom(std::pow(0.90f, float(dw)));
+
+	// click-to-pick: button1 pressed and released without moving the crosshair
+	ioport_port *const gx = ioport("GUN0");
+	ioport_port *const gy = ioport("GUN1");
+	const u16 cx = gx ? gx->read() : 0x800;
+	const u16 cy = gy ? gy->read() : 0x800;
+	if (orbit && !m_scene3d_click_prev)
+	{
+		m_scene3d_press_x = cx;
+		m_scene3d_press_y = cy;
+	}
+	else if (!orbit && m_scene3d_click_prev)
+	{
+		const int moved = std::abs(int(cx) - int(m_scene3d_press_x)) + std::abs(int(cy) - int(m_scene3d_press_y));
+		if (moved < 40 && m_scene3d_pick_handler)
+			m_scene3d_pick_handler(m_scene3d->pick(float(cx) / 4095.0f, float(cy) / 4095.0f));
+	}
+	m_scene3d_click_prev = orbit;
+
+	ioport_port *const pv = ioport("VIEW");
+	const ioport_value keys = pv ? pv->read() : 0;
+	if (BIT(keys, 0)) m_scene3d->orbit(-0.03f, 0.0f);
+	if (BIT(keys, 1)) m_scene3d->orbit(0.03f, 0.0f);
+	if (BIT(keys, 2)) m_scene3d->orbit(0.0f, 0.02f);
+	if (BIT(keys, 3)) m_scene3d->orbit(0.0f, -0.02f);
+	if (BIT(keys, 4)) m_scene3d->zoom(0.97f);
+	if (BIT(keys, 5)) m_scene3d->zoom(1.03f);
+	if (BIT(keys, 6)) m_scene3d->reset_view();
+}
+
+
 //-------------------------------------------------
 //  configure - configure screen parameters
 //-------------------------------------------------
@@ -1719,6 +1869,10 @@ TIMER_CALLBACK_MEMBER(screen_device::vblank_begin)
 	for (auto &item : m_callback_list)
 		item->m_callback(*this, true);
 	m_screen_vblank(1);
+
+	// service the shared 3D-scene camera input
+	if (m_type == SCREEN_TYPE_3D && m_scene3d)
+		scene3d_poll_input();
 
 	// reset the VBLANK start timer for the next frame
 	m_vblank_begin_timer->adjust(time_until_vblank_start());
