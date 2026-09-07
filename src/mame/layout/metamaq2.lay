@@ -144,6 +144,7 @@ authors:Felipe Sanches
 
 	<element name="txt_front"><text string="FRONT ELEVATION - X and Z" align="1"><color red="0.45" green="0.75" blue="1.00" /></text></element>
 	<element name="txt_plan"><text string="PLAN - X and Y" align="1"><color red="0.45" green="0.75" blue="1.00" /></text></element>
+	<element name="txt_3d"><text string="3D VIEW" align="1"><color red="0.45" green="0.75" blue="1.00" /></text></element>
 	<element name="txt_state"><text string="MACHINE STATE" align="1"><color red="0.45" green="0.75" blue="1.00" /></text></element>
 
 	<element name="txt_temps"><text string="TEMPERATURES" align="1"><color red="0.45" green="0.75" blue="1.00" /></text></element>
@@ -374,6 +375,17 @@ authors:Felipe Sanches
 		</element>
 		<element ref="txt_feed_note"><bounds x="0" y="391" width="300" height="11" /></element>
 	</group>
+
+	<view name="3D View and Machine State">
+		<bounds x="0" y="0" width="1150" height="542" />
+		<element ref="view_bg"><bounds x="0" y="0" width="1150" height="542" /></element>
+
+		<element ref="txt_3d"><bounds x="16" y="27" width="240" height="13" /></element>
+		<element ref="txt_state"><bounds x="672" y="27" width="240" height="13" /></element>
+
+		<screen index="0"><bounds x="16" y="46" width="640" height="480" /></screen>
+		<group ref="status_panel"><bounds x="672" y="46" width="462" height="441" /></group>
+	</view>
 
 	<view name="Machine">
 		<bounds x="0" y="0" width="1058" height="504" />
