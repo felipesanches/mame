@@ -2314,6 +2314,18 @@ end
 
 ---------------------------------------------------
 --
+--@src/devices/machine/max6675.h,MACHINES["MAX6675"] = true
+---------------------------------------------------
+
+if MACHINES["MAX6675"] then
+	files {
+		MAME_DIR .. "src/devices/machine/max6675.cpp",
+		MAME_DIR .. "src/devices/machine/max6675.h",
+	}
+end
+
+---------------------------------------------------
+--
 --@src/devices/machine/mb14241.h,MACHINES["MB14241"] = true
 ---------------------------------------------------
 
