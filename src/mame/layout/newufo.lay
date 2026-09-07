@@ -118,7 +118,7 @@ authors:hap
 
 <!-- build screen -->
 
-	<view name="Internal Layout">
+	<group name="panel">
 		<bounds left="0" right="200" top="0" bottom="90" />
 		<element ref="static_black">
 			<bounds left="0" right="200" top="0" bottom="90" />
@@ -261,5 +261,20 @@ authors:hap
 			<bounds x="166" y="44" width="3" height="3" />
 		</element>
 
+	</group>
+
+	<view name="Internal Layout">
+		<bounds left="0" right="200" top="0" bottom="90" />
+		<group ref="panel" />
+	</view>
+	<view name="3D View">
+		<bounds left="0" right="200" top="0" bottom="150" />
+		<element ref="static_black"><bounds left="0" right="200" top="0" bottom="150" /></element>
+		<screen index="0"><bounds x="0" y="0" width="200" height="150" /></screen>
+	</view>
+	<view name="3D View and Panel">
+		<bounds left="0" right="200" top="0" bottom="240" />
+		<screen index="0"><bounds x="0" y="0" width="200" height="150" /></screen>
+		<group ref="panel"><bounds x="0" y="150" width="200" height="90" /></group>
 	</view>
 </mamelayout>
