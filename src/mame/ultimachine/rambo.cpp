@@ -4,7 +4,6 @@
 #include "emu.h"
 
 #include "cpu/avr8/avr8.h"
-#include "mm2_stepper_sound.h"
 
 #include "machine/a4982.h"
 #include "machine/ad5206.h"
@@ -13,6 +12,7 @@
 #include "machine/steppers.h"
 #include "bus/rs232/rs232.h"
 
+#include "screen.h"
 #include "speaker.h"
 
 #include "metamaq2.lh"
@@ -43,7 +43,7 @@ public:
 		, m_digipot(*this, "digipot")
 		, m_eeprom(*this, "eeprom")
 		, m_nvram(*this, "nvram")
-		, m_motors(*this, "motors")
+		, m_motor(*this, "motor%u", 0U)
 		, m_axis_out(*this, "axis_%u_um")
 		, m_endstop_out(*this, "endstop_%u")
 		, m_temp_out(*this, "temp_%u_c")
@@ -82,7 +82,7 @@ private:
 	template <int Axis> void step_taken(uint64_t position);
 	void update_endstops();
 	double axis_mm(int axis) const;
-	TIMER_CALLBACK_MEMBER(view_tick);
+	TIMER_CALLBACK_MEMBER(motor_tick);
 
 	void pwm_level(int channel, int state);
 	TIMER_CALLBACK_MEMBER(thermal_tick);
@@ -95,7 +95,7 @@ private:
 	required_device<ad5206_device> m_digipot;
 	required_memory_region m_eeprom;
 	required_device<nvram_device> m_nvram;
-	required_device<mm2_stepper_sound_device> m_motors;
+	required_device_array<stepper_device, AXIS_COUNT> m_motor;
 
 	output_finder<AXIS_COUNT> m_axis_out;
 	output_finder<ES_COUNT> m_endstop_out;
@@ -115,7 +115,7 @@ private:
 	double m_adc_residue[2]{};
 
 	emu_timer *m_thermal_timer = nullptr;
-	emu_timer *m_view_timer = nullptr;
+	emu_timer *m_motor_timer = nullptr;
 };
 
 static constexpr mm2_axis AXES[rambo_state::AXIS_COUNT] = {
@@ -317,9 +317,7 @@ TIMER_CALLBACK_MEMBER(rambo_state::thermal_tick)
 		m_duty_out[channel] = int32_t(duty * 255.0 + 0.5);
 
 		if (channel == PWM_FAN)
-		{
 			continue;
-		}
 
 		const double dT = (POWER[channel] * duty - LOSS[channel] * (m_temperature[channel] - AMBIENT))
 						  * INTERVAL / MASS[channel];
@@ -328,7 +326,7 @@ TIMER_CALLBACK_MEMBER(rambo_state::thermal_tick)
 	}
 }
 
-TIMER_CALLBACK_MEMBER(rambo_state::view_tick)
+TIMER_CALLBACK_MEMBER(rambo_state::motor_tick)
 {
 	for (int axis = 0; axis < AXIS_COUNT; axis++)
 	{
@@ -394,7 +392,7 @@ void rambo_state::machine_start()
 	m_nvram->set_base(m_eeprom->base(), m_eeprom->bytes());
 
 	m_thermal_timer = timer_alloc(FUNC(rambo_state::thermal_tick), this);
-	m_view_timer = timer_alloc(FUNC(rambo_state::view_tick), this);
+	m_motor_timer = timer_alloc(FUNC(rambo_state::motor_tick), this);
 
 	save_item(NAME(m_position));
 	save_item(NAME(m_last_translator));
@@ -429,7 +427,7 @@ void rambo_state::machine_reset()
 	m_temperature[0] = m_temperature[1] = 25.0;
 
 	m_thermal_timer->adjust(attotime::from_msec(100), 0, attotime::from_msec(100));
-	m_view_timer->adjust(attotime::from_msec(2), 0, attotime::from_msec(2));
+	m_motor_timer->adjust(attotime::from_msec(2), 0, attotime::from_msec(2));
 }
 
 void rambo_state::rambo(machine_config &config)
@@ -530,6 +528,13 @@ void rambo_state::rambo(machine_config &config)
 		m_motor[axis]->set_radiation(0.45);
 	}
 
+	screen_device &scene(SCREEN(config, "scene", SCREEN_TYPE_3D));
+	scene.set_scene_region("scene");
+	scene.set_mesh_region("meshes");
+	scene.set_refresh_hz(30);
+	scene.set_size(640, 480);
+	scene.set_visarea_full();
+
 	config.set_default_layout(layout_metamaq2);
 
 	RS232_PORT(config, m_rs232, default_rs232_devices, nullptr);
@@ -540,6 +545,9 @@ void rambo_state::rambo(machine_config &config)
 	m_rs232->rxd_handler().set(m_maincpu, FUNC(atmega2560_device::rxd_w<0>));
 
 }
+
+static INPUT_PORTS_START( metamaq2 )
+INPUT_PORTS_END
 
 ROM_START( metamaq2 )
 	ROM_REGION( 0x40000, "maincpu", 0 )
@@ -581,11 +589,17 @@ ROM_START( metamaq2 )
 	ROM_SYSTEM_BIOS( 11, "20131015", "October 15th, 2013" )
 	ROMX_LOAD("repetier-fw-metamaquina2-2013-10-15.bin", 0x0000, 0x102c8, CRC(520134bd) SHA1(dfe2251aad06972f237eb4920ce14ccb32da5af0), ROM_BIOS(11))
 
+	ROM_REGION( 4823, "scene", 0 )
+	ROM_LOAD( "metamaq2.3dlay", 0, 4823, CRC(58f040a1) SHA1(6f10dc651c559002bb5185f5f072f518601bb900) )
+
+	ROM_REGION( 12027088, "meshes", 0 )
+	ROM_LOAD( "metamaq2_meshes.bin", 0, 12027088, CRC(24a062bc) SHA1(0c7370312466c4f1c084ab2ef11f16ebdf600dc8) )
+
 	ROM_REGION( 0x1000, "eeprom", ROMREGION_ERASEFF )
 ROM_END
 
 } // anonymous namespace
 
 
-//   YEAR  NAME      PARENT  COMPAT  MACHINE  INPUT  CLASS        INIT        COMPANY        FULLNAME                            FLAGS
-COMP(2012, metamaq2, 0,      0,      rambo,   0,     rambo_state, empty_init, "Metamaquina", "Metamaquina 2 desktop 3d printer", MACHINE_NOT_WORKING)
+//   YEAR  NAME      PARENT  COMPAT  MACHINE  INPUT     CLASS        INIT        COMPANY        FULLNAME                            FLAGS
+COMP(2012, metamaq2, 0,      0,      rambo,   metamaq2, rambo_state, empty_init, "Metamaquina", "Metamaquina 2 desktop 3d printer", MACHINE_NOT_WORKING)
