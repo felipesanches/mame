@@ -1,4 +1,4 @@
-// license:GPL2+
+// license:GPL-2.0+
 // copyright-holders:Felipe Sanches
 
 // KN7000 tone generators (IC201, IC205).

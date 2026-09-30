@@ -1,4 +1,4 @@
-// license:GPL2+
+// license:GPL-2.0+
 // copyright-holders:Felipe Sanches
 
 // Register interface shared by the KN6000 and KN7000 tone generators. The

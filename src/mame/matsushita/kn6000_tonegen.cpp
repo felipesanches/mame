@@ -1,4 +1,4 @@
-// license:GPL2+
+// license:GPL-2.0+
 // copyright-holders:Felipe Sanches
 
 // KN6000/KN6500 tone generator (IC213): one chip, 64 voices.
