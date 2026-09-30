@@ -6,9 +6,9 @@
 
     All five machines are built around a Panasonic MN103002A (MN10300 family,
     AM33 core), running Panasonic's "MILK" object framework. LCD, control
-    panel, floppy, SD, MIDI and an ADSP-21065L effects DSP are emulated; the
-    wave ROMs are undumped, so the tone generator is driven correctly but its
-    timbre is a placeholder.
+    panel, floppy, SD and MIDI are emulated. The tone generators' registers are
+    decoded, but they produce no sound: the wave ROMs are undumped and the
+    ADSP-21065L effects DSP is not emulated.
 
     Design notes: https://arqueologiadigital.github.io/technics-docs/kn7000-driver-internals/
 
@@ -131,7 +131,6 @@ public:
 		, m_lcdbuf(*this, "lcdbuf")
 		, m_progrom(*this, "program")
 		, m_midi_uart(*this, "midi_uart%u", 0U)
-		, m_kbd_midi_uart(*this, "kbdmidi_uart")
 		, m_tonegen(*this, "tonegen")
 		, m_dial(*this, "DIAL")
 		, m_rearsw(*this, "REARSW")
@@ -174,8 +173,7 @@ private:
 	bool m_lcd_kn24 = false;                     // KN2400/KN2600: 320x240 4-level grayscale panel, 2bpp framebuffer at 0x9C800000
 	required_region_ptr<uint32_t> m_progrom;     // program flash (holds the CLUT)
 	required_device_array<kn7000_sio_uart_device, 2> m_midi_uart;
-	required_device<kn7000_sio_uart_device> m_kbd_midi_uart;  // MIDI -> internal key bed (velocity)
-	required_device<kn_tonegen_base_device> m_tonegen;   // first-cut audio (Phase C Stage 0)
+	required_device<kn_tonegen_base_device> m_tonegen;
 
 	template <int Ch> void midi_rx(uint8_t data) { m_maincpu->sio_rx_push(Ch, data); }
 
@@ -219,33 +217,10 @@ private:
 	uint8_t  m_kbd_head = 0, m_kbd_tail = 0;
 	void kbd_push(uint8_t note, uint8_t vel)
 	{
-		m_kbd_fifo[m_kbd_head & 63] = uint16_t(note) | (uint16_t(vel) << 8); m_kbd_head++;
-		if (note & 0x80) m_tonegen->key_break(note & 0x7F);
-		else             m_tonegen->key_context(note);
+		m_kbd_fifo[m_kbd_head & 63] = uint16_t(note) | (uint16_t(vel) << 8);
+		m_kbd_head++;
 	}
 
-	uint8_t m_kbd_midi_status = 0;             // MIDI running-status byte
-	uint8_t m_kbd_midi_d1 = 0;                  // first data byte (note)
-	bool    m_kbd_midi_have_d1 = false;
-	void kbd_midi_rx(uint8_t b)
-	{
-		if (b & 0x80)                          // status byte
-		{
-			if (b >= 0xF8) return;             // real-time messages: ignore
-			m_kbd_midi_status = (b < 0xF0) ? b : 0;   // system-common clears running status
-			m_kbd_midi_have_d1 = false;
-			return;
-		}
-		const uint8_t cmd = m_kbd_midi_status & 0xF0;
-		if (cmd != 0x90 && cmd != 0x80) return;       // only note-on / note-off
-		if (!m_kbd_midi_have_d1) { m_kbd_midi_d1 = b; m_kbd_midi_have_d1 = true; return; }
-		const uint8_t note = m_kbd_midi_d1, vel = b;
-		m_kbd_midi_have_d1 = false;            // ready for the next note in running status
-		if (note < 36 || note > 96) return;    // outside the 61-key bed
-		const uint8_t idx = note - 36;
-		const bool on = (cmd == 0x90) && (vel != 0);
-		kbd_push(on ? idx : uint8_t(idx | 0x80), on ? vel : 0xff);
-	}
 	uint16_t m_tg_addr[2] = { 0, 0 };          // latched register address, [0]=main [1]=sub
 
 	uint16_t m_tg_wave_bank[2] = { 0, 0 };     // latched bank register  (base+6), [0]=main [1]=sub
@@ -411,9 +386,12 @@ uint16_t kn7000_state::snd_r(offs_t offset, uint16_t mem_mask)
 	// what the KN5000 firmware calls "keyboard input".
 	if (offset == 0x28002)
 	{
-		if (!machine().side_effects_disabled() && m_kbd_head != m_kbd_tail)
-			return m_kbd_fifo[m_kbd_tail++ & 63];
-		return 0xFFFF;
+		if (m_kbd_head == m_kbd_tail)
+			return 0xffff;
+		const uint16_t data = m_kbd_fifo[m_kbd_tail & 63];
+		if (!machine().side_effects_disabled())
+			m_kbd_tail++;
+		return data;
 	}
 	if (offset == 0x28006)                            // 0x9805000C: SD mailbox data latch
 		return m_sdmbx_out;
@@ -443,7 +421,7 @@ void kn7000_state::snd_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		return;
 	case 0x20000: m_tg_addr[0] = data; return;                    // main TG: address latch (0x98040000)
 	case 0x20001:                                                 // main TG: data (0x98040002) -> reg[addr]
-		m_tonegen->tg_write(0, m_tg_addr[0], data);                // Stage 2: feed the real TG voice engine
+		m_tonegen->tg_write(0, m_tg_addr[0], data);
 		return;
 	case 0x28000: m_tg_addr[1] = data; return;                    // sub TG: address latch (0x98050000)
 	case 0x28001:                                                 // sub TG: data (0x98050002) -> reg[addr]
@@ -741,6 +719,12 @@ void kn7000_state::machine_start()
 	// (SIO channel state is save_item'd by the MN10300 core now.)
 	save_item(NAME(m_sdspi_rate));
 	save_item(NAME(m_tg_addr));
+	save_item(NAME(m_kbd_fifo));
+	save_item(NAME(m_kbd_head));
+	save_item(NAME(m_kbd_tail));
+	save_item(NAME(m_sdmbx_out));
+	save_item(NAME(m_sdmbx_miso));
+	save_item(NAME(m_gpio8004));
 }
 
 void kn7000_state::machine_reset()
@@ -917,12 +901,6 @@ void kn7000_state::kn7000_base(machine_config &config)
 	m_midi_uart[0]->rx_cb().set(FUNC(kn7000_state::midi_rx<SIO_MIDI1>));
 	MIDI_PORT(config, "mdin1", midiin_slot, "midiin").rxd_handler().set(m_midi_uart[0], FUNC(kn7000_sio_uart_device::rx_w));
 	MIDI_PORT(config, "mdout1", midiout_slot, "midiout");
-
-	// MIDI -> internal key bed (velocity). A dedicated IN port so a controller
-	// plays the key bed itself, distinct from the two rear MIDI IN jacks.
-	KN7000_SIO_UART(config, m_kbd_midi_uart, 0);
-	m_kbd_midi_uart->rx_cb().set(FUNC(kn7000_state::kbd_midi_rx));
-	MIDI_PORT(config, "kbdmidi", midiin_slot, "midiin").rxd_handler().set(m_kbd_midi_uart, FUNC(kn7000_sio_uart_device::rx_w));
 
 	KN7000_SIO_UART(config, m_midi_uart[1], 0);
 	m_midi_uart[1]->tx_cb().set("mdout2", FUNC(midi_port_device::write_txd));
@@ -1289,12 +1267,12 @@ ROM_END
 } // anonymous namespace
 
 //   YEAR  NAME    PARENT  COMPAT  MACHINE  INPUT   CLASS         INIT        COMPANY     FULLNAME      FLAGS
-SYST(2002, kn7000, 0,      0,      kn7000,  kn7000, kn7000_state, empty_init, "Technics", "SX-KN7000", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND)
+SYST(2002, kn7000, 0,      0,      kn7000,  kn7000, kn7000_state, empty_init, "Technics", "SX-KN7000", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
 
 // KN6000 / KN6500 reuse the KN7000 machine config: same MN10300, same ROM base.
-SYST(1999, kn6000, 0,      0,      kn6000,  kn7000, kn7000_state, empty_init, "Technics", "SX-KN6000", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND)
+SYST(1999, kn6000, 0,      0,      kn6000,  kn7000, kn7000_state, empty_init, "Technics", "SX-KN6000", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
 // The KN6500 is the KN6000 with one constant changed, tone generator included.
-SYST(2001, kn6500, 0,      0,      kn6500,  kn7000, kn7000_state, empty_init, "Technics", "SX-KN6500", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND)
+SYST(2001, kn6500, 0,      0,      kn6500,  kn7000, kn7000_state, empty_init, "Technics", "SX-KN6500", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
 
 // KN2400 / KN2600 -- MN10300/MILK siblings sharing one firmware image (kn2600 = clone of kn2400).
 SYST(2000, kn2400, 0,      0,      kn2400,  kn7000, kn7000_state, empty_init, "Technics", "SX-KN2400", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
