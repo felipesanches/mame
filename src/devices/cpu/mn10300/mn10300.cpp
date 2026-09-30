@@ -141,8 +141,7 @@ void mn10300_device::device_start()
 
 void mn10300_device::device_reset()
 {
-	// The boot address is strapped per board (set_reset_pc). SP is left at zero:
-	// the reset code establishes its own before its first push or call.
+	// SP is left at zero: the reset code sets its own before its first push or call.
 	m_pc  = m_reset_pc;
 	m_sp  = 0;
 	m_psw = 0;
@@ -292,12 +291,6 @@ void mn10300_device::intc_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	// level-like re-delivery for one of its sources can implement it.
 	if (data & mem_mask & 0x000f)
 		m_intc_ack_cb(uint8_t(group));
-	if (group == 0x17 && (data & mem_mask & 0x000f))
-	{
-		m_gxicr[0x17] = uint16_t((data & mem_mask & 0xff00) | 0x0011);   // DETECT+REQUEST; ENABLE as written
-		intc_recompute();
-		return;
-	}
 	{
 		const uint16_t cur = m_gxicr[group];
 		const uint16_t nv  = (cur & ~mem_mask) | (data & mem_mask);
@@ -561,6 +554,22 @@ void mn10300_device::execute_run()
 			m_psw = (m_psw & ~(FLAG_NF | FLAG_CF | FLAG_VF)) | FLAG_ZF;
 			break;
 
+		// ---- mov/movbu/movhu dM,(abs16) (M = bits[3:2], abs16 zero-extended) ----
+		case 0x01: case 0x05: case 0x09: case 0x0D:
+		case 0x02: case 0x06: case 0x0A: case 0x0E:
+		case 0x03: case 0x07: case 0x0B: case 0x0F:
+			typed_load_store((op & 3) == 1 ? 0 : (op & 3), false, src, read_arg16(m_pc), true);
+			m_pc += 2;
+			break;
+
+		// ---- mov/movbu/movhu (abs16),dD (abs16 zero-extended) ----
+		case 0x30: case 0x31: case 0x32: case 0x33:
+		case 0x34: case 0x35: case 0x36: case 0x37:
+		case 0x38: case 0x39: case 0x3A: case 0x3B:
+			typed_load_store(src == 0 ? 0 : src + 1, false, dst, read_arg16(m_pc), false);
+			m_pc += 2;
+			break;
+
 		// ---- extb/extbu/exth/exthu dD ----
 		case 0x10: case 0x11: case 0x12: case 0x13: m_d[dst] = (int32_t)(int8_t)m_d[dst]; break;
 		case 0x14: case 0x15: case 0x16: case 0x17: m_d[dst] &= 0x000000FF; break;
@@ -678,15 +687,18 @@ void mn10300_device::execute_run()
 		case 0xCE: load_regs(read_arg8(m_pc)); m_pc += 1; break;
 		case 0xCF: store_regs(read_arg8(m_pc)); m_pc += 1; break;
 
-		case 0xDB: // setlb
-			m_lar = m_pc;
+		case 0xDB: // setlb: LIR holds the loop's first four bytes, LAR points past them
 			m_lir = read_arg32(m_pc);
+			m_lar = start_pc + 5;
 			break;
 		case 0xD0: case 0xD1: case 0xD2: case 0xD3: case 0xD4:
 		case 0xD5: case 0xD6: case 0xD7: case 0xD8: case 0xD9: // Lcc
-			if (test_cond(op & 0x0F)) m_pc = m_lar;
+			if (test_cond(op & 0x0F))
+				m_pc = m_lar - 4;
 			break;
-		case 0xDA: m_pc = m_lar; break;
+		case 0xDA: // lra
+			m_pc = m_lar - 4;
+			break;
 
 		// ---- jmp disp32 (reset vector uses this) ----
 		case 0xDC:
@@ -850,7 +862,7 @@ void mn10300_device::execute_fc()
 		case 0xE0: m_d[dst] &= imm; set_logic_flags(m_d[dst]); break; // and
 		case 0xE4: m_d[dst] |= imm; set_logic_flags(m_d[dst]); break; // or
 		case 0xE8: m_d[dst] ^= imm; set_logic_flags(m_d[dst]); break; // xor
-		case 0xEC: m_psw = (m_psw & ~FLAG_ZF) | ((m_d[dst] & imm) ? 0 : FLAG_ZF); break; // btst imm32,dD
+		case 0xEC: set_logic_flags(m_d[dst] & imm); break;      // btst imm32,dD
 		case 0xFC:
 			if (op2 == 0xFE)      { m_sp += imm; }               // add imm32,sp (SP arith, no flags)
 			else if (op2 == 0xFF) { write_mem32(m_sp, start_pc + 6); m_mdr = start_pc + 6; m_pc = start_pc + imm; return; } // calls (disp32): PC->[SP], SP unchanged
@@ -940,7 +952,7 @@ void mn10300_device::execute_f8()
 			const int lop = (op2 >> 2) & 3;          // 0=and 1=or 3=btst
 			if (lop == 0)      { m_d[d] &= b; set_logic_flags(m_d[d]); }
 			else if (lop == 1) { m_d[d] |= b; set_logic_flags(m_d[d]); }
-			else               { m_psw = (m_psw & ~FLAG_ZF) | ((m_d[d] & b) ? 0 : FLAG_ZF); } // btst
+			else               set_logic_flags(m_d[d] & b); // btst
 			break;
 		}
 		case 0xE8:                                   // ext-branch bvc/bvs/bnc/bns
@@ -993,8 +1005,8 @@ void mn10300_device::execute_f0()
 		case 0x1: write_mem32(m_a[am], m_a[r]); break;                 // mov aS,(aM)
 		case 0x5: write_mem8 (m_a[am], m_d[r]); break;                 // movbu dS,(aM)
 		case 0x7: write_mem16(m_a[am], m_d[r]); break;                 // movhu dS,(aM)
-		case 0x8: { uint8_t v = read_mem8(m_a[am]); m_psw = (m_psw & ~FLAG_ZF) | ((v & m_d[r]) ? 0 : FLAG_ZF); write_mem8(m_a[am], v | m_d[r]); break; } // bset
-		case 0x9: { uint8_t v = read_mem8(m_a[am]); m_psw = (m_psw & ~FLAG_ZF) | ((v & m_d[r]) ? 0 : FLAG_ZF); write_mem8(m_a[am], v & ~m_d[r]); break; } // bclr
+		case 0x8: { uint8_t v = read_mem8(m_a[am]); set_logic_flags(v & m_d[r]); write_mem8(m_a[am], v | m_d[r]); break; } // bset
+		case 0x9: { uint8_t v = read_mem8(m_a[am]); set_logic_flags(v & m_d[r]); write_mem8(m_a[am], v & ~m_d[r]); break; } // bclr
 		case 0xF:
 			// Control flow, selected by the whole op2 value.
 			if (op2 <= 0xF3)      { write_mem32(m_sp, start_pc + 2); m_mdr = start_pc + 2; m_pc = m_a[am]; return; } // calls (aM): PC->[SP], SP unchanged
@@ -1056,8 +1068,8 @@ void mn10300_device::execute_f2()
 			if (op2 < 0x34) { m_d[dst] = ~m_d[dst]; set_logic_flags(m_d[dst]); } // not dD
 			else logerror("MN10300: illegal F2 %02X @ %08X\n", op2, start_pc);
 			break;
-		case 0x4: { int64_t p = (int64_t)(int32_t)m_d[src] * (int32_t)m_d[dst]; m_d[dst] = (uint32_t)p; m_mdr = (uint32_t)(p >> 32); set_nz32(m_d[dst]); break; } // mul
-		case 0x5: { uint64_t p = (uint64_t)m_d[src] * m_d[dst]; m_d[dst] = (uint32_t)p; m_mdr = (uint32_t)(p >> 32); set_nz32(m_d[dst]); break; } // mulu
+		case 0x4: { int64_t p = (int64_t)(int32_t)m_d[src] * (int32_t)m_d[dst]; m_d[dst] = (uint32_t)p; m_mdr = (uint32_t)(p >> 32); set_logic_flags(m_d[dst]); break; } // mul
+		case 0x5: { uint64_t p = (uint64_t)m_d[src] * m_d[dst]; m_d[dst] = (uint32_t)p; m_mdr = (uint32_t)(p >> 32); set_logic_flags(m_d[dst]); break; } // mulu
 		case 0x6: // div (signed): (MDR:dD) / dS
 		{
 			const int64_t num = ((int64_t)m_mdr << 32) | m_d[dst];
@@ -1094,6 +1106,11 @@ void mn10300_device::execute_f2()
 		}
 		case 0x8: // rol / ror dD (rotate through carry)
 		{
+			if (op2 >= 0x88)
+			{
+				logerror("illegal F2 %02X @ %08X\n", op2, start_pc);
+				break;
+			}
 			uint32_t c = (m_psw & FLAG_CF) ? 1 : 0;
 			if (op2 < 0x84) { uint32_t nc = m_d[dst] >> 31; m_d[dst] = (m_d[dst] << 1) | c; m_psw = (m_psw & ~FLAG_CF) | (nc ? FLAG_CF : 0); } // rol
 			else            { uint32_t nc = m_d[dst] & 1;   m_d[dst] = (m_d[dst] >> 1) | (c << 31); m_psw = (m_psw & ~FLAG_CF) | (nc ? FLAG_CF : 0); } // ror
@@ -1201,7 +1218,25 @@ void mn10300_device::execute_fa()
 			case 0xE0: m_d[dst] &= (uint32_t)imm16; set_logic_flags(m_d[dst]); break;  // and imm16,dD (zx)
 			case 0xE4: m_d[dst] |= (uint32_t)imm16; set_logic_flags(m_d[dst]); break;  // or
 			case 0xE8: m_d[dst] ^= (uint32_t)imm16; set_logic_flags(m_d[dst]); break;  // xor
-			case 0xEC: m_psw = (m_psw & ~FLAG_ZF) | ((m_d[dst] & (uint32_t)imm16) ? 0 : FLAG_ZF); break; // btst imm16,dD (zx)
+			case 0xEC: set_logic_flags(m_d[dst] & imm16); break;                   // btst imm16,dD (zx)
+			case 0x80: case 0x84: case 0x88: case 0x8C:                           // mov aM,(abs16)
+				if (op2 & 3)
+					logerror("illegal FA %02X @ %08X\n", op2, start_pc);
+				else
+					write_mem32(imm16, m_a[(op2 >> 2) & 3]);
+				break;
+			case 0xF0: case 0xF4: case 0xF8:                                       // bset/bclr/btst imm8,(d8,aN)
+			{
+				const uint32_t ea = m_a[dst] + int8_t(imm16 & 0xff);
+				const uint8_t mask = imm16 >> 8;
+				const uint8_t v = read_mem8(ea);
+				set_logic_flags(v & mask);
+				if ((op2 & 0xfc) == 0xf0)
+					write_mem8(ea, v | mask);
+				else if ((op2 & 0xfc) == 0xf4)
+					write_mem8(ea, v & ~mask);
+				break;
+			}
 			case 0xB0: m_a[dst] = read_mem32(m_sp + imm16); break;                     // mov (disp16,sp),aD
 			case 0xB4: m_d[dst] = read_mem32(m_sp + imm16); break;                     // mov (disp16,sp),dD
 			case 0xB8: m_d[dst] = read_mem8 (m_sp + imm16); break;                     // movbu (disp16,sp),dD
@@ -1248,7 +1283,7 @@ void mn10300_device::execute_fe()
 	else { logerror("MN10300: illegal FE %02X @ %08X\n", op2, start_pc); m_pc = start_pc + 2; return; }
 
 	const uint8_t v = read_mem8(addr);
-	m_psw = (m_psw & ~FLAG_ZF) | ((v & imm8) ? 0 : FLAG_ZF);
+	set_logic_flags(v & imm8);
 	const int kind = op2 & 0x0F;
 	if (kind == 0x00)      write_mem8(addr, v | imm8);    // bset
 	else if (kind == 0x01) write_mem8(addr, v & ~imm8);   // bclr

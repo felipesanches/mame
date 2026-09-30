@@ -35,9 +35,12 @@ class mn10300_device : public cpu_device
 public:
 	// construction/destruction (single concrete, instantiable device)
 
-	// Reset state. The boot address is strapped per board, so the machine supplies
-	// it; the reset code establishes its own stack pointer.
+	// Execution starts at 0x40000000 and a level interrupt vectors to
+	// 0x40000000 + IVAR[level]. The MMODE and BMODE pins select how external
+	// memory answers at boot; a board whose straps put the boot code and the
+	// vector entry elsewhere says where.
 	void set_reset_pc(uint32_t pc) { m_reset_pc = pc; }
+	void set_vector_base(uint32_t base) { m_vector_base = base; }
 
 	// On-chip interrupt controller (INTC) @ 0x34000100.
 	//
@@ -45,8 +48,6 @@ public:
 	uint16_t intc_icr(int group) const { return m_gxicr[group & 0x1f]; }
 	void intc_icr_set(int group, uint16_t bits) { m_gxicr[group & 0x1f] |= bits; }
 	void intc_icr_clear(int group, uint16_t bits) { m_gxicr[group & 0x1f] &= ~bits; }
-	// Where this board's decode puts the CPU's vector base (see ivar_w).
-	void set_vector_base(uint32_t base) { m_vector_base = base; }
 	// Outward event callbacks; see intc_pending_group() in the .cpp.
 	auto intc_ack_cb() { return m_intc_ack_cb.bind(); }
 	auto intc_accept_cb() { return m_intc_accept_cb.bind(); }
@@ -134,7 +135,7 @@ private:
 	void ivar_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
 
 	uint16_t m_ivar[7] = { };    // IVAR0..IVAR6 @ 0x20000000 + level*4
-	uint32_t m_vector_base = 0x40000000;  // board decode; 0x40000000 architecturally
+	uint32_t m_vector_base = 0x40000000;
 
 	uint16_t tm45_mode_r(offs_t offset);
 	void tm45_mode_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
@@ -167,7 +168,7 @@ private:
 
 	int      m_irq_state;    // latched maskable IRQ line (execute_set_input)
 	uint32_t m_irq_vector;   // where the maskable interrupt vectors to
-	uint32_t m_reset_pc = 0; // board-supplied reset state (set_reset_pc/_sp)
+	uint32_t m_reset_pc = 0x40000000;
 	int      m_irq_level;    // priority level of the pending interrupt (0 = highest)
 
 	int m_icount;     // remaining cycles this timeslice (MN10200 named this m_cycles)

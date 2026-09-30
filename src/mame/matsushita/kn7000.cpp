@@ -119,8 +119,6 @@ void kn7000_sio_uart_device::device_reset()
 
 namespace {
 
-constexpr offs_t IRQ_VECTOR_BASE = 0x50000000;
-
 class kn7000_state : public driver_device
 {
 public:
@@ -857,11 +855,14 @@ void kn7000_state::kn7000_base(machine_config &config)
 
 	MN103002A(config, m_maincpu, 16_MHz_XTAL * 2);
 	m_maincpu->set_addrmap(AS_PROGRAM, &kn7000_state::maincpu_mem);
-	// The MN10300 always resets to 0x40000000; this is where the board answers
-	// that, and the flash does begin with the vector table it implies.
+	// The MMODE and BMODE straps (R30, R31) select the boot configuration. The
+	// firmware has to start at the program flash's own address: its reset code
+	// is position-independent, but the first call into the library RAM at
+	// 0x4c000000 is PC-relative from the flash, and nothing on the way jumps
+	// there absolutely. Interrupts enter through the "nop ; jmp handler" thunk
+	// the firmware builds at the base of work RAM, with every IVAR cleared.
 	m_maincpu->set_reset_pc(0x48400000);
-
-	m_maincpu->set_vector_base(IRQ_VECTOR_BASE);
+	m_maincpu->set_vector_base(0x50000000);
 
 	// Group 0x11 (panel transfer complete) is level-like until serviced: if a
 	// completion landed before the ISR's ack wiped it, re-deliver it after.
