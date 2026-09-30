@@ -1,20 +1,23 @@
-// license:GPL2+
+// license:GPL-2.0+
 // copyright-holders:Felipe Sanches
 
-// KN6000/KN6500 control panel: matrix geometry and LED decode.
+// KN6000 and KN6500 front panel: matrix geometry and LED decode.
 
 #include "emu.h"
 #include "kn6000_cpanel.h"
 
-#define LOG_LEDS (1U << 4)
+#define LOG_LEDS (1U << 1)
 
 #define VERBOSE 0
 #include "logmacro.h"
 
-DEFINE_DEVICE_TYPE(KN6000_CPANEL, kn6000_cpanel_device, "kn6000_cpanel", "KN6000/KN6500 Control Panel HLE")
 
-static INPUT_PORTS_START(kn6000_cpanel)
-	PORT_START("CPL_SEG0")   // normSeg 0x00 = CPL board scan column 0  (wire ADDR 0xC0)
+DEFINE_DEVICE_TYPE(KN6000_CPANEL, kn6000_cpanel_device, "kn6000_cpanel", "KN6000 control panel")
+
+namespace {
+
+INPUT_PORTS_START(kn6000_cpanel)
+	PORT_START("CPL_SEG0")   // normSeg 0x00 = CPL board scan column 0  (wire ADDR 0xc0)
 	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("PERFORMANCE PAD 1 (SW0)")
 	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("PERFORMANCE PAD 4 (SW1)")
 	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("8 & 16 BEAT (SW2)")
@@ -23,7 +26,7 @@ static INPUT_PORTS_START(kn6000_cpanel)
 	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("ROK'N'ROLL & BLUES (SW5)")
 	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("SOUL & FUNK (SW6)")
 	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MODERN DANCE (SW7)")
-	PORT_START("CPL_SEG1")   // normSeg 0x01 = CPL board scan column 1  (wire ADDR 0xC1)
+	PORT_START("CPL_SEG1")   // normSeg 0x01 = CPL board scan column 1  (wire ADDR 0xc1)
 	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("PERFORMANCE PAD 2 (SW0)")
 	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("PERFORMANCE PAD 5 (SW1)")
 	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("U.S. TRAD (SW2)")
@@ -32,7 +35,7 @@ static INPUT_PORTS_START(kn6000_cpanel)
 	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("JAZZ COMBO (SW5)")
 	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MARCH & WALTZ (SW6)")
 	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("BALLROOM & SHOW TIME (SW7)")
-	PORT_START("CPL_SEG2")   // normSeg 0x02 = CPL board scan column 2  (wire ADDR 0xC2)
+	PORT_START("CPL_SEG2")   // normSeg 0x02 = CPL board scan column 2  (wire ADDR 0xc2)
 	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("PERFORMANCE PAD 3 (SW0)")
 	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("PERFORMANCE PAD 6 (SW1)")
 	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("LATIN (SW2)")
@@ -41,7 +44,7 @@ static INPUT_PORTS_START(kn6000_cpanel)
 	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MEMORY LOAD (SW5)")
 	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("SOUND ARRANGER SET (SW6)")
 	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("SOUND ARRANGER OFF/ON (SW7)")
-	PORT_START("CPL_SEG3")   // normSeg 0x03 = CPL board scan column 3  (wire ADDR 0xC3)
+	PORT_START("CPL_SEG3")   // normSeg 0x03 = CPL board scan column 3  (wire ADDR 0xc3)
 	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_UNUSED)
 	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("AUTO PLAY CHORD MODE (SW1)")
 	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("AUTO PLAY CHORD OFF/ON (SW2)")
@@ -50,7 +53,7 @@ static INPUT_PORTS_START(kn6000_cpanel)
 	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("LCDL 3 (SW5)")
 	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("LCDL 4 (SW6)")
 	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("LCDL 5 (SW7)")
-	PORT_START("CPL_SEG4")   // normSeg 0x04 = CPL board scan column 4  (wire ADDR 0xC4)
+	PORT_START("CPL_SEG4")   // normSeg 0x04 = CPL board scan column 4  (wire ADDR 0xc4)
 	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE UP 1 (PART 1 ON) (SW0)")
 	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE DOWN 1 (PART 1 OFF) (SW1)")
 	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE UP 2 (PART 2 ON) (SW2)")
@@ -59,7 +62,7 @@ static INPUT_PORTS_START(kn6000_cpanel)
 	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE DOWN 3 (PART 3 OFF) (SW5)")
 	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE UP 4 (PART 4 ON) (SW6)")
 	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE DOWN 4 (PART 4 OFF) (SW7)")
-	PORT_START("CPL_SEG5")   // normSeg 0x05 = CPL board scan column 5  (wire ADDR 0xC5)
+	PORT_START("CPL_SEG5")   // normSeg 0x05 = CPL board scan column 5  (wire ADDR 0xc5)
 	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE UP 5 (PART 5 ON) (SW0)")
 	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE DOWN 5 (PART 5 OFF) (SW1)")
 	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE UP 6 (PART 6 ON) (SW2)")
@@ -68,7 +71,7 @@ static INPUT_PORTS_START(kn6000_cpanel)
 	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE DOWN 7 (PART 7 OFF) (SW5)")
 	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE UP 8 (PART 8 ON) (SW6)")
 	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE DOWN 8 (PART 8 OFF) (SW7)")
-	PORT_START("CPL_SEG6")   // normSeg 0x06 = CPL board scan column 6  (wire ADDR 0xC6)
+	PORT_START("CPL_SEG6")   // normSeg 0x06 = CPL board scan column 6  (wire ADDR 0xc6)
 	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE UP 9 (PART 9 ON) (SW0)")
 	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE DOWN 9 (PART 9 OFF) (SW1)")
 	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE UP 10 (PART 10 ON) (SW2)")
@@ -77,7 +80,7 @@ static INPUT_PORTS_START(kn6000_cpanel)
 	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE DOWN 11 (PART 11 OFF) (SW5)")
 	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE UP 12 (PART 12 ON) (SW6)")
 	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE DOWN 12 (PART 12 OFF) (SW7)")
-	PORT_START("CPL_SEG7")   // normSeg 0x07 = CPL board scan column 7  (wire ADDR 0xC7)
+	PORT_START("CPL_SEG7")   // normSeg 0x07 = CPL board scan column 7  (wire ADDR 0xc7)
 	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE UP 13 (PART 13 ON) (SW0)")
 	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE DOWN 13 (PART 13 OFF) (SW1)")
 	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE UP 14 (PART 14 ON) (SW2)")
@@ -86,7 +89,7 @@ static INPUT_PORTS_START(kn6000_cpanel)
 	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE DOWN 15 (PART 15 OFF) (SW5)")
 	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE UP 16 (PART 16 ON) (SW6)")
 	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MUTE DOWN 16 (PART 16 OFF) (SW7)")
-	PORT_START("CPL_SEG8")   // normSeg 0x08 = CPL board scan column 8  (wire ADDR 0xC8)
+	PORT_START("CPL_SEG8")   // normSeg 0x08 = CPL board scan column 8  (wire ADDR 0xc8)
 	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("PAGE UP (SW0)")
 	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("PAGE DOWN (SW1)")
 	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("TR (SW2)")
@@ -95,7 +98,7 @@ static INPUT_PORTS_START(kn6000_cpanel)
 	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("EXIT (SW5)")
 	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("SOUND CONTROLLER MODE (SW6)")
 	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("SOUND CONTROLLER RESET (SW7)")
-	PORT_START("CPL_SEG9")   // normSeg 0x09 = CPL board scan column 9  (wire ADDR 0xC9)
+	PORT_START("CPL_SEG9")   // normSeg 0x09 = CPL board scan column 9  (wire ADDR 0xc9)
 	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("PERFORMANCE PADS/BANK (SW0)")
 	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("PERFORMANCE PADS/STOP (SW1)")
 	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("PERFORMANCE PADS/AUTO SETTING (SW2)")
@@ -111,8 +114,7 @@ static INPUT_PORTS_START(kn6000_cpanel)
 	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("BRASS (SW3)")
 	PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MALLET & ORCH PERC (SW4)")
 	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("WORLD (SW5)")
-	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_UNUSED)
-	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_UNUSED)
+	PORT_BIT(0xc0, IP_ACTIVE_HIGH, IPT_UNUSED)
 	PORT_START("CPR_SEG1")   // normSeg 0x0B = CPR board scan column 1  (wire ADDR 0x01)
 	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("ORGAN & ACCORDION (SW0)")
 	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("SAX & WOODWIND (SW1)")
@@ -120,8 +122,7 @@ static INPUT_PORTS_START(kn6000_cpanel)
 	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("SYNTH (SW3)")
 	PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("BASS (SW4)")
 	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("DRUM KITS (SW5)")
-	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_UNUSED)
-	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_UNUSED)
+	PORT_BIT(0xc0, IP_ACTIVE_HIGH, IPT_UNUSED)
 	PORT_START("CPR_SEG2")   // normSeg 0x0C = CPR board scan column 2  (wire ADDR 0x02)
 	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("DIGITAL DRAWBAR (SW0)")
 	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("ACCORDION REGISTER (SW1)")
@@ -129,8 +130,7 @@ static INPUT_PORTS_START(kn6000_cpanel)
 	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("MEMORY (SW3)")
 	PORT_BIT(0x10, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("SUSTAIN (SW4)")
 	PORT_BIT(0x20, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("DIGITAL EFFECT (SW5)")
-	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_UNUSED)
-	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_UNUSED)
+	PORT_BIT(0xc0, IP_ACTIVE_HIGH, IPT_UNUSED)
 	PORT_START("CPR_SEG3")   // normSeg 0x0D = CPR board scan column 3  (wire ADDR 0x03)
 	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("SOUND DSP (SW0)")
 	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("PART EFFECT VARIATION (SW1)")
@@ -196,37 +196,59 @@ static INPUT_PORTS_START(kn6000_cpanel)
 	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_KEYBOARD) PORT_NAME("PANEL MEMORY 8 (SW7)")
 INPUT_PORTS_END
 
+} // anonymous namespace
+
 ioport_constructor kn6000_cpanel_device::device_input_ports() const
 {
 	return INPUT_PORTS_NAME(kn6000_cpanel);
 }
 
-kn6000_cpanel_device::kn6000_cpanel_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock) :
-	kn_cpanel_base_device(mconfig, KN6000_CPANEL, tag, owner, clock),
-	m_phys(*this, { "CPL_SEG0", "CPL_SEG1", "CPL_SEG2", "CPL_SEG3", "CPL_SEG4",
-					"CPL_SEG5", "CPL_SEG6", "CPL_SEG7", "CPL_SEG8", "CPL_SEG9",
-					"CPR_SEG0", "CPR_SEG1", "CPR_SEG2", "CPR_SEG3", "CPR_SEG4",
-					"CPR_SEG5", "CPR_SEG6", "CPR_SEG7", "CPR_SEG8", "CPR_SEG9" }),
-	m_cpl_leds(*this, "cpl_led%u", 0U),
-	m_cpr_leds(*this, "cpr_led%u", 0U)
+kn6000_cpanel_device::kn6000_cpanel_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock)
+	: kn_cpanel_base_device(mconfig, KN6000_CPANEL, tag, owner, clock)
+	, m_phys(*this, { "CPL_SEG0", "CPL_SEG1", "CPL_SEG2", "CPL_SEG3", "CPL_SEG4",
+			"CPL_SEG5", "CPL_SEG6", "CPL_SEG7", "CPL_SEG8", "CPL_SEG9",
+			"CPR_SEG0", "CPR_SEG1", "CPR_SEG2", "CPR_SEG3", "CPR_SEG4",
+			"CPR_SEG5", "CPR_SEG6", "CPR_SEG7", "CPR_SEG8", "CPR_SEG9" })
+	, m_cpl_leds(*this, "cpl_led%u", 0U)
+	, m_cpr_leds(*this, "cpr_led%u", 0U)
 {
 }
 
-uint8_t kn6000_cpanel_device::seg_wire_addr(int seg) const
+int kn6000_cpanel_device::num_scan_ports() const
 {
-	return (seg < 0x0a) ? uint8_t(0xc0 + seg)          // normSeg 0x00-0x09 -> CPL ADDR 0xC0-0xC9
-						: uint8_t(seg - 0x0a);         // normSeg 0x0A-0x13 -> CPR ADDR 0x00-0x09
+	return 20;
 }
 
-void kn6000_cpanel_device::panel_led_frame(uint8_t addr, uint8_t data)
+u8 kn6000_cpanel_device::scan_port_read(int port)
+{
+	return m_phys[port]->read();
+}
+
+// Each scan column is one segment
+u8 kn6000_cpanel_device::port_seg(int port) const
+{
+	return port;
+}
+
+int kn6000_cpanel_device::num_segs() const
+{
+	return 0x14;
+}
+
+// Segments 0x00-0x09 are the CPL board's columns at wire addresses 0xc0-0xc9, and
+// 0x0a-0x13 the CPR board's at 0x00-0x09
+u8 kn6000_cpanel_device::seg_wire_addr(int seg) const
+{
+	return (seg < 0x0a) ? (0xc0 + seg) : (seg - 0x0a);
+}
+
+// An LED frame writes eight LEDs: register addresses 0x00-0x3f are the CPR
+// board's, the rest the CPL board's
+void kn6000_cpanel_device::panel_led_frame(u8 addr, u8 data)
 {
 	const int reg = addr & 0x3f;
-	output_finder<512> &bank = ((addr & 0xc0) == 0) ? m_cpr_leds : m_cpl_leds;
+	output_finder<512> &bank = (addr & 0xc0) ? m_cpl_leds : m_cpr_leds;
 	for (int bit = 0; bit < 8; bit++)
-	{
-		const int led = reg * 8 + bit;
-		if (led < 512)
-			bank[led] = BIT(data, bit);
-	}
-	LOGMASKED(LOG_LEDS, "panel LED frame addr=%02X data=%02X\n", addr, data);
+		bank[reg * 8 + bit] = BIT(data, bit);
+	LOGMASKED(LOG_LEDS, "LED frame addr=%02X data=%02X\n", addr, data);
 }
