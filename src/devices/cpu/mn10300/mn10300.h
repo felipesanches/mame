@@ -20,14 +20,17 @@ enum
 	// TODO: E0..E7, MDRQ, LIR/LAR, MCRH/MCRL/MCVF, SSP/MSP/USP, ...
 };
 
-// External interrupt input lines
+// External interrupt pins IRQ0-IRQ7; the nonmaskable interrupt is not emulated
 enum
 {
 	MN10300_IRQ0 = 0,
 	MN10300_IRQ1,
 	MN10300_IRQ2,
-	// TODO: the nonmaskable interrupt is not modelled.
-	MN10300_MAX_EXT_IRQ
+	MN10300_IRQ3,
+	MN10300_IRQ4,
+	MN10300_IRQ5,
+	MN10300_IRQ6,
+	MN10300_IRQ7
 };
 
 class mn10300_device : public cpu_device
@@ -45,25 +48,18 @@ public:
 	// On-chip interrupt controller (INTC) @ 0x34000100.
 	//
 	void intc_assert(int group);                  // set DETECT bit0 + REQUEST, recompute delivery
-	uint16_t intc_icr(int group) const { return m_gxicr[group & 0x1f]; }
-	void intc_icr_set(int group, uint16_t bits) { m_gxicr[group & 0x1f] |= bits; }
-	void intc_icr_clear(int group, uint16_t bits) { m_gxicr[group & 0x1f] &= ~bits; }
 	// Outward event callbacks; see intc_pending_group() in the .cpp.
-	auto intc_ack_cb() { return m_intc_ack_cb.bind(); }
-	auto intc_accept_cb() { return m_intc_accept_cb.bind(); }
-	auto intc_extmd_cb() { return m_intc_extmd_cb.bind(); }
 
+	// Serial channels. The timers that clock them are not emulated, so the board
+	// states the bit rate its firmware sets up; a channel shifts a byte out in 8
+	// bit times in synchronous mode and 10 in asynchronous (8N1) mode.
+	template <unsigned Ch> void set_sio_bit_rate(uint32_t hz, bool async) { m_sio_bit_rate[Ch] = hz; m_sio_async[Ch] = async; }
 	template <unsigned Ch> auto sio_tx_cb() { return m_sio_tx_cb[Ch].bind(); }
-	template <unsigned Ch> auto sio_tx_done_cb() { return m_sio_tx_done_cb[Ch].bind(); }
-	template <unsigned Ch> auto sio_rx_rdy_cb() { return m_sio_rx_rdy_cb[Ch].bind(); }
 	template <unsigned Ch> auto sio_rx_enable_cb() { return m_sio_rx_enable_cb[Ch].bind(); }
 
-	// Endpoint devices (panel HLE, MIDI UART bridges) deliver received bytes
-	// here; each successful push fires sio_rx_rdy_cb for that channel.
+	// A byte received on a channel's RXD
 	void sio_rx_push(int ch, uint8_t data);
 	bool sio_rx_ready(int ch) const { return m_sio_rx_head[ch] != m_sio_rx_tail[ch]; }
-
-	static constexpr unsigned TM5_PRESCALE = 8;
 
 protected:
 	mn10300_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner,
@@ -105,10 +101,14 @@ private:
 	void sio_tx_byte(int ch, uint8_t data);
 	uint8_t sio_rx_pop(int ch);
 
+	TIMER_CALLBACK_MEMBER(sio_tx_shifted);
+
+	static constexpr int SIO0_GROUP = 0x10;   // RX; TX is the next group, then channel 1
 	devcb_write8::array<NUM_SIO>     m_sio_tx_cb;
-	devcb_write_line::array<NUM_SIO> m_sio_tx_done_cb;
-	devcb_write_line::array<NUM_SIO> m_sio_rx_rdy_cb;
 	devcb_write_line::array<NUM_SIO> m_sio_rx_enable_cb;
+	uint32_t m_sio_bit_rate[NUM_SIO];
+	bool     m_sio_async[NUM_SIO];
+	emu_timer *m_sio_tx_timer[NUM_SIO];
 
 	uint16_t m_sio_config[NUM_SIO];
 	uint8_t  m_sio_control[NUM_SIO];
@@ -123,13 +123,14 @@ private:
 	void intc_accept();          // latch IAGR (group+vector) at interrupt accept
 	int  intc_pending_group() const;
 
-	devcb_write8  m_intc_ack_cb;
-	devcb_write8  m_intc_accept_cb;
-	devcb_write16 m_intc_extmd_cb;
+	void irq_pin_update(int pin);
+
+	static constexpr int IRQ0_GROUP = 0x17;
+	uint8_t m_irq_pin[8];        // external IRQ0-IRQ7 pin levels
 
 	uint16_t m_gxicr[NUM_INTC_GROUPS];
 	int      m_iagr_latch;       // group latched at interrupt accept
-	uint16_t m_intc_280;         // 0x34000280 (EXTMD) latched control fields
+	uint16_t m_extmd;            // 0x34000280: two trigger-mode bits per external IRQ pin
 	uint32_t level_vector(int level) const;   // m_vector_base + IVAR[level]
 	uint16_t ivar_r(offs_t offset, uint16_t mem_mask = ~0);
 	void ivar_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
@@ -137,19 +138,20 @@ private:
 	uint16_t m_ivar[7] = { };    // IVAR0..IVAR6 @ 0x20000000 + level*4
 	uint32_t m_vector_base = 0x40000000;
 
-	uint16_t tm45_mode_r(offs_t offset);
-	void tm45_mode_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
-	uint16_t tm45_base_r(offs_t offset);
-	void tm45_base_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
-	uint16_t tm45_count_r(offs_t offset);
-	void tm5_mode_w(uint8_t data);
-	void tm5_base_w(uint16_t data);
-	void tm5_rearm(bool restart_phase);
-	TIMER_CALLBACK_MEMBER(tm5_tick);
+	static constexpr unsigned TM_PRESCALE = 8;
+	static constexpr int TM4_GROUP = 0x06;    // TM5 is the next group
 
-	uint8_t   m_tm5_mode;        // bit7 = count enable, bit6 = load pulse, low bits = source/prescale
-	uint16_t  m_tm5_base;        // 16-bit reload (underflow period)
-	emu_timer *m_tm5_timer;
+	template <unsigned N> uint8_t tm_mode_r();
+	template <unsigned N> void tm_mode_w(uint8_t data);
+	template <unsigned N> uint16_t tm_base_r();
+	template <unsigned N> void tm_base_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
+	template <unsigned N> uint16_t tm_count_r();
+	void tm_rearm(unsigned n, bool restart_phase);
+	TIMER_CALLBACK_MEMBER(tm_underflow);
+
+	uint8_t m_tm_mode[2];        // TM4, TM5: bit7 = count enable, bit6 = load pulse
+	uint16_t m_tm_base[2];       // reload value (underflow period)
+	emu_timer *m_tm_timer[2];
 
 	uint32_t m_pc;    // full 32-bit PC (MN10200 was 24-bit, masked to 0xffffff)
 	uint32_t m_d[4];  // data registers D0..D3 (full 32-bit)
@@ -166,7 +168,7 @@ private:
 	uint32_t m_lar;   // loop-address register     (setlb)
 	// TODO: extended registers E0..E7, MDRQ, register banks.
 
-	int      m_irq_state;    // latched maskable IRQ line (execute_set_input)
+	bool     m_irq_pending;  // the INTC is requesting a maskable interrupt
 	uint32_t m_irq_vector;   // where the maskable interrupt vectors to
 	uint32_t m_reset_pc = 0x40000000;
 	int      m_irq_level;    // priority level of the pending interrupt (0 = highest)

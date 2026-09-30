@@ -18,13 +18,12 @@ public:
 	template <typename T> void set_tempoknob_port(T &&tag) { m_tempoknob.set_tag(std::forward<T>(tag)); }
 
 	// Callbacks to the main CPU (its interrupt controller / SIO channel 0):
-	auto atn() { return m_atn_cb.bind(); }   // panel ATN pulse -> main asserts INTC group 0x1A
+	auto atn() { return m_atn_cb.bind(); }   // ATN line, to an external interrupt pin of the main CPU
 	auto rxd() { return m_rxd_cb.bind(); }   // one reply byte -> main pushes it onto SIO0 RX + asserts group 0x10
 
 	// From the main CPU (SIO / INTC bridge):
 	void tx_byte(uint8_t data);   // main CPU wrote one panel TX byte (SIO ch0 +8)
-	void rx_enable();             // main CPU set SIO ch0 RX-enable (config bit14): clock out the next reply byte
-	void atn_rearm();             // group-0x1A ISR re-armed EXTMD (11b->10b): deliver ATN edge 2
+	void rx_enable(int state);    // the main CPU enabled its receiver: clock out the queued reply
 
 	virtual bool chorus_led() const { return false; }
 	virtual bool multi_led() const { return false; }
@@ -64,7 +63,7 @@ private:
 	int     m_panel_resp_len, m_panel_resp_pos;
 
 	// Timers.
-	emu_timer *m_panel_evt;                // one-shot; param: 1=ATN edge, 2=deliver RX byte
+	emu_timer *m_panel_evt;                // one-shot; param: 1 = raise ATN, 2 = deliver RX byte, 3 = drop ATN
 	emu_timer *m_panel_timer;              // periodic button/analog scan
 
 	// Input scan state.

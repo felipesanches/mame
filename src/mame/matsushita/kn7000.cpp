@@ -208,10 +208,8 @@ private:
 	uint16_t io_r(offs_t offset, uint16_t mem_mask = ~0);
 	void io_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
 
-	enum { IRQGRP_TIMER = 0x06, IRQGRP_PANEL = 0x1A, IRQGRP_MIDI1 = 0x12, IRQGRP_MIDI2 = 0x14 };
+	enum { IRQGRP_PANEL = 0x1A, IRQGRP_MIDI1 = 0x12, IRQGRP_MIDI2 = 0x14 };
 	void intc_assert(int group) { m_maincpu->intc_assert(group); }
-	bool m_c11_unserviced = false;             // a panel transfer-complete not yet accepted
-	uint16_t m_extmd_prev = 0;                 // previous EXTMD value (edge decode across intc_extmd_cb)
 	uint16_t m_sdspi_rate = 0;                 // SD SPI clock-rate latch (0x9805000E), read back to verify
 	uint16_t m_kbd_fifo[64] = { };
 	uint8_t  m_kbd_head = 0, m_kbd_tail = 0;
@@ -227,9 +225,6 @@ private:
 	uint16_t m_tg_wave_addr[2] = { 0, 0 };     // latched word-address   (base+8)
 	memory_region *m_waverom[4] = { nullptr, nullptr, nullptr, nullptr };
 	uint16_t tg_wave_read(int tg);             // compose the address and return the sample word
-
-	emu_timer *m_sys_timer = nullptr;
-	TIMER_CALLBACK_MEMBER(sys_tick);
 
 	// --- On-chip 16-bit TEMPO timer (mode 0x34001082 / base 0x34001092 / count 0x340010A2)
 
@@ -247,10 +242,7 @@ private:
 		if (m_lib_mirror) return;
 		const bool cover_open = (m_sdcover->read() & 1) != 0;
 		const bool card = m_sdcard && m_sdcard->get_card_present();
-		if (!cover_open && card)
-			m_maincpu->intc_icr_clear(0x1B, 0x001F);   // bit4=0: present (closed + card)
-		else
-			m_maincpu->intc_icr_set(0x1B, 0x0012);     // bit4=1: no card / lid open
+		m_maincpu->set_input_line(MN10300_IRQ4, (!cover_open && card) ? CLEAR_LINE : ASSERT_LINE);
 	}
 
 	uint16_t m_sdmbx_out = 0xFF;               // last MISO byte (mailbox read value)
@@ -265,8 +257,6 @@ private:
 
 	// --- Control-panel HLE (the sub-CPU side of the panel serial link) ------
 	// LED command bytes arrive as 2-byte [ADDR][DATA] frames on the panel TX;
-	TIMER_CALLBACK_MEMBER(panel_txdone_cb); // one-shot: SIO ch0 sync-transfer complete -> group 0x11
-	emu_timer *m_panel_txdone = nullptr;
 	TIMER_CALLBACK_MEMBER(volume_scan);     // periodic MAIN VOLUME slider -> DSP master gain
 	emu_timer *m_vol_timer = nullptr;
 
@@ -441,11 +431,6 @@ void kn7000_state::snd_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		offset << 1, data, mem_mask);
 }
 
-TIMER_CALLBACK_MEMBER(kn7000_state::sys_tick)
-{
-	intc_assert(IRQGRP_TIMER);
-}
-
 // (The on-chip TEMPO timer -- TM5, the clock behind all sequenced playback --
 // is modeled in the MN10300 core now: mn10300.cpp tm5_*.)
 
@@ -495,14 +480,6 @@ INPUT_CHANGED_MEMBER(kn7000_state::kbd_key)
 
 //  SIO -- three on-chip USART channels (panel + two MIDI ports)
 //
-
-// The main-CPU SIO channel-0 sync-transfer completion, INTC group 0x11. Deferred
-// ~40us so the panel's reply cannot overtake the ISR that acknowledges it.
-TIMER_CALLBACK_MEMBER(kn7000_state::panel_txdone_cb)
-{
-	m_c11_unserviced = true;
-	intc_assert(0x11);
-}
 
 // Front-panel MAIN VOLUME slider -> master output gain on the final mix. A squared
 // taper approximates a natural volume law (the exact analog-slider taper is unknown);
@@ -701,7 +678,6 @@ void kn7000_state::machine_start()
 
 	// Periodic control-panel button scan (the real sub-CPUs poll their matrices
 	// continuously and report changes over the serial link).
-	m_panel_txdone = timer_alloc(FUNC(kn7000_state::panel_txdone_cb), this);
 	m_vol_timer = timer_alloc(FUNC(kn7000_state::volume_scan), this);
 
 	// (The AM33 maskable-interrupt vectors are configured per level on the core
@@ -709,13 +685,10 @@ void kn7000_state::machine_start()
 
 	if (m_lib_mirror)
 		memcpy(memshare("libram")->ptr(), memregion("program")->base(), memregion("program")->bytes());
-	m_sys_timer = timer_alloc(FUNC(kn7000_state::sys_tick), this);
 	m_sd_insert_timer = timer_alloc(FUNC(kn7000_state::sd_insert), this);
 	m_sd_inuse_off = timer_alloc(FUNC(kn7000_state::sd_inuse_off), this);
 
 	// (INTC + TM5 timer state is save_item'd by the MN10300 core now.)
-	save_item(NAME(m_c11_unserviced));
-	save_item(NAME(m_extmd_prev));
 	// (SIO channel state is save_item'd by the MN10300 core now.)
 	save_item(NAME(m_sdspi_rate));
 	save_item(NAME(m_tg_addr));
@@ -733,21 +706,11 @@ void kn7000_state::machine_reset()
 	// Poll the MAIN VOLUME slider -> output gain at ~250 Hz.
 	m_vol_timer->adjust(attotime::from_hz(250), 0, attotime::from_hz(250));
 
-	// System tick, ~1 kHz. The real rate is unknown; the input clock has not been
-	// identified. The interrupt dispatches to the firmware's RTOS handler.
-	if (m_lib_mirror)
-		// KN6000/KN6500: delay the tick past the single-threaded part of the boot, so
-		// the scheduler exists by the time the first one arrives.
-		m_sys_timer->adjust(attotime::from_seconds(2), 0, attotime::from_hz(1000));
-	else
-		m_sys_timer->adjust(attotime::from_hz(1000), 0, attotime::from_hz(1000));
-
 	// (TM5 mode/base/countdown are reset by the core's device_reset.)
 	if (!m_lib_mirror)
 	{
-		// SD card-detect: the polled group-0x1B ICR (0x3400016C) bit4 reads
-		// 1 = no card, 0 = card present.
-		m_maincpu->intc_icr_set(0x1B, 0x0012);
+		// SD card-detect on IRQ4, polled through its REQUEST bit: high = no card.
+		m_maincpu->set_input_line(MN10300_IRQ4, ASSERT_LINE);
 		const bool cover_open = (m_sdcover->read() & 1) != 0;
 		if (!cover_open && m_sdcard && m_sdcard->get_card_present())
 			m_sd_insert_timer->adjust(attotime::from_seconds(6));
@@ -848,44 +811,21 @@ void kn7000_state::kn7000_base(machine_config &config)
 	m_maincpu->set_reset_pc(0x48400000);
 	m_maincpu->set_vector_base(0x50000000);
 
-	// Group 0x11 (panel transfer complete) is level-like until serviced: if a
-	// completion landed before the ISR's ack wiped it, re-deliver it after.
-	m_maincpu->intc_ack_cb().set([this](uint8_t group) {
-		if (group == 0x11 && m_c11_unserviced)
-			m_panel_txdone->adjust(attotime::from_usec(40), 3);
-	});
-	// group 0x11 latched into the IAGR at accept -> it has been serviced.
-	m_maincpu->intc_accept_cb().set([this](uint8_t group) {
-		if (group == 0x11)
-			m_c11_unserviced = false;
-	});
-	// EXTMD written: decode the panel-ATN edge re-arm transition (bits 7:6
-	// 11b -> 10b) against our previous-value shadow.
-	m_maincpu->intc_extmd_cb().set([this](uint16_t data) {
-		const uint16_t prev = m_extmd_prev;
-		m_extmd_prev = data;
-		if (((prev & 0x00c0) == 0x00c0) && ((data & 0x00c0) == 0x0080))
-			m_cpanel->atn_rearm();
-	});
 
 	// On-chip SIO routing; the register model itself lives in the CPU core.
-	m_maincpu->sio_tx_done_cb<0>().set([this](int state) {
-		// Sync-transfer completion -> group 0x11, always deferred (see panel_txdone_cb).
-		m_panel_txdone->adjust(attotime::from_usec(40), 3);
-	});
+	m_maincpu->set_sio_bit_rate<0>(200'000, false);   // panel link, synchronous
+	m_maincpu->set_sio_bit_rate<1>(31'250, true);     // MIDI
+	m_maincpu->set_sio_bit_rate<2>(31'250, true);     // MIDI
 	// The main CPU transmits 7-byte frames with interleaved line syncs; the
 	// panel HLE parses them, decodes LED writes, and queues replies.
 	m_maincpu->sio_tx_cb<0>().set([this](uint8_t data) { m_cpanel->tx_byte(data); });
 	// One group-0x10 interrupt per reply byte the panel delivers into the ch0
 	// RX ring (the state-8 handler reads 0x34000809 per interrupt).
-	m_maincpu->sio_rx_rdy_cb<0>().set([this](int state) { intc_assert(0x10); });
 	// Config bit14 written set (group-0x1A ISR pass 2): the panel may now send
 	// its queued reply.
-	m_maincpu->sio_rx_enable_cb<0>().set([this](int state) { m_cpanel->rx_enable(); });
+	m_maincpu->sio_rx_enable_cb<0>().set(m_cpanel, FUNC(kn_cpanel_base_device::rx_enable));
 	m_maincpu->sio_tx_cb<1>().set(m_midi_uart[0], FUNC(kn7000_sio_uart_device::write));
-	m_maincpu->sio_rx_rdy_cb<1>().set([this](int state) { intc_assert(0x12); });
 	m_maincpu->sio_tx_cb<2>().set(m_midi_uart[1], FUNC(kn7000_sio_uart_device::write));
-	m_maincpu->sio_rx_rdy_cb<2>().set([this](int state) { intc_assert(0x14); });
 
 	SCREEN(config, m_screen).set_lcd();
 	m_screen->set_refresh_hz(60);
@@ -909,7 +849,7 @@ void kn7000_state::kn7000_base(machine_config &config)
 	MIDI_PORT(config, "mdout2", midiout_slot, "midiout");
 
 	KN7000_CPANEL(config, m_cpanel);
-	m_cpanel->atn().set([this](int state) { if (state) intc_assert(0x1a); });
+	m_cpanel->atn().set_inputline(m_maincpu, MN10300_IRQ3);
 	m_cpanel->rxd().set([this](uint8_t data) { m_maincpu->sio_rx_push(SIO_PANEL, data); });
 	m_cpanel->set_dial_port(m_dial);
 	m_cpanel->set_volapcseq_port(m_volapcseq);
@@ -962,7 +902,7 @@ void kn7000_state::kn6000(machine_config &config)
 
 	config.device_remove("cpanel");
 	KN6000_CPANEL(config, m_cpanel);
-	m_cpanel->atn().set([this](int state) { if (state) intc_assert(0x1a); });
+	m_cpanel->atn().set_inputline(m_maincpu, MN10300_IRQ3);
 	m_cpanel->rxd().set([this](uint8_t data) { m_maincpu->sio_rx_push(SIO_PANEL, data); });
 	m_cpanel->set_dial_port(m_dial);
 	m_cpanel->set_volapcseq_port(m_volapcseq);

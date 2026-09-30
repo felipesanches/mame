@@ -94,7 +94,8 @@ void kn_cpanel_base_device::tx_byte(uint8_t data)
 	}
 }
 
-// The panel raises ATN, the main CPU's group-0x1A ISR switches the link to RX and
+// The panel pulses ATN. The main CPU's interrupt handler runs once for the
+// rising level and once for the falling one, then switches the link to RX and
 // clocks the bytes in one group-0x10 interrupt at a time.
 void kn_cpanel_base_device::panel_queue(const uint8_t *bytes, int n)
 {
@@ -106,13 +107,18 @@ void kn_cpanel_base_device::panel_queue(const uint8_t *bytes, int n)
 	for (int i = 0; i < n; i++)
 		m_panel_resp[m_panel_resp_len++] = bytes[i];
 	if (was_idle)
-		m_panel_evt->adjust(attotime::from_usec(60), 1);  // ATN edge 1
+		m_panel_evt->adjust(attotime::from_usec(60), 1);
 }
 
 TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::panel_event)
 {
 	if (param == 1)
+	{
 		m_atn_cb(1);
+		m_panel_evt->adjust(attotime::from_usec(100), 3);
+	}
+	else if (param == 3)
+		m_atn_cb(0);
 	else if (param == 2 && m_panel_resp_pos < m_panel_resp_len)
 	{
 		m_rxd_cb(m_panel_resp[m_panel_resp_pos++]);
@@ -123,17 +129,10 @@ TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::panel_event)
 
 // Main CPU enabled SIO ch0 RX (config bit14, set by the group-0x1A ISR's pass 2):
 // the panel now sends its queued reply, one byte per group-0x10 interrupt.
-void kn_cpanel_base_device::rx_enable()
+void kn_cpanel_base_device::rx_enable(int state)
 {
-	if (m_panel_resp_pos < m_panel_resp_len)
+	if (state && m_panel_resp_pos < m_panel_resp_len)
 		m_panel_evt->adjust(attotime::from_usec(60), 2);
-}
-
-// The group-0x1A ISR's pass 1 re-armed EXTMD for the opposite edge (11b -> 10b)
-// and expects the panel's second ATN edge to arrive after it returns.
-void kn_cpanel_base_device::atn_rearm()
-{
-	m_panel_evt->adjust(attotime::from_usec(60), 1);
 }
 
 TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::panel_scan)

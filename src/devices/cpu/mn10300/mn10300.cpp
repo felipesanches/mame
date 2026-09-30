@@ -36,16 +36,15 @@ mn10300_device::mn10300_device(const machine_config &mconfig, device_type type, 
 	, m_program_config("program", ENDIANNESS_LITTLE, 32, 32, 0, program)
 	, m_program(nullptr)
 	, m_sio_tx_cb(*this)
-	, m_sio_tx_done_cb(*this)
-	, m_sio_rx_rdy_cb(*this)
 	, m_sio_rx_enable_cb(*this)
-	, m_intc_ack_cb(*this)
-	, m_intc_accept_cb(*this)
-	, m_intc_extmd_cb(*this)
-	, m_iagr_latch(0), m_intc_280(0)
-	, m_tm5_mode(0), m_tm5_base(0), m_tm5_timer(nullptr)
-	, m_pc(0), m_sp(0), m_mdr(0), m_mdrq(0), m_mcrh(0), m_mcrl(0), m_mcvf(0), m_psw(0), m_lir(0), m_lar(0)
-	, m_irq_state(CLEAR_LINE), m_irq_vector(0), m_irq_level(7)
+	, m_sio_bit_rate{ 0, 0, 0 }
+	, m_sio_async{ false, false, false }
+	, m_sio_tx_timer{ nullptr, nullptr, nullptr }
+	, m_irq_pin{ 0, 0, 0, 0, 0, 0, 0, 0 }
+	, m_iagr_latch(0), m_extmd(0)
+	, m_tm_mode{ 0, 0 }, m_tm_base{ 0, 0 }, m_tm_timer{ nullptr, nullptr }
+		, m_pc(0), m_sp(0), m_mdr(0), m_mdrq(0), m_mcrh(0), m_mcrl(0), m_mcvf(0), m_psw(0), m_lir(0), m_lar(0)
+	, m_irq_pending(false), m_irq_vector(0), m_irq_level(7)
 	, m_icount(0)
 {
 	std::fill(std::begin(m_d), std::end(m_d), 0);
@@ -66,11 +65,12 @@ void mn10300_device::mn103002a_internal_map(address_map &map)
 	// GxICR array, the 0x34000200 group register and the 0x34000280 EXTMD latch.
 	map(0x34000100, 0x340002ff).rw(FUNC(mn10300_device::intc_r), FUNC(mn10300_device::intc_w));
 	map(0x34000800, 0x3400082f).rw(FUNC(mn10300_device::sio_r), FUNC(mn10300_device::sio_w));
-	// TM4/TM5: mode bytes @0x34001080/82, reloads @0x34001090/92, counters
-	// @0x340010A0/A2 (only TM5 -- offset 1 of each word pair -- is live).
-	map(0x34001080, 0x34001083).rw(FUNC(mn10300_device::tm45_mode_r), FUNC(mn10300_device::tm45_mode_w));
-	map(0x34001090, 0x34001093).rw(FUNC(mn10300_device::tm45_base_r), FUNC(mn10300_device::tm45_base_w));
-	map(0x340010a0, 0x340010a3).r(FUNC(mn10300_device::tm45_count_r));
+	map(0x34001080, 0x34001080).rw(FUNC(mn10300_device::tm_mode_r<0>), FUNC(mn10300_device::tm_mode_w<0>));
+	map(0x34001082, 0x34001082).rw(FUNC(mn10300_device::tm_mode_r<1>), FUNC(mn10300_device::tm_mode_w<1>));
+	map(0x34001090, 0x34001091).rw(FUNC(mn10300_device::tm_base_r<0>), FUNC(mn10300_device::tm_base_w<0>));
+	map(0x34001092, 0x34001093).rw(FUNC(mn10300_device::tm_base_r<1>), FUNC(mn10300_device::tm_base_w<1>));
+	map(0x340010a0, 0x340010a1).r(FUNC(mn10300_device::tm_count_r<0>));
+	map(0x340010a2, 0x340010a3).r(FUNC(mn10300_device::tm_count_r<1>));
 }
 
 device_memory_interface::space_config_vector mn10300_device::memory_space_config() const
@@ -100,7 +100,8 @@ void mn10300_device::device_start()
 	save_item(NAME(m_psw));
 	save_item(NAME(m_lir));
 	save_item(NAME(m_lar));
-	save_item(NAME(m_irq_state));
+	save_item(NAME(m_irq_pending));
+	save_item(NAME(m_irq_pin));
 	save_item(NAME(m_irq_vector));
 	save_item(NAME(m_irq_level));
 	save_item(NAME(m_sio_config));
@@ -110,14 +111,15 @@ void mn10300_device::device_start()
 	save_item(NAME(m_sio_rx_tail));
 	save_item(NAME(m_gxicr));
 	save_item(NAME(m_iagr_latch));
-	save_item(NAME(m_intc_280));
-	save_item(NAME(m_tm5_mode));
-	save_item(NAME(m_tm5_base));
+	save_item(NAME(m_extmd));
+	save_item(NAME(m_tm_mode));
+	save_item(NAME(m_tm_base));
 	save_item(NAME(m_ivar));
-	// (m_tm5_timer is a device-allocated emu_timer and is save-stated
-	// automatically.)
 
-	m_tm5_timer = timer_alloc(FUNC(mn10300_device::tm5_tick), this);
+	for (auto &timer : m_tm_timer)
+		timer = timer_alloc(FUNC(mn10300_device::tm_underflow), this);
+	for (auto &timer : m_sio_tx_timer)
+		timer = timer_alloc(FUNC(mn10300_device::sio_tx_shifted), this);
 
 	state_add(MN10300_PC,  "PC",  m_pc ).formatstr("%08X");
 	state_add(MN10300_SP,  "SP",  m_sp ).formatstr("%08X");
@@ -157,18 +159,23 @@ void mn10300_device::device_reset()
 		m_sio_config[ch] = 0;
 		m_sio_control[ch] = 0;
 		m_sio_rx_head[ch] = m_sio_rx_tail[ch] = 0;
+		m_sio_tx_timer[ch]->adjust(attotime::never);
 	}
 
 	std::fill(std::begin(m_gxicr), std::end(m_gxicr), 0);
 	// ...and the delivery state derived from them, which would otherwise survive
 	// a reset holding the level and vector of an interrupt that no longer exists.
 	std::fill(std::begin(m_ivar), std::end(m_ivar), 0);
-	m_irq_state = CLEAR_LINE;
+	m_irq_pending = false;
+	m_extmd = 0;
 	m_irq_vector = 0;
 	m_irq_level = 7;
-	m_tm5_mode = 0;
-	m_tm5_base = 0;
-	m_tm5_timer->adjust(attotime::never);
+	for (unsigned n = 0; n < 2; n++)
+	{
+		m_tm_mode[n] = 0;
+		m_tm_base[n] = 0;
+		m_tm_timer[n]->adjust(attotime::never);
+	}
 }
 
 void mn10300_device::state_string_export(const device_state_entry &entry, std::string &str) const
@@ -183,10 +190,39 @@ void mn10300_device::state_string_export(const device_state_entry &entry, std::s
 
 void mn10300_device::execute_set_input(int inputnum, int state)
 {
-	// Line 0 is the single maskable interrupt raised by the on-chip interrupt
-	// controller above. Latch it; the run loop re-checks it each instruction.
-	if (inputnum == 0)
-		m_irq_state = state;
+	if (inputnum >= MN10300_IRQ0 && inputnum <= MN10300_IRQ7)
+	{
+		const uint8_t prev = m_irq_pin[inputnum];
+		m_irq_pin[inputnum] = (state != CLEAR_LINE) ? 1 : 0;
+		const unsigned mode = BIT(m_extmd, inputnum * 2, 2);
+		if (!BIT(mode, 1))
+		{
+			// Edge triggered: 00 = rising, 01 = falling.
+			if (prev != m_irq_pin[inputnum] && m_irq_pin[inputnum] == (BIT(mode, 0) ? 0 : 1))
+				intc_assert(IRQ0_GROUP + inputnum);
+		}
+		else
+		{
+			irq_pin_update(inputnum);
+			intc_recompute();
+		}
+	}
+}
+
+// A level-triggered pin (EXTMD 10 = low, 11 = high) holds its group's DETECT bit
+// while it is at the active level, so an acknowledge does not clear it and the
+// request drops only when the pin does.
+void mn10300_device::irq_pin_update(int pin)
+{
+	const unsigned mode = BIT(m_extmd, pin * 2, 2);
+	if (!BIT(mode, 1))
+		return;
+	uint16_t &icr = m_gxicr[IRQ0_GROUP + pin];
+	if (m_irq_pin[pin] == BIT(mode, 0))
+		icr |= 0x0001;
+	else
+		icr &= ~0x0001;
+	icr = (icr & ~0x0010) | ((icr & 0x000f) ? 0x0010 : 0x0000);
 }
 
 void mn10300_device::take_irq(int level)
@@ -205,7 +241,7 @@ void mn10300_device::check_irq()
 	if (!(m_psw & FLAG_IE))
 		return;
 	const int im = (m_psw & FLAG_IM) >> IM_SHIFT;
-	if (m_irq_state != CLEAR_LINE && m_irq_vector != 0 && m_irq_level < im)
+	if (m_irq_pending && m_irq_vector != 0 && m_irq_level < im)
 		take_irq(m_irq_level);
 }
 
@@ -247,8 +283,6 @@ void mn10300_device::intc_accept()
 	if (g)
 	{
 		m_iagr_latch = g;
-		// Board hook: this group was latched into the IAGR (see intc_accept_cb).
-		m_intc_accept_cb(uint8_t(g));
 		const int level = (m_gxicr[g] >> 12) & 7;
 		m_irq_vector = level_vector(level);
 		m_irq_level = level;
@@ -264,9 +298,8 @@ uint16_t mn10300_device::intc_r(offs_t offset, uint16_t mem_mask)
 		return 0;
 	if (reg == 0x100)                             // 0x34000200: level-6 group register (latched at accept)
 		return m_iagr_latch << 2;
-	if (reg == 0x180)                             // 0x34000280: per-source 2-bit control fields (latched)
-		return m_intc_280;                        // software only ever read-modify-writes it,
-												  // so the state has to accumulate
+	if (reg == 0x180)                             // 0x34000280: EXTMD
+		return m_extmd;
 	const int group = reg >> 2;                   // GxICR(group) at +group*4
 	if (group < int(NUM_INTC_GROUPS))
 		return m_gxicr[group];
@@ -276,10 +309,14 @@ uint16_t mn10300_device::intc_r(offs_t offset, uint16_t mem_mask)
 void mn10300_device::intc_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
 	const int reg = offset << 1;
-	if (reg == 0x180)                             // 0x34000280 = EXTMD (ext-int trigger modes)
+	if (reg == 0x180)                             // 0x34000280 = EXTMD
 	{
-		COMBINE_DATA(&m_intc_280);
-		m_intc_extmd_cb(m_intc_280);
+		const uint16_t prev = m_extmd;
+		COMBINE_DATA(&m_extmd);
+		for (int pin = 0; pin < 8; pin++)
+			if (BIT(prev ^ m_extmd, pin * 2, 2))
+				irq_pin_update(pin);
+		intc_recompute();
 		return;
 	}
 	if (reg < 0x08)
@@ -287,16 +324,14 @@ void mn10300_device::intc_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	const int group = reg >> 2;
 	if (group >= int(NUM_INTC_GROUPS))
 		return;
-	// A write carrying DETECT-ack bits: report it outward, so a board that needs
-	// level-like re-delivery for one of its sources can implement it.
-	if (data & mem_mask & 0x000f)
-		m_intc_ack_cb(uint8_t(group));
 	{
 		const uint16_t cur = m_gxicr[group];
 		const uint16_t nv  = (cur & ~mem_mask) | (data & mem_mask);
 		uint16_t detect = (cur & 0x000f) & ~(data & mem_mask & 0x000f);
 		m_gxicr[group] = (nv & 0xff00) | detect | (detect ? 0x0010 : 0x0000);
 	}
+	if (group >= IRQ0_GROUP && group < IRQ0_GROUP + 8)
+		irq_pin_update(group - IRQ0_GROUP);
 	intc_recompute();
 }
 
@@ -317,77 +352,65 @@ void mn10300_device::intc_recompute()
 		m_irq_vector = level_vector(level);
 		m_irq_level = level;
 	}
-	// Drive our own maskable input line through the standard, synchronized path.
-	set_input_line(0, g ? ASSERT_LINE : CLEAR_LINE);
+	m_irq_pending = g != 0;
 }
 
-uint16_t mn10300_device::tm45_mode_r(offs_t offset)
+// TM4 and TM5: 16-bit down-counters. Bit 7 of the mode byte enables counting and
+// bit 6 is a load pulse; an underflow reloads from the base register and raises
+// the timer's interrupt group, 6 for TM4 and 7 for TM5.
+template <unsigned N>
+uint8_t mn10300_device::tm_mode_r()
 {
-	return offset ? m_tm5_mode : 0;
+	return m_tm_mode[N];
 }
 
-void mn10300_device::tm45_mode_w(offs_t offset, uint16_t data, uint16_t mem_mask)
+template <unsigned N>
+void mn10300_device::tm_mode_w(uint8_t data)
 {
-	if (offset && ACCESSING_BITS_0_7)
-		tm5_mode_w(data & 0xff);
+	const uint8_t rising = data & ~m_tm_mode[N];
+	m_tm_mode[N] = data;
+	if (!BIT(data, 7))
+		m_tm_timer[N]->adjust(attotime::never);        // count disabled
+	else if (rising & 0xc0)
+		tm_rearm(N, true);                             // enabled, or load pulse while enabled
 }
 
-uint16_t mn10300_device::tm45_base_r(offs_t offset)
+template <unsigned N>
+uint16_t mn10300_device::tm_base_r()
 {
-	return offset ? m_tm5_base : 0;
+	return m_tm_base[N];
 }
 
-void mn10300_device::tm45_base_w(offs_t offset, uint16_t data, uint16_t mem_mask)
+template <unsigned N>
+void mn10300_device::tm_base_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	if (offset)
-	{
-		uint16_t base = m_tm5_base;
-		COMBINE_DATA(&base);      // a byte write must keep the other half
-		tm5_base_w(base);
-	}
-}
-
-uint16_t mn10300_device::tm45_count_r(offs_t offset)
-{
-	if (!offset || !(m_tm5_mode & 0x80))
-		return 0;
-	const attotime period = m_tm5_timer->period();
-	if (period.is_never() || period.is_zero())
-		return 0;
-	return uint16_t(m_tm5_timer->remaining().as_ticks(clock() / 2) / TM5_PRESCALE);
-}
-
-void mn10300_device::tm5_mode_w(uint8_t data)
-{
-	const uint8_t rising = data & ~m_tm5_mode;
-	m_tm5_mode = data;
-	if (!(data & 0x80))
-		m_tm5_timer->adjust(attotime::never);          // count disabled
-	else if (rising & (0x80 | 0x40))
-		tm5_rearm(true);                               // enabled, or load pulse while enabled
-}
-
-void mn10300_device::tm5_base_w(uint16_t data)
-{
-	m_tm5_base = data;
+	COMBINE_DATA(&m_tm_base[N]);
 	// While running, the new reload takes effect at the next underflow: keep the
 	// current countdown, change only the periodic reload.
-	if ((m_tm5_mode & 0x80) && !m_tm5_timer->remaining().is_never())
-		tm5_rearm(false);
+	if (BIT(m_tm_mode[N], 7) && !m_tm_timer[N]->remaining().is_never())
+		tm_rearm(N, false);
 }
 
-void mn10300_device::tm5_rearm(bool restart_phase)
+template <unsigned N>
+uint16_t mn10300_device::tm_count_r()
 {
-	const attotime period = attotime::from_ticks(uint64_t(m_tm5_base + 1) * TM5_PRESCALE, clock() / 2);
+	if (!BIT(m_tm_mode[N], 7) || m_tm_timer[N]->remaining().is_never())
+		return 0;
+	return uint16_t(m_tm_timer[N]->remaining().as_ticks(clock() / 2) / TM_PRESCALE);
+}
+
+void mn10300_device::tm_rearm(unsigned n, bool restart_phase)
+{
+	const attotime period = attotime::from_ticks(uint64_t(m_tm_base[n] + 1) * TM_PRESCALE, clock() / 2);
 	if (restart_phase)
-		m_tm5_timer->adjust(period, 0, period);
+		m_tm_timer[n]->adjust(period, n, period);
 	else
-		m_tm5_timer->adjust(m_tm5_timer->remaining(), 0, period);
+		m_tm_timer[n]->adjust(m_tm_timer[n]->remaining(), n, period);
 }
 
-TIMER_CALLBACK_MEMBER(mn10300_device::tm5_tick)
+TIMER_CALLBACK_MEMBER(mn10300_device::tm_underflow)
 {
-	intc_assert(0x07);      // GxICR 0x3400011C
+	intc_assert(TM4_GROUP + param);
 }
 
 uint16_t mn10300_device::sio_r(offs_t offset, uint16_t mem_mask)
@@ -416,15 +439,15 @@ void mn10300_device::sio_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	const int reg = (offset << 1) & 0x0f;
 	switch (reg)
 	{
-	case 0x0:                    // config
+	case 0x0:                    // config: bit 15 is a strobe that reads back 0, bit 14 enables RX
+	{
+		const uint16_t prev = m_sio_config[ch];
 		COMBINE_DATA(&m_sio_config[ch]);
-		if (ch == 0 && (m_sio_config[ch] & 0x8000))
-			m_sio_config[ch] &= 0x7fff;
-		// RX enable (bit14): notify the endpoint, which may now send its queued
-		// reply, one byte per RX interrupt.
-		if (ch == 0 && (m_sio_config[ch] & 0x4000))
-			m_sio_rx_enable_cb[ch](1);
+		m_sio_config[ch] &= 0x7fff;
+		if (BIT(prev ^ m_sio_config[ch], 14))
+			m_sio_rx_enable_cb[ch](BIT(m_sio_config[ch], 14));
 		break;
+	}
 	case 0x4:                    // control (byte @+4)
 		if (ACCESSING_BITS_0_7)
 			m_sio_control[ch] = data & 0xff;
@@ -438,10 +461,20 @@ void mn10300_device::sio_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	}
 }
 
+// Transmit is single-buffered: a write goes straight to the shifter and restarts
+// it, and the channel's TX interrupt comes when the last byte written has been
+// shifted out. The firmware relies on this: it writes a second byte right after
+// the first and expects one completion.
 void mn10300_device::sio_tx_byte(int ch, uint8_t data)
 {
-	m_sio_tx_done_cb[ch](1);
+	const uint32_t rate = m_sio_bit_rate[ch] ? m_sio_bit_rate[ch] : clock() / 2;
 	m_sio_tx_cb[ch](data);
+	m_sio_tx_timer[ch]->adjust(attotime::from_ticks(m_sio_async[ch] ? 10 : 8, rate), ch);
+}
+
+TIMER_CALLBACK_MEMBER(mn10300_device::sio_tx_shifted)
+{
+	intc_assert(SIO0_GROUP + param * 2 + 1);
 }
 
 void mn10300_device::sio_rx_push(int ch, uint8_t data)
@@ -451,7 +484,7 @@ void mn10300_device::sio_rx_push(int ch, uint8_t data)
 		return;                  // FIFO full -- drop (overrun)
 	m_sio_rx_fifo[ch][m_sio_rx_head[ch]] = data;
 	m_sio_rx_head[ch] = next;
-	m_sio_rx_rdy_cb[ch](1);
+	intc_assert(SIO0_GROUP + ch * 2);
 }
 
 uint8_t mn10300_device::sio_rx_pop(int ch)
