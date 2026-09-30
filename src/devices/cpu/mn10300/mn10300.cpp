@@ -5,66 +5,174 @@
 
 #include "emu.h"
 #include "mn10300.h"
-#include "mn103dasm.h"           // reuse the existing MN10300 disassembler
-#include "mn10300_insn_length.h" // validated length table (shared with tests/)
 
+#include "mn103dasm.h"
+
+#include <algorithm>
 #include <bit>
+#include <iterator>
+#include <limits>
 
-enum mn10300_flag
+
+namespace {
+
+enum : u16
 {
-	FLAG_ZF = 0x0001, // zero
-	FLAG_NF = 0x0002, // negative (result bit31)
-	FLAG_CF = 0x0004, // carry / borrow
-	FLAG_VF = 0x0008, // signed overflow
-	FLAG_IM = 0x0700, // interrupt priority-level mask (EPSW_IM, bits 10:8)
-	FLAG_IE = 0x0800  // interrupt enable (EPSW_IE) - confirmed from firmware
+	FLAG_ZF = 0x0001,
+	FLAG_NF = 0x0002,
+	FLAG_CF = 0x0004,
+	FLAG_VF = 0x0008,
+	FLAG_IM = 0x0700,   // interrupt mask level
+	FLAG_IE = 0x0800
 };
 
-static constexpr int IM_SHIFT = 8;
+constexpr int IM_SHIFT = 8;
+
+// Length of an instruction the core does not execute, so it can be skipped
+int insn_length(u8 op, u8 op2)
+{
+	if (op < 0xf0)
+	{
+		const int lo = op & 3;
+		switch (op & 0xf0)
+		{
+		case 0x00: return (lo == 0) ? 1 : 3;
+		case 0x10: return 1;
+		case 0x20: return (op < 0x24) ? 2 : (op < 0x28) ? 3 : (op < 0x2c) ? 2 : 3;
+		case 0x30: return (op < 0x3c) ? 3 : 1;
+		case 0x40: return (lo < 2) ? 1 : 2;
+		case 0x50: return (op < 0x58) ? 1 : 2;
+		case 0x60: return 1;
+		case 0x70: return 1;
+		case 0x80:
+		case 0x90:
+		case 0xa0:
+		case 0xb0:
+			// the immediate forms are the ones whose two register fields are equal
+			return (((op >> 2) & 3) == (op & 3)) ? 2 : 1;
+		case 0xc0:
+			if (op <= 0xca)
+				return 2;
+			if (op == 0xcb)
+				return 1;
+			if (op == 0xcc)
+				return 3;
+			if (op == 0xcd)
+				return 5;
+			return 2;
+		case 0xd0:
+			if (op <= 0xdb)
+				return 1;
+			if (op == 0xdc)
+				return 5;
+			if (op == 0xdd)
+				return 7;
+			return 3;
+		case 0xe0: return 1;
+		}
+		return 1;
+	}
+
+	switch (op)
+	{
+	case 0xf0: case 0xf1: case 0xf2: case 0xf3:
+	case 0xf4: case 0xf5: case 0xf6:
+		return 2;
+	case 0xf8: case 0xf9:
+		return 3;
+	case 0xfa: case 0xfb:
+		return 4;
+	case 0xfc: case 0xfd:
+		return 6;
+	case 0xfe:
+		if (op2 <= 0x02)
+			return 7;
+		if (op2 >= 0x80 && op2 <= 0x82)
+			return 5;
+		return 2;
+	}
+	return 1;
+}
+
+} // anonymous namespace
+
 
 DEFINE_DEVICE_TYPE(MN103002A, mn103002a_device, "mn103002a", "Panasonic MN103002A")
 
-mn103002a_device::mn103002a_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
-	: mn10300_device(mconfig, MN103002A, tag, owner, clock,
-			address_map_constructor(FUNC(mn103002a_device::mn103002a_internal_map), this))
+mn103002a_device::mn103002a_device(const machine_config &mconfig, const char *tag, device_t *owner, u32 clock)
+	: mn10300_device(mconfig, MN103002A, tag, owner, clock, address_map_constructor(FUNC(mn103002a_device::mn103002a_internal_map), this))
 {
 }
 
-mn10300_device::mn10300_device(const machine_config &mconfig, device_type type, const char *tag,
-		device_t *owner, uint32_t clock, address_map_constructor program)
+mn10300_device::mn10300_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, u32 clock, address_map_constructor program)
 	: cpu_device(mconfig, type, tag, owner, clock)
 	, m_program_config("program", ENDIANNESS_LITTLE, 32, 32, 0, program)
-	, m_program(nullptr)
+	, m_reset_pc(0x40000000)
+	, m_vector_base(0x40000000)
+	, m_pc(0)
+	, m_d{ 0, 0, 0, 0 }
+	, m_a{ 0, 0, 0, 0 }
+	, m_e{ 0, 0, 0, 0, 0, 0, 0, 0 }
+	, m_sp(0)
+	, m_mdr(0)
+	, m_mdrq(0)
+	, m_mcrh(0)
+	, m_mcrl(0)
+	, m_psw(0)
+	, m_lir(0)
+	, m_lar(0)
+	, m_icount(0)
+	, m_gxicr{}
+	, m_iagr(0)
+	, m_extmd(0)
+	, m_ivar{}
+	, m_irq_pin{}
+	, m_irq_pending(false)
+	, m_irq_vector(0)
+	, m_irq_level(7)
+	, m_tm_mode{ 0, 0 }
+	, m_tm_base{ 0, 0 }
+	, m_tm_timer{ nullptr, nullptr }
 	, m_sio_tx_cb(*this)
 	, m_sio_rx_enable_cb(*this)
 	, m_sio_bit_rate{ 0, 0, 0 }
 	, m_sio_async{ false, false, false }
 	, m_sio_tx_timer{ nullptr, nullptr, nullptr }
-	, m_irq_pin{ 0, 0, 0, 0, 0, 0, 0, 0 }
-	, m_iagr_latch(0), m_extmd(0)
-	, m_tm_mode{ 0, 0 }, m_tm_base{ 0, 0 }, m_tm_timer{ nullptr, nullptr }
-		, m_pc(0), m_sp(0), m_mdr(0), m_mdrq(0), m_mcrh(0), m_mcrl(0), m_mcvf(0), m_psw(0), m_lir(0), m_lar(0)
-	, m_irq_pending(false), m_irq_vector(0), m_irq_level(7)
-	, m_icount(0)
+	, m_sio_config{ 0, 0, 0 }
+	, m_sio_control{ 0, 0, 0 }
+	, m_sio_rx_fifo{}
+	, m_sio_rx_head{ 0, 0, 0 }
+	, m_sio_rx_tail{ 0, 0, 0 }
 {
-	std::fill(std::begin(m_d), std::end(m_d), 0);
-	std::fill(std::begin(m_a), std::end(m_a), 0);
-	std::fill(std::begin(m_e), std::end(m_e), 0);
-	std::fill(std::begin(m_sio_config), std::end(m_sio_config), 0);
-	std::fill(std::begin(m_sio_control), std::end(m_sio_control), 0);
-	for (auto &fifo : m_sio_rx_fifo)
-		std::fill(std::begin(fifo), std::end(fifo), 0);
-	std::fill(std::begin(m_sio_rx_head), std::end(m_sio_rx_head), 0);
-	std::fill(std::begin(m_sio_rx_tail), std::end(m_sio_rx_tail), 0);
-	std::fill(std::begin(m_gxicr), std::end(m_gxicr), 0);
 }
 
 void mn10300_device::mn103002a_internal_map(address_map &map)
 {
 	map(0x20000000, 0x2000001b).rw(FUNC(mn10300_device::ivar_r), FUNC(mn10300_device::ivar_w));
-	// GxICR array, the 0x34000200 group register and the 0x34000280 EXTMD latch.
-	map(0x34000100, 0x340002ff).rw(FUNC(mn10300_device::intc_r), FUNC(mn10300_device::intc_w));
-	map(0x34000800, 0x3400082f).rw(FUNC(mn10300_device::sio_r), FUNC(mn10300_device::sio_w));
+
+	map(0x34000100, 0x340002ff).noprw();
+	map(0x34000100, 0x34000101).r(FUNC(mn10300_device::iagr_r));
+	map(0x34000108, 0x3400017f).rw(FUNC(mn10300_device::gxicr_r), FUNC(mn10300_device::gxicr_w));
+	map(0x34000200, 0x34000201).r(FUNC(mn10300_device::group_level_r));
+	map(0x34000280, 0x34000281).rw(FUNC(mn10300_device::extmd_r), FUNC(mn10300_device::extmd_w));
+
+	map(0x34000800, 0x3400082f).noprw();
+	map(0x34000800, 0x34000801).rw(FUNC(mn10300_device::sio_config_r<0>), FUNC(mn10300_device::sio_config_w<0>));
+	map(0x34000804, 0x34000804).rw(FUNC(mn10300_device::sio_control_r<0>), FUNC(mn10300_device::sio_control_w<0>));
+	map(0x34000808, 0x34000808).w(FUNC(mn10300_device::sio_txd_w<0>));
+	map(0x34000809, 0x34000809).r(FUNC(mn10300_device::sio_rxd_r<0>));
+	map(0x3400080c, 0x3400080d).r(FUNC(mn10300_device::sio_status_r<0>));
+	map(0x34000810, 0x34000811).rw(FUNC(mn10300_device::sio_config_r<1>), FUNC(mn10300_device::sio_config_w<1>));
+	map(0x34000814, 0x34000814).rw(FUNC(mn10300_device::sio_control_r<1>), FUNC(mn10300_device::sio_control_w<1>));
+	map(0x34000818, 0x34000818).w(FUNC(mn10300_device::sio_txd_w<1>));
+	map(0x34000819, 0x34000819).r(FUNC(mn10300_device::sio_rxd_r<1>));
+	map(0x3400081c, 0x3400081d).r(FUNC(mn10300_device::sio_status_r<1>));
+	map(0x34000820, 0x34000821).rw(FUNC(mn10300_device::sio_config_r<2>), FUNC(mn10300_device::sio_config_w<2>));
+	map(0x34000824, 0x34000824).rw(FUNC(mn10300_device::sio_control_r<2>), FUNC(mn10300_device::sio_control_w<2>));
+	map(0x34000828, 0x34000828).w(FUNC(mn10300_device::sio_txd_w<2>));
+	map(0x34000829, 0x34000829).r(FUNC(mn10300_device::sio_rxd_r<2>));
+	map(0x3400082c, 0x3400082d).r(FUNC(mn10300_device::sio_status_r<2>));
+
 	map(0x34001080, 0x34001080).rw(FUNC(mn10300_device::tm_mode_r<0>), FUNC(mn10300_device::tm_mode_w<0>));
 	map(0x34001082, 0x34001082).rw(FUNC(mn10300_device::tm_mode_r<1>), FUNC(mn10300_device::tm_mode_w<1>));
 	map(0x34001090, 0x34001091).rw(FUNC(mn10300_device::tm_base_r<0>), FUNC(mn10300_device::tm_base_w<0>));
@@ -75,7 +183,7 @@ void mn10300_device::mn103002a_internal_map(address_map &map)
 
 device_memory_interface::space_config_vector mn10300_device::memory_space_config() const
 {
-	return space_config_vector { std::make_pair(AS_PROGRAM, &m_program_config) };
+	return space_config_vector{ std::make_pair(AS_PROGRAM, &m_program_config) };
 }
 
 std::unique_ptr<util::disasm_interface> mn10300_device::create_disassembler()
@@ -85,7 +193,13 @@ std::unique_ptr<util::disasm_interface> mn10300_device::create_disassembler()
 
 void mn10300_device::device_start()
 {
-	m_program = &space(AS_PROGRAM);
+	space(AS_PROGRAM).cache(m_cache);
+	space(AS_PROGRAM).specific(m_program);
+
+	for (auto &timer : m_tm_timer)
+		timer = timer_alloc(FUNC(mn10300_device::tm_underflow), this);
+	for (auto &timer : m_sio_tx_timer)
+		timer = timer_alloc(FUNC(mn10300_device::sio_tx_shifted), this);
 
 	save_item(NAME(m_pc));
 	save_item(NAME(m_d));
@@ -96,116 +210,125 @@ void mn10300_device::device_start()
 	save_item(NAME(m_mdrq));
 	save_item(NAME(m_mcrh));
 	save_item(NAME(m_mcrl));
-	save_item(NAME(m_mcvf));
 	save_item(NAME(m_psw));
 	save_item(NAME(m_lir));
 	save_item(NAME(m_lar));
-	save_item(NAME(m_irq_pending));
+	save_item(NAME(m_gxicr));
+	save_item(NAME(m_iagr));
+	save_item(NAME(m_extmd));
+	save_item(NAME(m_ivar));
 	save_item(NAME(m_irq_pin));
+	save_item(NAME(m_irq_pending));
 	save_item(NAME(m_irq_vector));
 	save_item(NAME(m_irq_level));
+	save_item(NAME(m_tm_mode));
+	save_item(NAME(m_tm_base));
 	save_item(NAME(m_sio_config));
 	save_item(NAME(m_sio_control));
 	save_item(NAME(m_sio_rx_fifo));
 	save_item(NAME(m_sio_rx_head));
 	save_item(NAME(m_sio_rx_tail));
-	save_item(NAME(m_gxicr));
-	save_item(NAME(m_iagr_latch));
-	save_item(NAME(m_extmd));
-	save_item(NAME(m_tm_mode));
-	save_item(NAME(m_tm_base));
-	save_item(NAME(m_ivar));
 
-	for (auto &timer : m_tm_timer)
-		timer = timer_alloc(FUNC(mn10300_device::tm_underflow), this);
-	for (auto &timer : m_sio_tx_timer)
-		timer = timer_alloc(FUNC(mn10300_device::sio_tx_shifted), this);
-
-	state_add(MN10300_PC,  "PC",  m_pc ).formatstr("%08X");
-	state_add(MN10300_SP,  "SP",  m_sp ).formatstr("%08X");
-	state_add(MN10300_MDR, "MDR", m_mdr).formatstr("%08X");
-	state_add(MN10300_D0,  "D0",  m_d[0]).formatstr("%08X");
-	state_add(MN10300_D1,  "D1",  m_d[1]).formatstr("%08X");
-	state_add(MN10300_D2,  "D2",  m_d[2]).formatstr("%08X");
-	state_add(MN10300_D3,  "D3",  m_d[3]).formatstr("%08X");
-	state_add(MN10300_A0,  "A0",  m_a[0]).formatstr("%08X");
-	state_add(MN10300_A1,  "A1",  m_a[1]).formatstr("%08X");
-	state_add(MN10300_A2,  "A2",  m_a[2]).formatstr("%08X");
-	state_add(MN10300_A3,  "A3",  m_a[3]).formatstr("%08X");
+	state_add(MN10300_PC, "PC", m_pc).formatstr("%08X");
+	state_add(MN10300_SP, "SP", m_sp).formatstr("%08X");
 	state_add(MN10300_PSW, "PSW", m_psw).formatstr("%04X");
+	state_add(MN10300_MDR, "MDR", m_mdr).formatstr("%08X");
+	for (int i = 0; i < 4; i++)
+		state_add(MN10300_D0 + i, util::string_format("D%d", i).c_str(), m_d[i]).formatstr("%08X");
+	for (int i = 0; i < 4; i++)
+		state_add(MN10300_A0 + i, util::string_format("A%d", i).c_str(), m_a[i]).formatstr("%08X");
+	for (int i = 0; i < 8; i++)
+		state_add(MN10300_E0 + i, util::string_format("E%d", i).c_str(), m_e[i]).formatstr("%08X");
+	state_add(MN10300_MDRQ, "MDRQ", m_mdrq).formatstr("%08X");
+	state_add(MN10300_MCRH, "MCRH", m_mcrh).formatstr("%08X");
+	state_add(MN10300_MCRL, "MCRL", m_mcrl).formatstr("%08X");
+	state_add(MN10300_LIR, "LIR", m_lir).formatstr("%08X");
+	state_add(MN10300_LAR, "LAR", m_lar).formatstr("%08X");
 
-	state_add(STATE_GENPC,     "GENPC",    m_pc).noshow();
-	state_add(STATE_GENPCBASE, "CURPC",    m_pc).noshow();
-	state_add(STATE_GENFLAGS,  "GENFLAGS", m_psw).formatstr("%4s").noshow();
+	state_add(STATE_GENPC, "GENPC", m_pc).noshow();
+	state_add(STATE_GENPCBASE, "CURPC", m_pc).noshow();
+	state_add(STATE_GENFLAGS, "GENFLAGS", m_psw).formatstr("%4s").noshow();
 
 	set_icountptr(m_icount);
 }
 
 void mn10300_device::device_reset()
 {
-	// SP is left at zero: the reset code sets its own before its first push or call.
-	m_pc  = m_reset_pc;
-	m_sp  = 0;
+	// SP is left alone: the reset code sets it before its first push or call.
+	m_pc = m_reset_pc;
+	m_sp = 0;
 	m_psw = 0;
 	m_mdr = 0;
-	m_mdrq = m_mcrh = m_mcrl = m_mcvf = 0;
+	m_mdrq = 0;
+	m_mcrh = 0;
+	m_mcrl = 0;
 	std::fill(std::begin(m_d), std::end(m_d), 0);
 	std::fill(std::begin(m_a), std::end(m_a), 0);
 	std::fill(std::begin(m_e), std::end(m_e), 0);
 
-	// On-chip SIO: config and control cleared, RX rings emptied by head = tail.
-	for (unsigned ch = 0; ch < NUM_SIO; ch++)
-	{
-		m_sio_config[ch] = 0;
-		m_sio_control[ch] = 0;
-		m_sio_rx_head[ch] = m_sio_rx_tail[ch] = 0;
-		m_sio_tx_timer[ch]->adjust(attotime::never);
-	}
-
 	std::fill(std::begin(m_gxicr), std::end(m_gxicr), 0);
-	// ...and the delivery state derived from them, which would otherwise survive
-	// a reset holding the level and vector of an interrupt that no longer exists.
 	std::fill(std::begin(m_ivar), std::end(m_ivar), 0);
-	m_irq_pending = false;
 	m_extmd = 0;
+	m_irq_pending = false;
 	m_irq_vector = 0;
 	m_irq_level = 7;
+
 	for (unsigned n = 0; n < 2; n++)
 	{
 		m_tm_mode[n] = 0;
 		m_tm_base[n] = 0;
 		m_tm_timer[n]->adjust(attotime::never);
 	}
+
+	for (unsigned ch = 0; ch < NUM_SIO; ch++)
+	{
+		m_sio_config[ch] = 0;
+		m_sio_control[ch] = 0;
+		m_sio_rx_head[ch] = 0;
+		m_sio_rx_tail[ch] = 0;
+		m_sio_tx_timer[ch]->adjust(attotime::never);
+	}
 }
 
 void mn10300_device::state_string_export(const device_state_entry &entry, std::string &str) const
 {
 	if (entry.index() == STATE_GENFLAGS)
+	{
 		str = string_format("%c%c%c%c",
-			m_psw & FLAG_VF ? 'V' : '-',
-			m_psw & FLAG_CF ? 'C' : '-',
-			m_psw & FLAG_NF ? 'N' : '-',
-			m_psw & FLAG_ZF ? 'Z' : '-');
+				(m_psw & FLAG_VF) ? 'V' : '-',
+				(m_psw & FLAG_CF) ? 'C' : '-',
+				(m_psw & FLAG_NF) ? 'N' : '-',
+				(m_psw & FLAG_ZF) ? 'Z' : '-');
+	}
 }
+
+
+//**************************************************************************
+//  Interrupt controller
+//**************************************************************************
+
+// Each group has an interrupt control register: DETECT in bits 3-0, REQUEST in
+// bit 4, ENABLE in bit 8 and the priority level in bits 14-12. Writing a 1 to a
+// DETECT bit acknowledges it.
 
 void mn10300_device::execute_set_input(int inputnum, int state)
 {
-	if (inputnum >= MN10300_IRQ0 && inputnum <= MN10300_IRQ7)
+	if (inputnum < MN10300_IRQ0 || inputnum > MN10300_IRQ7)
+		return;
+
+	const u8 prev = m_irq_pin[inputnum];
+	m_irq_pin[inputnum] = (state != CLEAR_LINE) ? 1 : 0;
+	const unsigned mode = BIT(m_extmd, inputnum * 2, 2);
+	if (!BIT(mode, 1))
 	{
-		const uint8_t prev = m_irq_pin[inputnum];
-		m_irq_pin[inputnum] = (state != CLEAR_LINE) ? 1 : 0;
-		const unsigned mode = BIT(m_extmd, inputnum * 2, 2);
-		if (!BIT(mode, 1))
-		{
-			// Edge triggered: 00 = rising, 01 = falling.
-			if (prev != m_irq_pin[inputnum] && m_irq_pin[inputnum] == (BIT(mode, 0) ? 0 : 1))
-				intc_assert(IRQ0_GROUP + inputnum);
-		}
-		else
-		{
-			irq_pin_update(inputnum);
-			intc_recompute();
-		}
+		// edge triggered: 00 = rising, 01 = falling
+		if (prev != m_irq_pin[inputnum] && m_irq_pin[inputnum] == (BIT(mode, 0) ? 0 : 1))
+			intc_assert(IRQ0_GROUP + inputnum);
+	}
+	else
+	{
+		irq_pin_update(inputnum);
+		intc_recompute();
 	}
 }
 
@@ -217,12 +340,77 @@ void mn10300_device::irq_pin_update(int pin)
 	const unsigned mode = BIT(m_extmd, pin * 2, 2);
 	if (!BIT(mode, 1))
 		return;
-	uint16_t &icr = m_gxicr[IRQ0_GROUP + pin];
+
+	u16 &icr = m_gxicr[IRQ0_GROUP + pin];
 	if (m_irq_pin[pin] == BIT(mode, 0))
 		icr |= 0x0001;
 	else
 		icr &= ~0x0001;
 	icr = (icr & ~0x0010) | ((icr & 0x000f) ? 0x0010 : 0x0000);
+}
+
+void mn10300_device::intc_assert(int group)
+{
+	m_gxicr[group & (NUM_INTC_GROUPS - 1)] |= 0x0011;
+	intc_recompute();
+}
+
+// The winner among enabled, requesting groups is the one with the lowest level.
+int mn10300_device::intc_pending_group() const
+{
+	int best = 0;
+	int best_level = 8;
+	for (int g = 2; g < int(NUM_INTC_GROUPS); g++)
+	{
+		if ((m_gxicr[g] & 0x0110) == 0x0110)
+		{
+			const int level = BIT(m_gxicr[g], 12, 3);
+			if (level < best_level)
+			{
+				best_level = level;
+				best = g;
+			}
+		}
+	}
+	return best;
+}
+
+void mn10300_device::intc_recompute()
+{
+	const int g = intc_pending_group();
+	if (g)
+	{
+		m_irq_level = BIT(m_gxicr[g], 12, 3);
+		m_irq_vector = level_vector(m_irq_level);
+	}
+	m_irq_pending = g != 0;
+}
+
+// The group and its vector are latched when the CPU accepts the interrupt.
+void mn10300_device::intc_accept()
+{
+	const int g = intc_pending_group();
+	if (g)
+	{
+		m_iagr = g;
+		m_irq_level = BIT(m_gxicr[g], 12, 3);
+		m_irq_vector = level_vector(m_irq_level);
+	}
+}
+
+u32 mn10300_device::level_vector(int level) const
+{
+	return (level < 7) ? m_vector_base + m_ivar[level] : 0;
+}
+
+void mn10300_device::check_irq()
+{
+	if (!(m_psw & FLAG_IE))
+		return;
+
+	const int im = (m_psw & FLAG_IM) >> IM_SHIFT;
+	if (m_irq_pending && m_irq_vector && m_irq_level < im)
+		take_irq(m_irq_level);
 }
 
 void mn10300_device::take_irq(int level)
@@ -236,172 +424,115 @@ void mn10300_device::take_irq(int level)
 	m_icount -= 7;
 }
 
-void mn10300_device::check_irq()
+u16 mn10300_device::iagr_r()
 {
-	if (!(m_psw & FLAG_IE))
-		return;
-	const int im = (m_psw & FLAG_IM) >> IM_SHIFT;
-	if (m_irq_pending && m_irq_vector != 0 && m_irq_level < im)
-		take_irq(m_irq_level);
+	return m_iagr << 3;
 }
 
-uint16_t mn10300_device::ivar_r(offs_t offset, uint16_t mem_mask)
+u16 mn10300_device::group_level_r()
 {
-	return (offset & 1) ? 0 : m_ivar[offset >> 1];
+	return m_iagr << 2;
 }
 
-void mn10300_device::ivar_w(offs_t offset, uint16_t data, uint16_t mem_mask)
+// Each GxICR occupies a 32-bit slot, and both halves reach it.
+u16 mn10300_device::gxicr_r(offs_t offset)
 {
-	if (!(offset & 1))
-		COMBINE_DATA(&m_ivar[offset >> 1]);
+	return m_gxicr[2 + (offset >> 1)];
 }
 
-uint32_t mn10300_device::level_vector(int level) const
+void mn10300_device::gxicr_w(offs_t offset, u16 data, u16 mem_mask)
 {
-	return (level < 7) ? m_vector_base + m_ivar[level] : 0;
-}
-
-int mn10300_device::intc_pending_group() const
-{
-	// Among enabled+requested groups the winner is the highest-priority one,
-	// which is the LOWEST ICR LEVEL value (bits 14:12).
-	int best = 0, best_level = 8;
-	for (int g = 2; g < int(NUM_INTC_GROUPS); g++)
-		if ((m_gxicr[g] & 0x0110) == 0x0110)   // ENABLE(0x100) & REQUEST(0x10)
-		{
-			const int level = (m_gxicr[g] >> 12) & 7;
-			if (level < best_level) { best_level = level; best = g; }
-		}
-	return best;
-}
-
-// Freeze the arbitration result (group and vector, atomically) at the instant
-// the CPU accepts the interrupt -- the INTC latches IAGR at acknowledge.
-void mn10300_device::intc_accept()
-{
-	const int g = intc_pending_group();
-	if (g)
-	{
-		m_iagr_latch = g;
-		const int level = (m_gxicr[g] >> 12) & 7;
-		m_irq_vector = level_vector(level);
-		m_irq_level = level;
-	}
-}
-
-uint16_t mn10300_device::intc_r(offs_t offset, uint16_t mem_mask)
-{
-	const int reg = offset << 1;                  // byte offset within 0x34000100
-	if (reg == 0x00)                              // IAGR: the group latched at interrupt accept
-		return m_iagr_latch << 3;
-	if (reg == 0x04)
-		return 0;
-	if (reg == 0x100)                             // 0x34000200: level-6 group register (latched at accept)
-		return m_iagr_latch << 2;
-	if (reg == 0x180)                             // 0x34000280: EXTMD
-		return m_extmd;
-	const int group = reg >> 2;                   // GxICR(group) at +group*4
-	if (group < int(NUM_INTC_GROUPS))
-		return m_gxicr[group];
-	return 0;
-}
-
-void mn10300_device::intc_w(offs_t offset, uint16_t data, uint16_t mem_mask)
-{
-	const int reg = offset << 1;
-	if (reg == 0x180)                             // 0x34000280 = EXTMD
-	{
-		const uint16_t prev = m_extmd;
-		COMBINE_DATA(&m_extmd);
-		for (int pin = 0; pin < 8; pin++)
-			if (BIT(prev ^ m_extmd, pin * 2, 2))
-				irq_pin_update(pin);
-		intc_recompute();
-		return;
-	}
-	if (reg < 0x08)
-		return;                                   // IAGR is read-only
-	const int group = reg >> 2;
-	if (group >= int(NUM_INTC_GROUPS))
-		return;
-	{
-		const uint16_t cur = m_gxicr[group];
-		const uint16_t nv  = (cur & ~mem_mask) | (data & mem_mask);
-		uint16_t detect = (cur & 0x000f) & ~(data & mem_mask & 0x000f);
-		m_gxicr[group] = (nv & 0xff00) | detect | (detect ? 0x0010 : 0x0000);
-	}
+	const int group = 2 + (offset >> 1);
+	const u16 cur = m_gxicr[group];
+	const u16 upper = (cur & ~mem_mask) | (data & mem_mask);
+	const u16 detect = (cur & 0x000f) & ~(data & mem_mask & 0x000f);
+	m_gxicr[group] = (upper & 0xff00) | detect | (detect ? 0x0010 : 0x0000);
 	if (group >= IRQ0_GROUP && group < IRQ0_GROUP + 8)
 		irq_pin_update(group - IRQ0_GROUP);
 	intc_recompute();
 }
 
-void mn10300_device::intc_assert(int group)
+u16 mn10300_device::extmd_r()
 {
-	// REQUEST + DETECT bit0; a handler scans DETECT bits 0-3 to pick the
-	// sub-source within the group.
-	m_gxicr[group & (NUM_INTC_GROUPS - 1)] |= 0x0011;
+	return m_extmd;
+}
+
+void mn10300_device::extmd_w(offs_t offset, u16 data, u16 mem_mask)
+{
+	const u16 prev = m_extmd;
+	COMBINE_DATA(&m_extmd);
+	for (int pin = 0; pin < 8; pin++)
+	{
+		if (BIT(prev ^ m_extmd, pin * 2, 2))
+			irq_pin_update(pin);
+	}
 	intc_recompute();
 }
 
-void mn10300_device::intc_recompute()
+// IVAR0-IVAR6 hold the low 16 bits of each level's vector, one per 32-bit slot.
+u16 mn10300_device::ivar_r(offs_t offset)
 {
-	const int g = intc_pending_group();
-	if (g)
-	{
-		const int level = (m_gxicr[g] >> 12) & 7;
-		m_irq_vector = level_vector(level);
-		m_irq_level = level;
-	}
-	m_irq_pending = g != 0;
+	return BIT(offset, 0) ? 0 : m_ivar[offset >> 1];
 }
 
-// TM4 and TM5: 16-bit down-counters. Bit 7 of the mode byte enables counting and
-// bit 6 is a load pulse; an underflow reloads from the base register and raises
-// the timer's interrupt group, 6 for TM4 and 7 for TM5.
+void mn10300_device::ivar_w(offs_t offset, u16 data, u16 mem_mask)
+{
+	if (!BIT(offset, 0))
+		COMBINE_DATA(&m_ivar[offset >> 1]);
+}
+
+
+//**************************************************************************
+//  Timers
+//**************************************************************************
+
+// TM4 and TM5 are 16-bit down-counters. Bit 7 of the mode byte enables counting
+// and bit 6 is a load pulse; an underflow reloads from the base register and
+// raises the timer's group, 6 for TM4 and 7 for TM5.
+
 template <unsigned N>
-uint8_t mn10300_device::tm_mode_r()
+u8 mn10300_device::tm_mode_r()
 {
 	return m_tm_mode[N];
 }
 
 template <unsigned N>
-void mn10300_device::tm_mode_w(uint8_t data)
+void mn10300_device::tm_mode_w(u8 data)
 {
-	const uint8_t rising = data & ~m_tm_mode[N];
+	const u8 rising = data & ~m_tm_mode[N];
 	m_tm_mode[N] = data;
 	if (!BIT(data, 7))
-		m_tm_timer[N]->adjust(attotime::never);        // count disabled
+		m_tm_timer[N]->adjust(attotime::never);
 	else if (rising & 0xc0)
-		tm_rearm(N, true);                             // enabled, or load pulse while enabled
+		tm_rearm(N, true);
 }
 
 template <unsigned N>
-uint16_t mn10300_device::tm_base_r()
+u16 mn10300_device::tm_base_r()
 {
 	return m_tm_base[N];
 }
 
 template <unsigned N>
-void mn10300_device::tm_base_w(offs_t offset, uint16_t data, uint16_t mem_mask)
+void mn10300_device::tm_base_w(offs_t offset, u16 data, u16 mem_mask)
 {
 	COMBINE_DATA(&m_tm_base[N]);
-	// While running, the new reload takes effect at the next underflow: keep the
-	// current countdown, change only the periodic reload.
+	// a new reload value takes effect at the next underflow
 	if (BIT(m_tm_mode[N], 7) && !m_tm_timer[N]->remaining().is_never())
 		tm_rearm(N, false);
 }
 
 template <unsigned N>
-uint16_t mn10300_device::tm_count_r()
+u16 mn10300_device::tm_count_r()
 {
 	if (!BIT(m_tm_mode[N], 7) || m_tm_timer[N]->remaining().is_never())
 		return 0;
-	return uint16_t(m_tm_timer[N]->remaining().as_ticks(clock() / 2) / TM_PRESCALE);
+	return u16(m_tm_timer[N]->remaining().as_ticks(clock() / 2) / TM_PRESCALE);
 }
 
 void mn10300_device::tm_rearm(unsigned n, bool restart_phase)
 {
-	const attotime period = attotime::from_ticks(uint64_t(m_tm_base[n] + 1) * TM_PRESCALE, clock() / 2);
+	const attotime period = attotime::from_ticks(u64(m_tm_base[n] + 1) * TM_PRESCALE, clock() / 2);
 	if (restart_phase)
 		m_tm_timer[n]->adjust(period, n, period);
 	else
@@ -413,61 +544,70 @@ TIMER_CALLBACK_MEMBER(mn10300_device::tm_underflow)
 	intc_assert(TM4_GROUP + param);
 }
 
-uint16_t mn10300_device::sio_r(offs_t offset, uint16_t mem_mask)
+
+//**************************************************************************
+//  Serial channels
+//**************************************************************************
+
+template <unsigned Ch>
+u16 mn10300_device::sio_config_r()
 {
-	const int ch = offset / 8;
-	const int reg = (offset << 1) & 0x0f;
-	switch (reg)
-	{
-	case 0x0:                    // config
-		return m_sio_config[ch];
-	case 0x4:                    // control (byte @+4)
-		return m_sio_control[ch];
-	case 0x8:                    // +8 TX (write-only) / +9 RX (read, high byte)
-		if (ACCESSING_BITS_8_15)
-			return uint16_t(sio_rx_pop(ch)) << 8;
-		return 0;
-	case 0xc:                    // status: bit4 = RxRDY
-		return sio_rx_ready(ch) ? 0x0010 : 0x0000;
-	}
-	return 0;
+	return m_sio_config[Ch];
 }
 
-void mn10300_device::sio_w(offs_t offset, uint16_t data, uint16_t mem_mask)
+// Bit 15 is a strobe that reads back as 0; bit 14 enables the receiver.
+template <unsigned Ch>
+void mn10300_device::sio_config_w(offs_t offset, u16 data, u16 mem_mask)
 {
-	const int ch = offset / 8;
-	const int reg = (offset << 1) & 0x0f;
-	switch (reg)
-	{
-	case 0x0:                    // config: bit 15 is a strobe that reads back 0, bit 14 enables RX
-	{
-		const uint16_t prev = m_sio_config[ch];
-		COMBINE_DATA(&m_sio_config[ch]);
-		m_sio_config[ch] &= 0x7fff;
-		if (BIT(prev ^ m_sio_config[ch], 14))
-			m_sio_rx_enable_cb[ch](BIT(m_sio_config[ch], 14));
-		break;
-	}
-	case 0x4:                    // control (byte @+4)
-		if (ACCESSING_BITS_0_7)
-			m_sio_control[ch] = data & 0xff;
-		break;
-	case 0x8:                    // TX data (byte @+8 = low byte)
-		if (ACCESSING_BITS_0_7)
-			sio_tx_byte(ch, data & 0xff);
-		break;
-	default:
-		break;
-	}
+	const u16 prev = m_sio_config[Ch];
+	COMBINE_DATA(&m_sio_config[Ch]);
+	m_sio_config[Ch] &= 0x7fff;
+	if (BIT(prev ^ m_sio_config[Ch], 14))
+		m_sio_rx_enable_cb[Ch](BIT(m_sio_config[Ch], 14));
+}
+
+template <unsigned Ch>
+u8 mn10300_device::sio_control_r()
+{
+	return m_sio_control[Ch];
+}
+
+template <unsigned Ch>
+void mn10300_device::sio_control_w(u8 data)
+{
+	m_sio_control[Ch] = data;
+}
+
+template <unsigned Ch>
+void mn10300_device::sio_txd_w(u8 data)
+{
+	sio_tx_byte(Ch, data);
+}
+
+template <unsigned Ch>
+u8 mn10300_device::sio_rxd_r()
+{
+	if (m_sio_rx_head[Ch] == m_sio_rx_tail[Ch])
+		return 0;
+
+	const u8 data = m_sio_rx_fifo[Ch][m_sio_rx_tail[Ch]];
+	if (!machine().side_effects_disabled())
+		m_sio_rx_tail[Ch] = (m_sio_rx_tail[Ch] + 1) % std::size(m_sio_rx_fifo[Ch]);
+	return data;
+}
+
+// Bit 4: a received byte is waiting
+template <unsigned Ch>
+u16 mn10300_device::sio_status_r()
+{
+	return (m_sio_rx_head[Ch] != m_sio_rx_tail[Ch]) ? 0x0010 : 0x0000;
 }
 
 // Transmit is single-buffered: a write goes straight to the shifter and restarts
-// it, and the channel's TX interrupt comes when the last byte written has been
-// shifted out. The firmware relies on this: it writes a second byte right after
-// the first and expects one completion.
-void mn10300_device::sio_tx_byte(int ch, uint8_t data)
+// it, and the TX interrupt comes when the last byte written has been shifted out.
+void mn10300_device::sio_tx_byte(int ch, u8 data)
 {
-	const uint32_t rate = m_sio_bit_rate[ch] ? m_sio_bit_rate[ch] : clock() / 2;
+	const u32 rate = m_sio_bit_rate[ch] ? m_sio_bit_rate[ch] : clock() / 2;
 	m_sio_tx_cb[ch](data);
 	m_sio_tx_timer[ch]->adjust(attotime::from_ticks(m_sio_async[ch] ? 10 : 8, rate), ch);
 }
@@ -477,92 +617,347 @@ TIMER_CALLBACK_MEMBER(mn10300_device::sio_tx_shifted)
 	intc_assert(SIO0_GROUP + param * 2 + 1);
 }
 
-void mn10300_device::sio_rx_push(int ch, uint8_t data)
+void mn10300_device::sio_rx_push(int ch, u8 data)
 {
-	const uint8_t next = (m_sio_rx_head[ch] + 1) % std::size(m_sio_rx_fifo[ch]);
+	const u8 next = (m_sio_rx_head[ch] + 1) % std::size(m_sio_rx_fifo[ch]);
 	if (next == m_sio_rx_tail[ch])
-		return;                  // FIFO full -- drop (overrun)
+		return; // overrun
+
 	m_sio_rx_fifo[ch][m_sio_rx_head[ch]] = data;
 	m_sio_rx_head[ch] = next;
 	intc_assert(SIO0_GROUP + ch * 2);
 }
 
-uint8_t mn10300_device::sio_rx_pop(int ch)
-{
-	if (m_sio_rx_head[ch] == m_sio_rx_tail[ch])
-		return 0;
-	const uint8_t v = m_sio_rx_fifo[ch][m_sio_rx_tail[ch]];
-	if (!machine().side_effects_disabled())
-		m_sio_rx_tail[ch] = (m_sio_rx_tail[ch] + 1) % std::size(m_sio_rx_fifo[ch]);
-	return v;
-}
 
-inline void mn10300_device::set_nz32(uint32_t r)
+//**************************************************************************
+//  Execution helpers
+//**************************************************************************
+
+void mn10300_device::set_nz32(u32 r)
 {
 	m_psw &= ~(FLAG_ZF | FLAG_NF);
-	if (r == 0)          m_psw |= FLAG_ZF;
-	if (r & 0x80000000u) m_psw |= FLAG_NF;
+	if (!r)
+		m_psw |= FLAG_ZF;
+	if (BIT(r, 31))
+		m_psw |= FLAG_NF;
 }
 
-// r = a + b + carry_in; sets Z,N,C,V; returns the 32-bit result.
-inline uint32_t mn10300_device::do_add(uint32_t a, uint32_t b, uint32_t carry_in)
+// Logical operations and bit tests: Z and N from the result, C and V cleared
+void mn10300_device::set_logic_flags(u32 r)
 {
-	uint64_t wide = (uint64_t)a + (uint64_t)b + carry_in;
-	uint32_t r = (uint32_t)wide;
 	m_psw &= ~(FLAG_ZF | FLAG_NF | FLAG_CF | FLAG_VF);
-	if (r == 0)                              m_psw |= FLAG_ZF;
-	if (r & 0x80000000u)                     m_psw |= FLAG_NF;
-	if (wide > 0xFFFFFFFFull)                m_psw |= FLAG_CF;
-	if ((~(a ^ b) & (a ^ r)) & 0x80000000u)  m_psw |= FLAG_VF;
+	if (!r)
+		m_psw |= FLAG_ZF;
+	if (BIT(r, 31))
+		m_psw |= FLAG_NF;
+}
+
+u32 mn10300_device::do_add(u32 a, u32 b, u32 carry_in)
+{
+	const u64 wide = u64(a) + u64(b) + carry_in;
+	const u32 r = u32(wide);
+	m_psw &= ~(FLAG_ZF | FLAG_NF | FLAG_CF | FLAG_VF);
+	if (!r)
+		m_psw |= FLAG_ZF;
+	if (BIT(r, 31))
+		m_psw |= FLAG_NF;
+	if (BIT(wide, 32))
+		m_psw |= FLAG_CF;
+	if (BIT(~(a ^ b) & (a ^ r), 31))
+		m_psw |= FLAG_VF;
 	return r;
 }
 
-// r = a - b - borrow_in; sets Z,N,C(borrow),V; returns the 32-bit result.
-inline uint32_t mn10300_device::do_sub(uint32_t a, uint32_t b, uint32_t borrow_in)
+// C is the borrow
+u32 mn10300_device::do_sub(u32 a, u32 b, u32 borrow_in)
 {
-	uint64_t wide = (uint64_t)a - (uint64_t)b - borrow_in;
-	uint32_t r = (uint32_t)wide;
+	const u64 wide = u64(a) - u64(b) - borrow_in;
+	const u32 r = u32(wide);
 	m_psw &= ~(FLAG_ZF | FLAG_NF | FLAG_CF | FLAG_VF);
-	if (r == 0)                             m_psw |= FLAG_ZF;
-	if (r & 0x80000000u)                    m_psw |= FLAG_NF;
-	if ((wide >> 32) & 1)                   m_psw |= FLAG_CF; // borrow
-	if (((a ^ b) & (a ^ r)) & 0x80000000u)  m_psw |= FLAG_VF;
+	if (!r)
+		m_psw |= FLAG_ZF;
+	if (BIT(r, 31))
+		m_psw |= FLAG_NF;
+	if (BIT(wide, 32))
+		m_psw |= FLAG_CF;
+	if (BIT((a ^ b) & (a ^ r), 31))
+		m_psw |= FLAG_VF;
 	return r;
 }
 
-// Condition test for the C0..C9 b<cc> family (indices into f_conds order:
-// blt,bgt,bge,ble,bcs,bhi,bcc,bls,beq,bne).
-inline bool mn10300_device::test_cond(int cc)
+// Conditions in the order of the Bcc and Lcc opcodes
+bool mn10300_device::test_cond(int cc)
 {
-	const bool Z = m_psw & FLAG_ZF, N = m_psw & FLAG_NF;
-	const bool C = m_psw & FLAG_CF, V = m_psw & FLAG_VF;
+	const bool z = m_psw & FLAG_ZF;
+	const bool n = m_psw & FLAG_NF;
+	const bool c = m_psw & FLAG_CF;
+	const bool v = m_psw & FLAG_VF;
 	switch (cc)
 	{
-		case 0: return (N ^ V);            // blt
-		case 1: return !((N ^ V) || Z);    // bgt
-		case 2: return !(N ^ V);           // bge
-		case 3: return ((N ^ V) || Z);     // ble
-		case 4: return C;                  // bcs / blo
-		case 5: return !(C || Z);          // bhi
-		case 6: return !C;                 // bcc / bhs
-		case 7: return (C || Z);           // bls
-		case 8: return Z;                  // beq
-		case 9: return !Z;                 // bne
+	case 0: return n != v;              // lt
+	case 1: return !((n != v) || z);    // gt
+	case 2: return n == v;              // ge
+	case 3: return (n != v) || z;       // le
+	case 4: return c;                   // cs
+	case 5: return !(c || z);           // hi
+	case 6: return !c;                  // cc
+	case 7: return c || z;              // ls
+	case 8: return z;                   // eq
+	case 9: return !z;                  // ne
 	}
 	return false;
 }
 
-inline void mn10300_device::push32(uint32_t val)
+void mn10300_device::push32(u32 val)
 {
 	m_sp -= 4;
 	write_mem32(m_sp, val);
 }
-inline uint32_t mn10300_device::pop32()
+
+u32 mn10300_device::pop32()
 {
-	uint32_t v = read_mem32(m_sp);
+	const u32 val = read_mem32(m_sp);
 	m_sp += 4;
-	return v;
+	return val;
 }
+
+// type: 0 and 1 = 32-bit (an address register if a_reg), 2 = byte, 3 = halfword
+void mn10300_device::typed_load_store(int type, bool a_reg, int reg, u32 ea, bool store)
+{
+	switch (type)
+	{
+	case 0:
+	case 1:
+		if (a_reg)
+		{
+			if (store)
+				write_mem32(ea, m_a[reg]);
+			else
+				m_a[reg] = read_mem32(ea);
+		}
+		else
+		{
+			if (store)
+				write_mem32(ea, m_d[reg]);
+			else
+				m_d[reg] = read_mem32(ea);
+		}
+		break;
+	case 2:
+		if (store)
+			write_mem8(ea, m_d[reg]);
+		else
+			m_d[reg] = read_mem8(ea);
+		break;
+	case 3:
+		if (store)
+			write_mem16(ea, m_d[reg]);
+		else
+			m_d[reg] = read_mem16(ea);
+		break;
+	}
+}
+
+// op: 0 = asl, 1 = lsr, 2 = asr
+void mn10300_device::do_shift(int op, int dst, u32 count)
+{
+	count &= 0x1f;
+	u32 carry = 0;
+	if (count)
+	{
+		if (op == 0)
+		{
+			carry = BIT(m_d[dst], 32 - count);
+			m_d[dst] <<= count;
+		}
+		else if (op == 1)
+		{
+			carry = BIT(m_d[dst], count - 1);
+			m_d[dst] >>= count;
+		}
+		else
+		{
+			carry = BIT(m_d[dst], count - 1);
+			m_d[dst] = s32(m_d[dst]) >> count;
+		}
+	}
+	m_psw = (m_psw & ~FLAG_CF) | (carry ? FLAG_CF : 0);
+	set_nz32(m_d[dst]);
+}
+
+// movm and call/ret register lists. The "other" group (bit 0) leaves a 16-byte
+// gap for MDRQ, MCRH, MCRL and MCVF, which are not stored; the gap sits on
+// opposite sides of E0/E1 in the two families, as in the GNU simulator.
+void mn10300_device::store_regs(u8 mask)
+{
+	if (BIT(mask, 2))
+	{
+		push32(m_e[2]);
+		push32(m_e[3]);
+	}
+	if (BIT(mask, 1))
+	{
+		push32(m_e[4]);
+		push32(m_e[5]);
+		push32(m_e[6]);
+		push32(m_e[7]);
+	}
+	if (BIT(mask, 0))
+	{
+		push32(m_e[0]);
+		push32(m_e[1]);
+		m_sp -= 16;
+	}
+	if (BIT(mask, 7))
+		push32(m_d[2]);
+	if (BIT(mask, 6))
+		push32(m_d[3]);
+	if (BIT(mask, 5))
+		push32(m_a[2]);
+	if (BIT(mask, 4))
+		push32(m_a[3]);
+	if (BIT(mask, 3))
+	{
+		push32(m_d[0]);
+		push32(m_d[1]);
+		push32(m_a[0]);
+		push32(m_a[1]);
+		push32(m_mdr);
+		push32(m_lir);
+		push32(m_lar);
+		m_sp -= 4;
+	}
+}
+
+void mn10300_device::load_regs(u8 mask)
+{
+	if (BIT(mask, 3))
+	{
+		m_sp += 4;
+		m_lar = pop32();
+		m_lir = pop32();
+		m_mdr = pop32();
+		m_a[1] = pop32();
+		m_a[0] = pop32();
+		m_d[1] = pop32();
+		m_d[0] = pop32();
+	}
+	if (BIT(mask, 4))
+		m_a[3] = pop32();
+	if (BIT(mask, 5))
+		m_a[2] = pop32();
+	if (BIT(mask, 6))
+		m_d[3] = pop32();
+	if (BIT(mask, 7))
+		m_d[2] = pop32();
+	if (BIT(mask, 0))
+	{
+		m_sp += 16;
+		m_e[1] = pop32();
+		m_e[0] = pop32();
+	}
+	if (BIT(mask, 1))
+	{
+		m_e[7] = pop32();
+		m_e[6] = pop32();
+		m_e[5] = pop32();
+		m_e[4] = pop32();
+	}
+	if (BIT(mask, 2))
+	{
+		m_e[3] = pop32();
+		m_e[2] = pop32();
+	}
+}
+
+void mn10300_device::store_regs_at(u32 base, u8 mask)
+{
+	u32 ea = base;
+	auto const put = [this, &ea] (u32 val) { ea -= 4; write_mem32(ea, val); };
+	if (BIT(mask, 2))
+	{
+		put(m_e[2]);
+		put(m_e[3]);
+	}
+	if (BIT(mask, 1))
+	{
+		put(m_e[4]);
+		put(m_e[5]);
+		put(m_e[6]);
+		put(m_e[7]);
+	}
+	if (BIT(mask, 0))
+	{
+		ea -= 16;
+		put(m_e[0]);
+		put(m_e[1]);
+	}
+	if (BIT(mask, 7))
+		put(m_d[2]);
+	if (BIT(mask, 6))
+		put(m_d[3]);
+	if (BIT(mask, 5))
+		put(m_a[2]);
+	if (BIT(mask, 4))
+		put(m_a[3]);
+	if (BIT(mask, 3))
+	{
+		put(m_d[0]);
+		put(m_d[1]);
+		put(m_a[0]);
+		put(m_a[1]);
+		put(m_mdr);
+		put(m_lir);
+		put(m_lar);
+	}
+}
+
+void mn10300_device::load_regs_at(u32 base, u8 mask)
+{
+	u32 ea = base;
+	auto const get = [this, &ea] () { ea -= 4; return read_mem32(ea); };
+	if (BIT(mask, 2))
+	{
+		m_e[2] = get();
+		m_e[3] = get();
+	}
+	if (BIT(mask, 1))
+	{
+		m_e[4] = get();
+		m_e[5] = get();
+		m_e[6] = get();
+		m_e[7] = get();
+	}
+	if (BIT(mask, 0))
+	{
+		ea -= 16;
+		m_e[0] = get();
+		m_e[1] = get();
+	}
+	if (BIT(mask, 7))
+		m_d[2] = get();
+	if (BIT(mask, 6))
+		m_d[3] = get();
+	if (BIT(mask, 5))
+		m_a[2] = get();
+	if (BIT(mask, 4))
+		m_a[3] = get();
+	if (BIT(mask, 3))
+	{
+		m_d[0] = get();
+		m_d[1] = get();
+		m_a[0] = get();
+		m_a[1] = get();
+		m_mdr = get();
+		m_lir = get();
+		m_lar = get();
+	}
+}
+
+
+//**************************************************************************
+//  Execution
+//**************************************************************************
 
 void mn10300_device::execute_run()
 {
@@ -572,824 +967,999 @@ void mn10300_device::execute_run()
 
 		debugger_instruction_hook(m_pc);
 
-		const uint32_t start_pc = m_pc;   // PC-relative targets use the insn start
-		const uint8_t op = read_arg8(m_pc);
+		const u32 start_pc = m_pc;
+		const u8 op = read_arg8(m_pc);
 		m_pc += 1;
 
-		const int dst = op & 3;           // low field
-		const int src = (op >> 2) & 3;    // bits[3:2]
+		const int dst = op & 3;
+		const int src = BIT(op, 2, 2);
 
 		switch (op)
 		{
-		// ---- clr dD (D = bits[3:2]) ----
-		case 0x00: case 0x04: case 0x08: case 0x0C:
+		// clr Dn (n = bits 3-2)
+		case 0x00: case 0x04: case 0x08: case 0x0c:
 			m_d[src] = 0;
 			m_psw = (m_psw & ~(FLAG_NF | FLAG_CF | FLAG_VF)) | FLAG_ZF;
 			break;
 
-		// ---- mov/movbu/movhu dM,(abs16) (M = bits[3:2], abs16 zero-extended) ----
-		case 0x01: case 0x05: case 0x09: case 0x0D:
-		case 0x02: case 0x06: case 0x0A: case 0x0E:
-		case 0x03: case 0x07: case 0x0B: case 0x0F:
+		// mov/movbu/movhu Dm,(abs16)
+		case 0x01: case 0x05: case 0x09: case 0x0d:
+		case 0x02: case 0x06: case 0x0a: case 0x0e:
+		case 0x03: case 0x07: case 0x0b: case 0x0f:
 			typed_load_store((op & 3) == 1 ? 0 : (op & 3), false, src, read_arg16(m_pc), true);
 			m_pc += 2;
 			break;
 
-		// ---- mov/movbu/movhu (abs16),dD (abs16 zero-extended) ----
-		case 0x30: case 0x31: case 0x32: case 0x33:
-		case 0x34: case 0x35: case 0x36: case 0x37:
-		case 0x38: case 0x39: case 0x3A: case 0x3B:
-			typed_load_store(src == 0 ? 0 : src + 1, false, dst, read_arg16(m_pc), false);
+		// extb/extbu/exth/exthu Dn
+		case 0x10: case 0x11: case 0x12: case 0x13:
+			m_d[dst] = util::sext(m_d[dst], 8);
+			break;
+		case 0x14: case 0x15: case 0x16: case 0x17:
+			m_d[dst] &= 0x000000ff;
+			break;
+		case 0x18: case 0x19: case 0x1a: case 0x1b:
+			m_d[dst] = util::sext(m_d[dst], 16);
+			break;
+		case 0x1c: case 0x1d: case 0x1e: case 0x1f:
+			m_d[dst] &= 0x0000ffff;
+			break;
+
+		// add imm8,An
+		case 0x20: case 0x21: case 0x22: case 0x23:
+			m_a[dst] = do_add(m_a[dst], util::sext(read_arg8(m_pc), 8), 0);
+			m_pc += 1;
+			break;
+
+		// mov imm16,An (zero-extended)
+		case 0x24: case 0x25: case 0x26: case 0x27:
+			m_a[dst] = read_arg16(m_pc);
 			m_pc += 2;
 			break;
 
-		// ---- extb/extbu/exth/exthu dD ----
-		case 0x10: case 0x11: case 0x12: case 0x13: m_d[dst] = (int32_t)(int8_t)m_d[dst]; break;
-		case 0x14: case 0x15: case 0x16: case 0x17: m_d[dst] &= 0x000000FF; break;
-		case 0x18: case 0x19: case 0x1A: case 0x1B: m_d[dst] = (int32_t)(int16_t)m_d[dst]; break;
-		case 0x1C: case 0x1D: case 0x1E: case 0x1F: m_d[dst] &= 0x0000FFFF; break;
+		// add imm8,Dn
+		case 0x28: case 0x29: case 0x2a: case 0x2b:
+			m_d[dst] = do_add(m_d[dst], util::sext(read_arg8(m_pc), 8), 0);
+			m_pc += 1;
+			break;
 
-		// ---- add imm8,aD / add imm8,dD (imm8 sign-extended) ----
-		case 0x20: case 0x21: case 0x22: case 0x23:
-			m_a[dst] = do_add(m_a[dst], (int32_t)(int8_t)read_arg8(m_pc), 0); m_pc += 1; break;
-		case 0x28: case 0x29: case 0x2A: case 0x2B:
-			m_d[dst] = do_add(m_d[dst], (int32_t)(int8_t)read_arg8(m_pc), 0); m_pc += 1; break;
+		// mov imm16,Dn (sign-extended)
+		case 0x2c: case 0x2d: case 0x2e: case 0x2f:
+			m_d[dst] = util::sext(read_arg16(m_pc), 16);
+			m_pc += 2;
+			break;
 
-		// ---- mov imm16,aD (zx) / mov imm16,dD (sx) ----
-		case 0x24: case 0x25: case 0x26: case 0x27:
-			m_a[dst] = read_arg16(m_pc); m_pc += 2; break;
-		case 0x2C: case 0x2D: case 0x2E: case 0x2F:
-			m_d[dst] = (int32_t)(int16_t)read_arg16(m_pc); m_pc += 2; break;
+		// mov/movbu/movhu (abs16),Dn
+		case 0x30: case 0x31: case 0x32: case 0x33:
+		case 0x34: case 0x35: case 0x36: case 0x37:
+		case 0x38: case 0x39: case 0x3a: case 0x3b:
+			typed_load_store(src ? src + 1 : 0, false, dst, read_arg16(m_pc), false);
+			m_pc += 2;
+			break;
 
-		// ---- mov sp,aD ----
-		case 0x3C: case 0x3D: case 0x3E: case 0x3F: m_a[dst] = m_sp; break;
+		// mov sp,An
+		case 0x3c: case 0x3d: case 0x3e: case 0x3f:
+			m_a[dst] = m_sp;
+			break;
 
-		// ---- inc dD (flags) / inc aD (no flags) (D = bits[3:2]) ----
-		case 0x40: case 0x44: case 0x48: case 0x4C: m_d[src] = do_add(m_d[src], 1, 0); break;
-		case 0x41: case 0x45: case 0x49: case 0x4D: m_a[src] += 1; break;
+		// inc Dn / inc An (n = bits 3-2; inc An leaves the flags alone)
+		case 0x40: case 0x44: case 0x48: case 0x4c:
+			m_d[src] = do_add(m_d[src], 1, 0);
+			break;
+		case 0x41: case 0x45: case 0x49: case 0x4d:
+			m_a[src] += 1;
+			break;
 
-		// ---- mov dD/aD,(disp8,sp)  (disp8 unsigned) ----
-		case 0x42: case 0x46: case 0x4A: case 0x4E:
-			write_mem32(m_sp + read_arg8(m_pc), m_d[src]); m_pc += 1; break;
-		case 0x43: case 0x47: case 0x4B: case 0x4F:
-			write_mem32(m_sp + read_arg8(m_pc), m_a[src]); m_pc += 1; break;
+		// mov Dm,(d8,sp) / mov Am,(d8,sp) (d8 zero-extended)
+		case 0x42: case 0x46: case 0x4a: case 0x4e:
+			write_mem32(m_sp + read_arg8(m_pc), m_d[src]);
+			m_pc += 1;
+			break;
+		case 0x43: case 0x47: case 0x4b: case 0x4f:
+			write_mem32(m_sp + read_arg8(m_pc), m_a[src]);
+			m_pc += 1;
+			break;
 
-		// ---- inc4 aD (no flags) / asl2 dD ----
-		case 0x50: case 0x51: case 0x52: case 0x53: m_a[dst] += 4; break;
-		case 0x54: case 0x55: case 0x56: case 0x57: m_d[dst] <<= 2; set_nz32(m_d[dst]); break;
+		// inc4 An / asl2 Dn
+		case 0x50: case 0x51: case 0x52: case 0x53:
+			m_a[dst] += 4;
+			break;
+		case 0x54: case 0x55: case 0x56: case 0x57:
+			m_d[dst] <<= 2;
+			set_nz32(m_d[dst]);
+			break;
 
-		// ---- mov (disp8,sp),dD / (disp8,sp),aD  (disp8 unsigned) ----
-		case 0x58: case 0x59: case 0x5A: case 0x5B:
-			m_d[dst] = read_mem32(m_sp + read_arg8(m_pc)); m_pc += 1; break;
-		case 0x5C: case 0x5D: case 0x5E: case 0x5F:
-			m_a[dst] = read_mem32(m_sp + read_arg8(m_pc)); m_pc += 1; break;
+		// mov (d8,sp),Dn / mov (d8,sp),An (d8 zero-extended)
+		case 0x58: case 0x59: case 0x5a: case 0x5b:
+			m_d[dst] = read_mem32(m_sp + read_arg8(m_pc));
+			m_pc += 1;
+			break;
+		case 0x5c: case 0x5d: case 0x5e: case 0x5f:
+			m_a[dst] = read_mem32(m_sp + read_arg8(m_pc));
+			m_pc += 1;
+			break;
 
-		// ---- mov dS,(aM) (0x60-0x6F) / mov (aM),dD (0x70-0x7F), 32-bit ----
+		// mov Dm,(An) / mov (Am),Dn
 		case 0x60: case 0x61: case 0x62: case 0x63: case 0x64: case 0x65: case 0x66: case 0x67:
-		case 0x68: case 0x69: case 0x6A: case 0x6B: case 0x6C: case 0x6D: case 0x6E: case 0x6F:
-			write_mem32(m_a[dst], m_d[src]); break;
+		case 0x68: case 0x69: case 0x6a: case 0x6b: case 0x6c: case 0x6d: case 0x6e: case 0x6f:
+			write_mem32(m_a[dst], m_d[src]);
+			break;
 		case 0x70: case 0x71: case 0x72: case 0x73: case 0x74: case 0x75: case 0x76: case 0x77:
-		case 0x78: case 0x79: case 0x7A: case 0x7B: case 0x7C: case 0x7D: case 0x7E: case 0x7F:
-			m_d[src] = read_mem32(m_a[dst]); break;
+		case 0x78: case 0x79: case 0x7a: case 0x7b: case 0x7c: case 0x7d: case 0x7e: case 0x7f:
+			m_d[src] = read_mem32(m_a[dst]);
+			break;
 
-		// ---- mov imm8,dD (src==dst) / mov dS,dD ----
-		case 0x80: case 0x85: case 0x8A: case 0x8F:
-			m_d[dst] = (int32_t)(int8_t)read_arg8(m_pc); m_pc += 1; break;
-		case 0x81: case 0x82: case 0x83: case 0x84: case 0x86: case 0x87: case 0x88:
-		case 0x89: case 0x8B: case 0x8C: case 0x8D: case 0x8E:
-			m_d[dst] = m_d[src]; break;
+		// mov imm8,Dn (sign-extended) / mov Dm,Dn
+		case 0x80: case 0x85: case 0x8a: case 0x8f:
+			m_d[dst] = util::sext(read_arg8(m_pc), 8);
+			m_pc += 1;
+			break;
+		case 0x81: case 0x82: case 0x83: case 0x84: case 0x86: case 0x87:
+		case 0x88: case 0x89: case 0x8b: case 0x8c: case 0x8d: case 0x8e:
+			m_d[dst] = m_d[src];
+			break;
 
-		// ---- mov imm8,aD (zx, src==dst) / mov aS,aD ----
-		case 0x90: case 0x95: case 0x9A: case 0x9F:
-			m_a[dst] = (uint8_t)read_arg8(m_pc); m_pc += 1; break;
-		case 0x91: case 0x92: case 0x93: case 0x94: case 0x96: case 0x97: case 0x98:
-		case 0x99: case 0x9B: case 0x9C: case 0x9D: case 0x9E:
-			m_a[dst] = m_a[src]; break;
+		// mov imm8,An (zero-extended) / mov Am,An
+		case 0x90: case 0x95: case 0x9a: case 0x9f:
+			m_a[dst] = read_arg8(m_pc);
+			m_pc += 1;
+			break;
+		case 0x91: case 0x92: case 0x93: case 0x94: case 0x96: case 0x97:
+		case 0x98: case 0x99: case 0x9b: case 0x9c: case 0x9d: case 0x9e:
+			m_a[dst] = m_a[src];
+			break;
 
-		// ---- cmp imm8,dD (sx, src==dst) / cmp dS,dD ----
-		case 0xA0: case 0xA5: case 0xAA: case 0xAF:
-			do_sub(m_d[dst], (int32_t)(int8_t)read_arg8(m_pc), 0); m_pc += 1; break;
-		case 0xA1: case 0xA2: case 0xA3: case 0xA4: case 0xA6: case 0xA7: case 0xA8:
-		case 0xA9: case 0xAB: case 0xAC: case 0xAD: case 0xAE:
-			do_sub(m_d[dst], m_d[src], 0); break;
+		// cmp imm8,Dn (sign-extended) / cmp Dm,Dn
+		case 0xa0: case 0xa5: case 0xaa: case 0xaf:
+			do_sub(m_d[dst], util::sext(read_arg8(m_pc), 8), 0);
+			m_pc += 1;
+			break;
+		case 0xa1: case 0xa2: case 0xa3: case 0xa4: case 0xa6: case 0xa7:
+		case 0xa8: case 0xa9: case 0xab: case 0xac: case 0xad: case 0xae:
+			do_sub(m_d[dst], m_d[src], 0);
+			break;
 
-		// ---- cmp imm8,aD (zx, src==dst) / cmp aS,aD ----
-		case 0xB0: case 0xB5: case 0xBA: case 0xBF:
-			do_sub(m_a[dst], (uint8_t)read_arg8(m_pc), 0); m_pc += 1; break;
-		case 0xB1: case 0xB2: case 0xB3: case 0xB4: case 0xB6: case 0xB7: case 0xB8:
-		case 0xB9: case 0xBB: case 0xBC: case 0xBD: case 0xBE:
-			do_sub(m_a[dst], m_a[src], 0); break;
+		// cmp imm8,An (zero-extended) / cmp Am,An
+		case 0xb0: case 0xb5: case 0xba: case 0xbf:
+			do_sub(m_a[dst], read_arg8(m_pc), 0);
+			m_pc += 1;
+			break;
+		case 0xb1: case 0xb2: case 0xb3: case 0xb4: case 0xb6: case 0xb7:
+		case 0xb8: case 0xb9: case 0xbb: case 0xbc: case 0xbd: case 0xbe:
+			do_sub(m_a[dst], m_a[src], 0);
+			break;
 
-		// ---- conditional branches / bra (disp8, target = start_pc + sx8) ----
-		case 0xC0: case 0xC1: case 0xC2: case 0xC3: case 0xC4:
-		case 0xC5: case 0xC6: case 0xC7: case 0xC8: case 0xC9:
+		// Bcc d8
+		case 0xc0: case 0xc1: case 0xc2: case 0xc3: case 0xc4:
+		case 0xc5: case 0xc6: case 0xc7: case 0xc8: case 0xc9:
 		{
-			int8_t disp = (int8_t)read_arg8(m_pc); m_pc += 1;
-			if (test_cond(op & 0x0F)) m_pc = start_pc + disp;
+			const u32 target = start_pc + util::sext(read_arg8(m_pc), 8);
+			m_pc += 1;
+			if (test_cond(op & 0x0f))
+				m_pc = target;
 			break;
 		}
-		case 0xCA: // bra
+
+		// bra d8
+		case 0xca:
+			m_pc = start_pc + util::sext(read_arg8(m_pc), 8);
+			break;
+
+		// nop
+		case 0xcb:
+			break;
+
+		// jmp d16
+		case 0xcc:
+			m_pc = start_pc + util::sext(read_arg16(m_pc), 16);
+			break;
+
+		// call d16,regs,imm8: the return address goes at (sp) and in MDR, the
+		// registers below it, and SP drops by imm8
+		case 0xcd:
 		{
-			int8_t disp = (int8_t)read_arg8(m_pc); m_pc = start_pc + disp; break;
-		}
-
-		// ---- nop ----
-		case 0xCB: break;
-
-		// ---- jmp disp16 ----
-		case 0xCC:
-			m_pc = start_pc + (int32_t)(int16_t)read_arg16(m_pc); break;
-
-		// ---- call disp16, regs, imm8 ----
-		case 0xCD:
-		{
-			int16_t disp = (int16_t)read_arg16(m_pc);
-			uint8_t regs = read_arg8(m_pc + 2);
-			uint8_t adj  = read_arg8(m_pc + 3);
-			uint32_t ret = m_pc + 4;      // return past this 5-byte instruction
-			// imm8-total frame convention: return PC at [SP], regs below, SP -= imm8.
+			const u32 target = start_pc + util::sext(read_arg16(m_pc), 16);
+			const u8 regs = read_arg8(m_pc + 2);
+			const u8 adj = read_arg8(m_pc + 3);
+			const u32 ret = m_pc + 4;
 			write_mem32(m_sp, ret);
 			store_regs_at(m_sp, regs);
 			m_sp -= adj;
-			m_mdr = ret;                  // AM33 caches the return address in MDR (for retf)
-			m_pc = start_pc + disp;
+			m_mdr = ret;
+			m_pc = target;
 			break;
 		}
 
-		// ---- movm (sp),regs (pop) / movm regs,(sp) (push) ----
-		case 0xCE: load_regs(read_arg8(m_pc)); m_pc += 1; break;
-		case 0xCF: store_regs(read_arg8(m_pc)); m_pc += 1; break;
-
-		case 0xDB: // setlb: LIR holds the loop's first four bytes, LAR points past them
-			m_lir = read_arg32(m_pc);
-			m_lar = start_pc + 5;
+		// movm (sp),regs / movm regs,(sp)
+		case 0xce:
+			load_regs(read_arg8(m_pc));
+			m_pc += 1;
 			break;
-		case 0xD0: case 0xD1: case 0xD2: case 0xD3: case 0xD4:
-		case 0xD5: case 0xD6: case 0xD7: case 0xD8: case 0xD9: // Lcc
-			if (test_cond(op & 0x0F))
+		case 0xcf:
+			store_regs(read_arg8(m_pc));
+			m_pc += 1;
+			break;
+
+		// Lcc and lra branch to the loop start, LAR - 4
+		case 0xd0: case 0xd1: case 0xd2: case 0xd3: case 0xd4:
+		case 0xd5: case 0xd6: case 0xd7: case 0xd8: case 0xd9:
+			if (test_cond(op & 0x0f))
 				m_pc = m_lar - 4;
 			break;
-		case 0xDA: // lra
+		case 0xda:
 			m_pc = m_lar - 4;
 			break;
 
-		// ---- jmp disp32 (reset vector uses this) ----
-		case 0xDC:
-			m_pc = start_pc + read_arg32(m_pc); break;
+		// setlb: LIR takes the loop's first four bytes, LAR points past them
+		case 0xdb:
+			m_lir = read_arg32(m_pc);
+			m_lar = start_pc + 5;
+			break;
 
-		// ---- call disp32, regs, imm8 ----
-		case 0xDD:
+		// jmp d32
+		case 0xdc:
+			m_pc = start_pc + read_arg32(m_pc);
+			break;
+
+		// call d32,regs,imm8
+		case 0xdd:
 		{
-			uint32_t disp = read_arg32(m_pc);
-			uint8_t regs = read_arg8(m_pc + 4);
-			uint8_t adj  = read_arg8(m_pc + 5);
-			uint32_t ret = m_pc + 6;
-			// imm8-total frame convention (see 0xCD).
+			const u32 target = start_pc + read_arg32(m_pc);
+			const u8 regs = read_arg8(m_pc + 4);
+			const u8 adj = read_arg8(m_pc + 5);
+			const u32 ret = m_pc + 6;
 			write_mem32(m_sp, ret);
 			store_regs_at(m_sp, regs);
 			m_sp -= adj;
-			m_mdr = ret;           // AM33 caches the return address in MDR (for retf)
-			m_pc = start_pc + disp;
+			m_mdr = ret;
+			m_pc = target;
 			break;
 		}
 
-		case 0xDE:
+		// retf regs,imm8: return through MDR
+		case 0xde:
 		{
-			uint8_t regs = read_arg8(m_pc);
-			uint8_t adj  = read_arg8(m_pc + 1);
+			const u8 regs = read_arg8(m_pc);
+			const u8 adj = read_arg8(m_pc + 1);
 			m_sp += adj;
 			m_pc = m_mdr;
 			load_regs_at(m_sp, regs);
 			break;
 		}
 
-		// ---- ret regs, imm8 : normal return (PC read from the frame top) ----
-		case 0xDF:
+		// ret regs,imm8: return through (sp)
+		case 0xdf:
 		{
-			uint8_t regs = read_arg8(m_pc);
-			uint8_t adj  = read_arg8(m_pc + 1);
+			const u8 regs = read_arg8(m_pc);
+			const u8 adj = read_arg8(m_pc + 1);
 			m_sp += adj;
 			load_regs_at(m_sp, regs);
-			m_pc = read_mem32(m_sp);   // return PC sits at [SP] (the frame top)
+			m_pc = read_mem32(m_sp);
 			break;
 		}
 
-		// ---- add dS,dD ----
-		case 0xE0: case 0xE1: case 0xE2: case 0xE3: case 0xE4: case 0xE5: case 0xE6: case 0xE7:
-		case 0xE8: case 0xE9: case 0xEA: case 0xEB: case 0xEC: case 0xED: case 0xEE: case 0xEF:
-			m_d[dst] = do_add(m_d[dst], m_d[src], 0); break;
+		// add Dm,Dn
+		case 0xe0: case 0xe1: case 0xe2: case 0xe3: case 0xe4: case 0xe5: case 0xe6: case 0xe7:
+		case 0xe8: case 0xe9: case 0xea: case 0xeb: case 0xec: case 0xed: case 0xee: case 0xef:
+			m_d[dst] = do_add(m_d[dst], m_d[src], 0);
+			break;
 
-		// ---- prefixed groups ----
-		case 0xF0: execute_f0(); break;   // reg-indirect moves + call/jmp/ret (aM)
-		case 0xF1: execute_f1(); break;   // cross-type reg-reg arithmetic
-		case 0xF2: execute_f2(); break;   // logical / mul / div / shift / special regs
-		case 0xF3: execute_f3(); break;   // 32-bit indexed load/store
-		case 0xF4: execute_f4(); break;   // byte/half indexed load/store
-		case 0xF5: execute_f5(); break;   // AM33 DSP puts (putx/putchclx)
-		case 0xF6: execute_f6(); break;   // AM33 DSP ops (mulq/getx/getchx/getclx/sat)
-		case 0xF8: execute_f8(); break;   // imm8 / disp8 forms (incl. add imm8,sp)
-		case 0xFA: execute_fa(); break;   // imm16 / disp16 forms
-		case 0xFC: execute_fc(); break;   // imm32 / disp32 forms (mov imm32,reg etc.)
-		case 0xFE: execute_fe(); break;   // bit ops on absolute address
+		case 0xf0: execute_f0(); break;
+		case 0xf1: execute_f1(); break;
+		case 0xf2: execute_f2(); break;
+		case 0xf3: execute_f3(); break;
+		case 0xf4: execute_f4(); break;
+		case 0xf5: execute_f5(); break;
+		case 0xf6: execute_f6(); break;
+		case 0xf8: execute_f8(); break;
+		case 0xfa: execute_fa(); break;
+		case 0xfc: execute_fc(); break;
+		case 0xfe: execute_fe(); break;
 
-		// TODO: 0xF9,0xFB,0xFD (udf imm) still unimplemented --
-		// these fall through to the length-correct skip below until needed.
 		default:
+		{
+			const u8 op2 = read_arg8(start_pc + 1);
+			m_pc = start_pc + insn_length(op, op2);
+			if ((op == 0xf9 || op == 0xfb || op == 0xfd) && op2 <= 0x03)
 			{
-				const uint8_t op2 = read_arg8(start_pc + 1);
-				if ((op == 0xF9 || op == 0xFB || op == 0xFD) && (op2 >> 4) == 0
-						&& !BIT(op2, 2) && !BIT(op2, 3))
-				{
-					const int dn = op2 & 3;
-					int32_t s;
-					if (op == 0xF9)      s = (int32_t)(int8_t) read_arg8 (start_pc + 2);
-					else if (op == 0xFB) s = (int32_t)(int16_t)read_arg16(start_pc + 2);
-					else                 s = (int32_t)        read_arg32(start_pc + 2);
-					const int64_t t = (int64_t)(int32_t)m_d[dn] * (int64_t)s;
-					m_d[dn] = uint32_t(t);
-					m_mdrq  = uint32_t(uint64_t(t) >> 32);
-					set_nz32(m_d[dn]);
-					m_psw &= ~(FLAG_CF | FLAG_VF);
-					m_pc = start_pc + mn10300_insn_length(op, op2);
-				}
+				// udf00 imm,Dn: signed multiply by an immediate, high word to MDRQ
+				s32 imm;
+				if (op == 0xf9)
+					imm = util::sext(read_arg8(start_pc + 2), 8);
+				else if (op == 0xfb)
+					imm = util::sext(read_arg16(start_pc + 2), 16);
 				else
-				{
-					m_pc = start_pc + mn10300_insn_length(op, op2);
-					logerror("MN10300: unimplemented opcode %02X op2=%02X @ PC=%08X (skipped %d bytes)\n",
-						op, op2, start_pc, (int)(m_pc - start_pc));
-				}
+					imm = s32(read_arg32(start_pc + 2));
+				const s64 t = s64(s32(m_d[op2 & 3])) * imm;
+				m_d[op2 & 3] = u32(t);
+				m_mdrq = u32(u64(t) >> 32);
+				set_logic_flags(m_d[op2 & 3]);
+			}
+			else
+			{
+				logerror("unimplemented opcode %02X op2=%02X @ %08X (skipped %d bytes)\n", op, op2, start_pc, int(m_pc - start_pc));
 			}
 			break;
 		}
+		}
 
-		// TODO: real per-instruction cycle counts.
+		// TODO: per-instruction cycle counts
 		m_icount -= 1;
-
 	} while (m_icount > 0);
 }
 
-inline void mn10300_device::typed_load_store(int type, bool a_reg, int reg, uint32_t ea, bool store)
-{
-	switch (type)
-	{
-		case 0: case 1:  // 32-bit mov (a-reg iff a_reg)
-			if (a_reg) { if (store) write_mem32(ea, m_a[reg]); else m_a[reg] = read_mem32(ea); }
-			else       { if (store) write_mem32(ea, m_d[reg]); else m_d[reg] = read_mem32(ea); }
-			break;
-		case 2:  if (store) write_mem8 (ea, m_d[reg]); else m_d[reg] = read_mem8 (ea); break; // movbu
-		case 3:  if (store) write_mem16(ea, m_d[reg]); else m_d[reg] = read_mem16(ea); break; // movhu
-	}
-}
-
-inline void mn10300_device::do_shift(int op, int dst, uint32_t count)
-{
-	count &= 0x1F;
-	uint32_t carry = 0;
-	if (count)
-	{
-		if (op == 0)      { carry = (m_d[dst] >> (32 - count)) & 1; m_d[dst] <<= count; }          // asl
-		else if (op == 1) { carry = (m_d[dst] >> (count - 1)) & 1;  m_d[dst] >>= count; }           // lsr
-		else              { carry = (m_d[dst] >> (count - 1)) & 1;  m_d[dst] = (int32_t)m_d[dst] >> count; } // asr
-	}
-	m_psw = (m_psw & ~FLAG_CF) | (carry ? FLAG_CF : 0);
-	set_nz32(m_d[dst]);
-}
-
-// 0xFC: imm32 / disp32 / abs32 forms. Always 6 bytes (op, op2, then a 32-bit
-// operand). PC is set to start+6 at the end unless a control-flow op returns.
-void mn10300_device::execute_fc()
-{
-	const uint32_t start_pc = m_pc - 1;
-	const uint8_t  op2 = read_arg8(m_pc);          // start+1
-	const uint32_t imm = read_arg32(m_pc + 1);     // start+2 : imm32 / disp32 / abs32
-	const int dst = op2 & 3;
-
-	if (op2 < 0x80)                                 // mov/movbu/movhu (disp32,aM)
-	{
-		const int  type = (op2 >> 5) & 3;
-		const bool a_reg = (type == 1);
-		typed_load_store(type, a_reg, (op2 >> 2) & 3, m_a[op2 & 3] + imm, op2 & 0x10);
-	}
-	else if (op2 < 0xA0)                            // store reg -> (disp32,sp) / (abs32)
-	{
-		const int  type = op2 & 3;
-		const bool a_reg = (type == 0);
-		typed_load_store(type, a_reg, (op2 >> 2) & 3, (op2 & 0x10) ? m_sp + imm : imm, true);
-	}
-	else if (op2 < 0xC0)                            // load (disp32,sp)/(abs32) -> reg
-	{
-		const int  type = (op2 >> 2) & 3;
-		const bool a_reg = (type == 0);
-		typed_load_store(type, a_reg, op2 & 3, (op2 & 0x10) ? m_sp + imm : imm, false);
-	}
-	else switch (op2 & 0xFC)
-	{
-		case 0xC0: m_d[dst] = do_add(m_d[dst], imm, 0); break;   // add imm32,dD
-		case 0xD0: m_a[dst] = do_add(m_a[dst], imm, 0); break;   // add imm32,aD
-		case 0xC4: m_d[dst] = do_sub(m_d[dst], imm, 0); break;   // sub imm32,dD
-		case 0xD4: m_a[dst] = do_sub(m_a[dst], imm, 0); break;   // sub imm32,aD
-		case 0xC8: do_sub(m_d[dst], imm, 0); break;              // cmp imm32,dD
-		case 0xD8: do_sub(m_a[dst], imm, 0); break;              // cmp imm32,aD
-		case 0xCC: m_d[dst] = imm; break;                        // mov imm32,dD
-		case 0xDC: m_a[dst] = imm; break;                        // mov imm32,aD
-		case 0xE0: m_d[dst] &= imm; set_logic_flags(m_d[dst]); break; // and
-		case 0xE4: m_d[dst] |= imm; set_logic_flags(m_d[dst]); break; // or
-		case 0xE8: m_d[dst] ^= imm; set_logic_flags(m_d[dst]); break; // xor
-		case 0xEC: set_logic_flags(m_d[dst] & imm); break;      // btst imm32,dD
-		case 0xFC:
-			if (op2 == 0xFE)      { m_sp += imm; }               // add imm32,sp (SP arith, no flags)
-			else if (op2 == 0xFF) { write_mem32(m_sp, start_pc + 6); m_mdr = start_pc + 6; m_pc = start_pc + imm; return; } // calls (disp32): PC->[SP], SP unchanged
-			else logerror("MN10300: unimplemented FC %02X @ %08X\n", op2, start_pc);
-			break;
-		default:
-			logerror("MN10300: unimplemented FC %02X @ %08X\n", op2, start_pc);
-			break;
-	}
-	m_pc = start_pc + 6;
-}
-
-void mn10300_device::execute_f5()
-{
-	const uint32_t start_pc = m_pc - 1;
-	const uint8_t op2 = read_arg8(m_pc);
-	const int dst = op2 & 3, src = (op2 >> 2) & 3;
-	switch (op2 >> 4)
-	{
-	case 0x0: m_mdrq = m_d[dst]; break;                       // putx     Dn   -> MDRQ
-	case 0x1: m_mcrh = m_d[src]; m_mcrl = m_d[dst]; break;    // putchclx Dm->MCRH, Dn->MCRL
-	default:  logerror("MN10300: unimplemented F5 %02X @ %08X\n", op2, start_pc); break;
-	}
-	m_pc = start_pc + 2;
-}
-
-void mn10300_device::execute_f6()
-{
-	const uint32_t start_pc = m_pc - 1;
-	const uint8_t op2 = read_arg8(m_pc);
-	const int dst = op2 & 3, src = (op2 >> 2) & 3;
-	switch (op2 >> 4)
-	{
-	case 0x0: { int64_t t = (int64_t)(int32_t)m_d[dst] * (int32_t)m_d[src];   // mulq
-				m_d[dst] = uint32_t(t); m_mdrq = uint32_t(uint64_t(t) >> 32);
-				set_nz32(m_d[dst]); m_psw &= ~(FLAG_CF | FLAG_VF); } break;
-	case 0x1: { uint64_t t = (uint64_t)m_d[dst] * (uint64_t)m_d[src];         // mulqu
-				m_d[dst] = uint32_t(t); m_mdrq = uint32_t(t >> 32);
-				set_nz32(m_d[dst]); m_psw &= ~(FLAG_CF | FLAG_VF); } break;
-	case 0x4: { int32_t v = (int32_t)m_d[src];                               // sat16
-				v = std::clamp(v, -0x8000, 0x7fff); m_d[dst] = uint32_t(v); } break;
-	case 0x5: { int32_t v = (int32_t)m_d[src];                               // sat24
-				v = std::clamp(v, -0x800000, 0x7fffff); m_d[dst] = uint32_t(v); } break;
-	case 0xC: m_d[dst] = m_mcrh; break;                                      // getchx MCRH -> Dn
-	case 0xD: m_d[dst] = m_mcrl; break;                                      // getclx MCRL -> Dn
-	case 0xF: m_d[dst] = m_mdrq; break;                                     // getx MDRQ -> Dn (no flag change: the ISR context-save re-reads PSW after this, so it must not touch flags)
-	case 0x7: {  // udf07 Dm,Dn -- BSCH (bit search): Dn = position (0..15) of the
-		// most-significant set bit in Dm's low 16 bits (0 if none). Used by the
-		// Huffman leading-run decode in software JPEG decoders.
-		const uint32_t v = m_d[src] & 0xffff;
-		m_d[dst] = v ? uint32_t(31 - std::countl_zero(v)) : 0u;
-	} break;
-	default:  logerror("MN10300: unimplemented F6 %02X @ %08X\n", op2, start_pc); break;
-	}
-	m_pc = start_pc + 2;
-}
-
-// 0xF8: imm8 / disp8 forms. Always 3 bytes (op, op2, then one operand byte).
-void mn10300_device::execute_f8()
-{
-	const uint32_t start_pc = m_pc - 1;
-	const uint8_t  op2   = read_arg8(m_pc);        // start+1
-	const uint8_t  b     = read_arg8(m_pc + 1);    // start+2 : disp8 / imm8 / shift count
-	const int8_t   sdisp = (int8_t)b;
-
-	if (op2 < 0x80)                                 // mov/movbu/movhu (disp8,aM)
-	{
-		const int  type = (op2 >> 5) & 3;
-		const bool a_reg = (type == 1);
-		typed_load_store(type, a_reg, (op2 >> 2) & 3, m_a[op2 & 3] + sdisp, op2 & 0x10);
-	}
-	else if ((op2 & 0xF2) == 0x92)                  // movbu/movhu dD,(disp8,sp) store (disp8 unsigned)
-	{
-		typed_load_store(op2 & 3, false, (op2 >> 2) & 3, m_sp + b, true);
-	}
-	else switch (op2 & 0xFC)
-	{
-		case 0xB8: case 0xBC:                        // movbu/movhu (disp8,sp),dD load (disp8 unsigned)
-			typed_load_store((op2 >> 2) & 3, false, op2 & 3, m_sp + b, false);
-			break;
-		case 0xC0: case 0xC4: case 0xC8:             // asl/lsr/asr imm8,dD
-			do_shift((op2 >> 2) & 3, op2 & 3, b);
-			break;
-		case 0xE0: case 0xE4: case 0xEC:             // and/or/btst imm8(zx),dD
-		{
-			const int d = op2 & 3;
-			const int lop = (op2 >> 2) & 3;          // 0=and 1=or 3=btst
-			if (lop == 0)      { m_d[d] &= b; set_logic_flags(m_d[d]); }
-			else if (lop == 1) { m_d[d] |= b; set_logic_flags(m_d[d]); }
-			else               set_logic_flags(m_d[d] & b); // btst
-			break;
-		}
-		case 0xE8:                                   // ext-branch bvc/bvs/bnc/bns
-		{
-			bool take = false;
-			switch (op2 & 3)
-			{
-				case 0: take = !(m_psw & FLAG_VF); break; // bvc
-				case 1: take =  (m_psw & FLAG_VF); break; // bvs
-				case 2: take = !(m_psw & FLAG_NF); break; // bnc
-				case 3: take =  (m_psw & FLAG_NF); break; // bns
-			}
-			if (take) { m_pc = start_pc + sdisp; return; }
-			break;
-		}
-		case 0xF0: m_sp = read_mem32(m_a[op2 & 3] + sdisp); break;  // mov (disp8,aM),sp
-		case 0xF4: write_mem32(m_a[op2 & 3] + sdisp, m_sp); break;  // mov sp,(disp8,aM)
-		case 0xFC:
-			if (op2 == 0xFE) m_sp += (int32_t)sdisp;  // add imm8,sp (SP arith, no flags)
-			else logerror("MN10300: unimplemented F8 %02X @ %08X\n", op2, start_pc);
-			break;
-		default:
-			logerror("MN10300: unimplemented F8 %02X @ %08X\n", op2, start_pc);
-			break;
-	}
-	m_pc = start_pc + 3;
-}
-
-inline void mn10300_device::set_logic_flags(uint32_t r)
-{
-	// and/or/xor/not: set Z,N; clear V (C left undefined -> cleared here).
-	m_psw &= ~(FLAG_ZF | FLAG_NF | FLAG_CF | FLAG_VF);
-	if (r == 0)          m_psw |= FLAG_ZF;
-	if (r & 0x80000000u) m_psw |= FLAG_NF;
-}
-
-// 0xF0: reg-indirect moves and indirect call/jmp/ret. Always 2 bytes.
+// 0xf0: register-indirect moves, bit operations on (An), and indirect calls and
+// returns. Always 2 bytes.
 void mn10300_device::execute_f0()
 {
-	const uint32_t start_pc = m_pc - 1;
-	const uint8_t op2 = read_arg8(m_pc);
-	const int r  = (op2 >> 2) & 3;   // data/addr register field
-	const int am = op2 & 3;          // base address register (aM)
+	const u32 start_pc = m_pc - 1;
+	const u8 op2 = read_arg8(m_pc);
+	const int r = BIT(op2, 2, 2);
+	const int am = op2 & 3;
 
 	switch (op2 >> 4)
 	{
-		case 0x0: m_a[r] = read_mem32(m_a[am]); break;                 // mov (aM),aD
-		case 0x4: m_d[r] = read_mem8 (m_a[am]); break;                 // movbu (aM),dD
-		case 0x6: m_d[r] = read_mem16(m_a[am]); break;                 // movhu (aM),dD
-		case 0x1: write_mem32(m_a[am], m_a[r]); break;                 // mov aS,(aM)
-		case 0x5: write_mem8 (m_a[am], m_d[r]); break;                 // movbu dS,(aM)
-		case 0x7: write_mem16(m_a[am], m_d[r]); break;                 // movhu dS,(aM)
-		case 0x8: { uint8_t v = read_mem8(m_a[am]); set_logic_flags(v & m_d[r]); write_mem8(m_a[am], v | m_d[r]); break; } // bset
-		case 0x9: { uint8_t v = read_mem8(m_a[am]); set_logic_flags(v & m_d[r]); write_mem8(m_a[am], v & ~m_d[r]); break; } // bclr
-		case 0xF:
-			// Control flow, selected by the whole op2 value.
-			if (op2 <= 0xF3)      { write_mem32(m_sp, start_pc + 2); m_mdr = start_pc + 2; m_pc = m_a[am]; return; } // calls (aM): PC->[SP], SP unchanged
-			else if (op2 <= 0xF7) { m_pc = m_a[am]; return; }                       // jmp (aM)
-			else if (op2 == 0xFC) { m_pc = read_mem32(m_sp); return; }               // rets: PC from [SP], SP unchanged
-			else if (op2 == 0xFD) { m_psw = pop32(); m_pc = pop32(); return; }      // rti
-			// TODO: FE trap
-			else logerror("MN10300: unimplemented F0 %02X @ %08X\n", op2, start_pc);
-			break;
-		default:
-			logerror("MN10300: unimplemented F0 %02X @ %08X\n", op2, start_pc);
-			break;
+	case 0x0: // mov (Am),An
+		m_a[r] = read_mem32(m_a[am]);
+		break;
+	case 0x1: // mov Am,(An)
+		write_mem32(m_a[am], m_a[r]);
+		break;
+	case 0x4: // movbu (Am),Dn
+		m_d[r] = read_mem8(m_a[am]);
+		break;
+	case 0x5: // movbu Dm,(An)
+		write_mem8(m_a[am], m_d[r]);
+		break;
+	case 0x6: // movhu (Am),Dn
+		m_d[r] = read_mem16(m_a[am]);
+		break;
+	case 0x7: // movhu Dm,(An)
+		write_mem16(m_a[am], m_d[r]);
+		break;
+	case 0x8: // bset Dm,(An)
+	{
+		const u8 v = read_mem8(m_a[am]);
+		set_logic_flags(v & m_d[r]);
+		write_mem8(m_a[am], v | m_d[r]);
+		break;
+	}
+	case 0x9: // bclr Dm,(An)
+	{
+		const u8 v = read_mem8(m_a[am]);
+		set_logic_flags(v & m_d[r]);
+		write_mem8(m_a[am], v & ~m_d[r]);
+		break;
+	}
+	case 0xf:
+		if (op2 <= 0xf3)
+		{
+			// calls (An): the return address goes at (sp) and in MDR, SP unchanged
+			write_mem32(m_sp, start_pc + 2);
+			m_mdr = start_pc + 2;
+			m_pc = m_a[am];
+			return;
+		}
+		else if (op2 <= 0xf7)
+		{
+			// jmp (An)
+			m_pc = m_a[am];
+			return;
+		}
+		else if (op2 == 0xfc)
+		{
+			// rets
+			m_pc = read_mem32(m_sp);
+			return;
+		}
+		else if (op2 == 0xfd)
+		{
+			// rti
+			m_psw = pop32();
+			m_pc = pop32();
+			return;
+		}
+		logerror("unimplemented F0 %02X @ %08X\n", op2, start_pc);
+		break;
+	default:
+		logerror("unimplemented F0 %02X @ %08X\n", op2, start_pc);
+		break;
 	}
 	m_pc = start_pc + 2;
 }
 
-// 0xF1: cross-type reg-reg arithmetic (between data and address registers).
-// Always 2 bytes. dst=bits[1:0], src=bits[3:2].
+// 0xf1: arithmetic between data and address registers. Always 2 bytes.
 void mn10300_device::execute_f1()
 {
-	const uint32_t start_pc = m_pc - 1;
-	const uint8_t op2 = read_arg8(m_pc);
-	const int dst = op2 & 3, src = (op2 >> 2) & 3;
-	const uint32_t C = (m_psw & FLAG_CF) ? 1 : 0;
+	const u32 start_pc = m_pc - 1;
+	const u8 op2 = read_arg8(m_pc);
+	const int dst = op2 & 3;
+	const int src = BIT(op2, 2, 2);
+	const u32 c = (m_psw & FLAG_CF) ? 1 : 0;
 
 	switch (op2 >> 4)
 	{
-		case 0x0: m_d[dst] = do_sub(m_d[dst], m_d[src], 0); break; // sub dS,dD
-		case 0x1: m_d[dst] = do_sub(m_d[dst], m_a[src], 0); break; // sub aS,dD
-		case 0x2: m_a[dst] = do_sub(m_a[dst], m_d[src], 0); break; // sub dS,aD
-		case 0x3: m_a[dst] = do_sub(m_a[dst], m_a[src], 0); break; // sub aS,aD
-		case 0x4: m_d[dst] = do_add(m_d[dst], m_d[src], C); break; // addc dS,dD
-		case 0x5: m_d[dst] = do_add(m_d[dst], m_a[src], 0); break; // add aS,dD
-		case 0x6: m_a[dst] = do_add(m_a[dst], m_d[src], 0); break; // add dS,aD
-		case 0x7: m_a[dst] = do_add(m_a[dst], m_a[src], 0); break; // add aS,aD
-		case 0x8: m_d[dst] = do_sub(m_d[dst], m_d[src], C); break; // subc dS,dD
-		case 0x9: do_sub(m_d[dst], m_a[src], 0); break;            // cmp aS,dD
-		case 0xA: do_sub(m_a[dst], m_d[src], 0); break;            // cmp dS,aD
-		case 0xD: m_d[dst] = m_a[src]; break;                      // mov aS,dD
-		case 0xE: m_a[dst] = m_d[src]; break;                      // mov dS,aD
-		default:  logerror("MN10300: illegal F1 %02X @ %08X\n", op2, start_pc); break;
+	case 0x0: m_d[dst] = do_sub(m_d[dst], m_d[src], 0); break;  // sub Dm,Dn
+	case 0x1: m_d[dst] = do_sub(m_d[dst], m_a[src], 0); break;  // sub Am,Dn
+	case 0x2: m_a[dst] = do_sub(m_a[dst], m_d[src], 0); break;  // sub Dm,An
+	case 0x3: m_a[dst] = do_sub(m_a[dst], m_a[src], 0); break;  // sub Am,An
+	case 0x4: m_d[dst] = do_add(m_d[dst], m_d[src], c); break;  // addc Dm,Dn
+	case 0x5: m_d[dst] = do_add(m_d[dst], m_a[src], 0); break;  // add Am,Dn
+	case 0x6: m_a[dst] = do_add(m_a[dst], m_d[src], 0); break;  // add Dm,An
+	case 0x7: m_a[dst] = do_add(m_a[dst], m_a[src], 0); break;  // add Am,An
+	case 0x8: m_d[dst] = do_sub(m_d[dst], m_d[src], c); break;  // subc Dm,Dn
+	case 0x9: do_sub(m_d[dst], m_a[src], 0); break;             // cmp Am,Dn
+	case 0xa: do_sub(m_a[dst], m_d[src], 0); break;             // cmp Dm,An
+	case 0xd: m_d[dst] = m_a[src]; break;                       // mov Am,Dn
+	case 0xe: m_a[dst] = m_d[src]; break;                       // mov Dm,An
+	default:
+		logerror("illegal F1 %02X @ %08X\n", op2, start_pc);
+		break;
 	}
 	m_pc = start_pc + 2;
 }
 
-// 0xF2: logical / mul / div / shift / special-register moves. Always 2 bytes.
+// 0xf2: logical operations, multiply and divide, shifts and special-register
+// moves. Always 2 bytes.
 void mn10300_device::execute_f2()
 {
-	const uint32_t start_pc = m_pc - 1;
-	const uint8_t op2 = read_arg8(m_pc);
-	const int dst = op2 & 3, src = (op2 >> 2) & 3;
+	const u32 start_pc = m_pc - 1;
+	const u8 op2 = read_arg8(m_pc);
+	const int dst = op2 & 3;
+	const int src = BIT(op2, 2, 2);
 
 	switch (op2 >> 4)
 	{
-		case 0x0: m_d[dst] &= m_d[src]; set_logic_flags(m_d[dst]); break; // and
-		case 0x1: m_d[dst] |= m_d[src]; set_logic_flags(m_d[dst]); break; // or
-		case 0x2: m_d[dst] ^= m_d[src]; set_logic_flags(m_d[dst]); break; // xor
-		case 0x3:
-			if (op2 < 0x34) { m_d[dst] = ~m_d[dst]; set_logic_flags(m_d[dst]); } // not dD
-			else logerror("MN10300: illegal F2 %02X @ %08X\n", op2, start_pc);
-			break;
-		case 0x4: { int64_t p = (int64_t)(int32_t)m_d[src] * (int32_t)m_d[dst]; m_d[dst] = (uint32_t)p; m_mdr = (uint32_t)(p >> 32); set_logic_flags(m_d[dst]); break; } // mul
-		case 0x5: { uint64_t p = (uint64_t)m_d[src] * m_d[dst]; m_d[dst] = (uint32_t)p; m_mdr = (uint32_t)(p >> 32); set_logic_flags(m_d[dst]); break; } // mulu
-		case 0x6: // div (signed): (MDR:dD) / dS
+	case 0x0: // and Dm,Dn
+		m_d[dst] &= m_d[src];
+		set_logic_flags(m_d[dst]);
+		break;
+	case 0x1: // or Dm,Dn
+		m_d[dst] |= m_d[src];
+		set_logic_flags(m_d[dst]);
+		break;
+	case 0x2: // xor Dm,Dn
+		m_d[dst] ^= m_d[src];
+		set_logic_flags(m_d[dst]);
+		break;
+	case 0x3: // not Dn
+		if (op2 < 0x34)
 		{
-			const int64_t num = ((int64_t)m_mdr << 32) | m_d[dst];
-			const int32_t dv = (int32_t)m_d[src];
-			// INT64_MIN / -1 traps on the host, and so does the matching %, so the
-			// no-result cases are decided BEFORE either operator runs.
-			const bool no_result = (dv == 0) || (num == INT64_MIN && dv == -1);
-			const int64_t q = no_result ? 0 : num / dv;
-			if (!no_result && q >= INT32_MIN && q <= INT32_MAX)
-			{
-				m_d[dst] = (uint32_t)q;
-				m_mdr = (uint32_t)(num % dv);
-				m_psw &= ~FLAG_VF;
-				set_nz32(m_d[dst]);
-			}
-			else
-				m_psw |= FLAG_VF;
-			break;
+			m_d[dst] = ~m_d[dst];
+			set_logic_flags(m_d[dst]);
 		}
-		case 0x7: // divu (unsigned)
+		else
 		{
-			const uint64_t num = ((uint64_t)m_mdr << 32) | m_d[dst];
-			const uint32_t dv = m_d[src];
-			if (dv && (num / dv) <= 0xFFFFFFFFULL)
-			{
-				m_d[dst] = (uint32_t)(num / dv);
-				m_mdr = (uint32_t)(num % dv);
-				m_psw &= ~FLAG_VF;
-				set_nz32(m_d[dst]);
-			}
-			else
-				m_psw |= FLAG_VF;
-			break;
+			logerror("illegal F2 %02X @ %08X\n", op2, start_pc);
 		}
-		case 0x8: // rol / ror dD (rotate through carry)
+		break;
+	case 0x4: // mul Dm,Dn
+	{
+		const s64 p = s64(s32(m_d[src])) * s32(m_d[dst]);
+		m_d[dst] = u32(p);
+		m_mdr = u32(u64(p) >> 32);
+		set_logic_flags(m_d[dst]);
+		break;
+	}
+	case 0x5: // mulu Dm,Dn
+	{
+		const u64 p = u64(m_d[src]) * m_d[dst];
+		m_d[dst] = u32(p);
+		m_mdr = u32(p >> 32);
+		set_logic_flags(m_d[dst]);
+		break;
+	}
+	case 0x6: // div Dm,Dn: (MDR:Dn) / Dm
+	{
+		const s64 num = s64((u64(m_mdr) << 32) | m_d[dst]);
+		const s32 dv = s32(m_d[src]);
+		// dividing INT64_MIN by -1 traps on the host, so the no-result cases are
+		// decided before either operator runs
+		const bool no_result = !dv || (num == std::numeric_limits<s64>::min() && dv == -1);
+		const s64 q = no_result ? 0 : num / dv;
+		if (!no_result && q >= std::numeric_limits<s32>::min() && q <= std::numeric_limits<s32>::max())
 		{
-			if (op2 >= 0x88)
-			{
-				logerror("illegal F2 %02X @ %08X\n", op2, start_pc);
-				break;
-			}
-			uint32_t c = (m_psw & FLAG_CF) ? 1 : 0;
-			if (op2 < 0x84) { uint32_t nc = m_d[dst] >> 31; m_d[dst] = (m_d[dst] << 1) | c; m_psw = (m_psw & ~FLAG_CF) | (nc ? FLAG_CF : 0); } // rol
-			else            { uint32_t nc = m_d[dst] & 1;   m_d[dst] = (m_d[dst] >> 1) | (c << 31); m_psw = (m_psw & ~FLAG_CF) | (nc ? FLAG_CF : 0); } // ror
+			m_d[dst] = u32(q);
+			m_mdr = u32(num % dv);
+			m_psw &= ~FLAG_VF;
 			set_nz32(m_d[dst]);
-			break;
 		}
-		case 0x9: case 0xA: case 0xB: // asl / lsr / asr dS,dD (shift dD by dS)
+		else
 		{
-			uint32_t n = m_d[src] & 0x1F;
-			uint32_t carry = 0;
-			if (n)
-			{
-				if ((op2 >> 4) == 0x9)      { carry = (m_d[dst] >> (32 - n)) & 1; m_d[dst] <<= n; }        // asl
-				else if ((op2 >> 4) == 0xA) { carry = (m_d[dst] >> (n - 1)) & 1;  m_d[dst] >>= n; }         // lsr
-				else                        { carry = (m_d[dst] >> (n - 1)) & 1;  m_d[dst] = (int32_t)m_d[dst] >> n; } // asr
-			}
-			m_psw = (m_psw & ~FLAG_CF) | (carry ? FLAG_CF : 0);
+			m_psw |= FLAG_VF;
+		}
+		break;
+	}
+	case 0x7: // divu Dm,Dn
+	{
+		const u64 num = (u64(m_mdr) << 32) | m_d[dst];
+		const u32 dv = m_d[src];
+		if (dv && (num / dv) <= 0xffffffffU)
+		{
+			m_d[dst] = u32(num / dv);
+			m_mdr = u32(num % dv);
+			m_psw &= ~FLAG_VF;
 			set_nz32(m_d[dst]);
+		}
+		else
+		{
+			m_psw |= FLAG_VF;
+		}
+		break;
+	}
+	case 0x8: // rol Dn / ror Dn, through carry
+	{
+		if (op2 >= 0x88)
+		{
+			logerror("illegal F2 %02X @ %08X\n", op2, start_pc);
 			break;
 		}
-		case 0xD:
-			if (op2 < 0xD4) m_mdr = (m_d[dst] & 0x80000000u) ? 0xFFFFFFFFu : 0; // ext dD
-			else logerror("MN10300: illegal F2 %02X @ %08X\n", op2, start_pc);
-			break;
-		case 0xE:
-			if (op2 < 0xE4)      m_d[dst] = m_mdr;       // mov mdr,dD
-			else if (op2 < 0xE8) m_d[dst] = m_psw;       // mov psw,dD
-			else logerror("MN10300: illegal F2 %02X @ %08X\n", op2, start_pc);
-			break;
-		case 0xF:
-			if (op2 & 2) { if (op2 & 1) m_psw = m_d[src]; else m_mdr = m_d[src]; } // mov dS,psw / mov dS,mdr
-			else if ((op2 & 1) == 0) m_sp = m_a[src];                              // mov aS,sp
-			else logerror("MN10300: illegal F2 %02X @ %08X\n", op2, start_pc);
-			break;
-		default: logerror("MN10300: unimplemented F2 %02X @ %08X\n", op2, start_pc); break;
+		const u32 c = (m_psw & FLAG_CF) ? 1 : 0;
+		u32 out;
+		if (op2 < 0x84)
+		{
+			out = BIT(m_d[dst], 31);
+			m_d[dst] = (m_d[dst] << 1) | c;
+		}
+		else
+		{
+			out = BIT(m_d[dst], 0);
+			m_d[dst] = (m_d[dst] >> 1) | (c << 31);
+		}
+		m_psw = (m_psw & ~FLAG_CF) | (out ? FLAG_CF : 0);
+		set_nz32(m_d[dst]);
+		break;
+	}
+	case 0x9: // asl Dm,Dn
+	case 0xa: // lsr Dm,Dn
+	case 0xb: // asr Dm,Dn
+		do_shift((op2 >> 4) - 0x9, dst, m_d[src]);
+		break;
+	case 0xd: // ext Dn
+		if (op2 < 0xd4)
+			m_mdr = BIT(m_d[dst], 31) ? 0xffffffff : 0;
+		else
+			logerror("illegal F2 %02X @ %08X\n", op2, start_pc);
+		break;
+	case 0xe:
+		if (op2 < 0xe4)      // mov mdr,Dn
+			m_d[dst] = m_mdr;
+		else if (op2 < 0xe8) // mov psw,Dn
+			m_d[dst] = m_psw;
+		else
+			logerror("illegal F2 %02X @ %08X\n", op2, start_pc);
+		break;
+	case 0xf:
+		if (BIT(op2, 1))
+		{
+			if (BIT(op2, 0))  // mov Dm,psw
+				m_psw = m_d[src];
+			else              // mov Dm,mdr
+				m_mdr = m_d[src];
+		}
+		else if (!BIT(op2, 0)) // mov Am,sp
+		{
+			m_sp = m_a[src];
+		}
+		else
+		{
+			logerror("illegal F2 %02X @ %08X\n", op2, start_pc);
+		}
+		break;
+	default:
+		logerror("unimplemented F2 %02X @ %08X\n", op2, start_pc);
+		break;
 	}
 	m_pc = start_pc + 2;
 }
 
-// 0xF3: 32-bit indexed load/store, EA = aM + dI. Always 2 bytes.
+// 0xf3: 32-bit indexed load/store, EA = An + Di. Always 2 bytes.
 void mn10300_device::execute_f3()
 {
-	const uint32_t start_pc = m_pc - 1;
-	const uint8_t op2 = read_arg8(m_pc);
-	const bool    store  = op2 & 0x40;
-	const bool    a_reg  = op2 & 0x80;
-	const int     reg    = (op2 >> 4) & 3;
-	const int     dI     = (op2 >> 2) & 3;
-	const int     am     = op2 & 3;
-	const uint32_t ea    = m_a[am] + m_d[dI];
+	const u32 start_pc = m_pc - 1;
+	const u8 op2 = read_arg8(m_pc);
+	const u32 ea = m_a[op2 & 3] + m_d[BIT(op2, 2, 2)];
+	u32 &reg = BIT(op2, 7) ? m_a[BIT(op2, 4, 2)] : m_d[BIT(op2, 4, 2)];
 
-	if (store) write_mem32(ea, a_reg ? m_a[reg] : m_d[reg]);
-	else      (a_reg ? m_a[reg] : m_d[reg]) = read_mem32(ea);
+	if (BIT(op2, 6))
+		write_mem32(ea, reg);
+	else
+		reg = read_mem32(ea);
 	m_pc = start_pc + 2;
 }
 
-// 0xF4: byte/half indexed load/store, EA = aM + dI. Always 2 bytes.
+// 0xf4: byte and halfword indexed load/store, EA = An + Di. Always 2 bytes.
 void mn10300_device::execute_f4()
 {
-	const uint32_t start_pc = m_pc - 1;
-	const uint8_t op2 = read_arg8(m_pc);
-	const bool    half   = op2 & 0x80;   // movhu vs movbu
-	const bool    store  = op2 & 0x40;
-	const int     reg    = (op2 >> 4) & 3;
-	const int     dI     = (op2 >> 2) & 3;
-	const int     am     = op2 & 3;
-	const uint32_t ea    = m_a[am] + m_d[dI];
+	const u32 start_pc = m_pc - 1;
+	const u8 op2 = read_arg8(m_pc);
+	const u32 ea = m_a[op2 & 3] + m_d[BIT(op2, 2, 2)];
+	const int reg = BIT(op2, 4, 2);
 
-	if (store) { if (half) write_mem16(ea, m_d[reg]); else write_mem8(ea, m_d[reg]); }
-	else       { m_d[reg] = half ? read_mem16(ea) : read_mem8(ea); }
+	typed_load_store(BIT(op2, 7) ? 3 : 2, false, reg, ea, BIT(op2, 6));
 	m_pc = start_pc + 2;
 }
 
-// 0xFA: imm16 / disp16 forms. Always 4 bytes (op, op2, imm16-lo, imm16-hi).
-void mn10300_device::execute_fa()
+// 0xf5: AM33 moves into the extended multiply registers. Always 2 bytes.
+void mn10300_device::execute_f5()
 {
-	const uint32_t start_pc = m_pc - 1;
-	const uint8_t op2 = read_arg8(m_pc);
-	const uint16_t imm16 = read_arg16(m_pc + 1);   // operand at start+2
+	const u32 start_pc = m_pc - 1;
+	const u8 op2 = read_arg8(m_pc);
+	const int dst = op2 & 3;
+	const int src = BIT(op2, 2, 2);
+
+	switch (op2 >> 4)
+	{
+	case 0x0: // putx Dn
+		m_mdrq = m_d[dst];
+		break;
+	case 0x1: // putchclx Dm,Dn
+		m_mcrh = m_d[src];
+		m_mcrl = m_d[dst];
+		break;
+	default:
+		logerror("unimplemented F5 %02X @ %08X\n", op2, start_pc);
+		break;
+	}
+	m_pc = start_pc + 2;
+}
+
+// 0xf6: AM33 multiply, saturate and extended-register moves. Always 2 bytes.
+void mn10300_device::execute_f6()
+{
+	const u32 start_pc = m_pc - 1;
+	const u8 op2 = read_arg8(m_pc);
+	const int dst = op2 & 3;
+	const int src = BIT(op2, 2, 2);
+
+	switch (op2 >> 4)
+	{
+	case 0x0: // mulq Dm,Dn
+	{
+		const s64 t = s64(s32(m_d[dst])) * s32(m_d[src]);
+		m_d[dst] = u32(t);
+		m_mdrq = u32(u64(t) >> 32);
+		set_logic_flags(m_d[dst]);
+		break;
+	}
+	case 0x1: // mulqu Dm,Dn
+	{
+		const u64 t = u64(m_d[dst]) * m_d[src];
+		m_d[dst] = u32(t);
+		m_mdrq = u32(t >> 32);
+		set_logic_flags(m_d[dst]);
+		break;
+	}
+	case 0x4: // sat16 Dm,Dn
+		m_d[dst] = u32(std::clamp<s32>(s32(m_d[src]), -0x8000, 0x7fff));
+		break;
+	case 0x5: // sat24 Dm,Dn
+		m_d[dst] = u32(std::clamp<s32>(s32(m_d[src]), -0x800000, 0x7fffff));
+		break;
+	case 0x7: // bsch Dm,Dn: position of the highest set bit of Dm's low half, 0 if none
+	{
+		const u32 v = m_d[src] & 0xffff;
+		m_d[dst] = v ? u32(31 - std::countl_zero(v)) : 0;
+		break;
+	}
+	case 0xc: // getchx Dn
+		m_d[dst] = m_mcrh;
+		break;
+	case 0xd: // getclx Dn
+		m_d[dst] = m_mcrl;
+		break;
+	case 0xf: // getx Dn
+		m_d[dst] = m_mdrq;
+		break;
+	default:
+		logerror("unimplemented F6 %02X @ %08X\n", op2, start_pc);
+		break;
+	}
+	m_pc = start_pc + 2;
+}
+
+// 0xf8: 8-bit immediate and displacement forms. Always 3 bytes.
+void mn10300_device::execute_f8()
+{
+	const u32 start_pc = m_pc - 1;
+	const u8 op2 = read_arg8(m_pc);
+	const u8 b = read_arg8(m_pc + 1);
+	const s32 sdisp = util::sext(b, 8);
 	const int dst = op2 & 3;
 
 	if (op2 < 0x80)
 	{
-		// mov/movbu/movhu (disp16,aM): type=bits[6:5], bit4=dir(store), reg=bits[3:2], aM=bits[1:0]
-		const int type = (op2 >> 5) & 3;   // 0=mov.d 1=mov.a 2=movbu.d 3=movhu.d
-		const bool store = op2 & 0x10;
-		const int r = (op2 >> 2) & 3, am = op2 & 3;
-		const uint32_t ea = m_a[am] + (int32_t)(int16_t)imm16;
-		switch (type)
-		{
-			case 0: if (store) write_mem32(ea, m_d[r]); else m_d[r] = read_mem32(ea); break;
-			case 1: if (store) write_mem32(ea, m_a[r]); else m_a[r] = read_mem32(ea); break;
-			case 2: if (store) write_mem8 (ea, m_d[r]); else m_d[r] = read_mem8 (ea); break;
-			case 3: if (store) write_mem16(ea, m_d[r]); else m_d[r] = read_mem16(ea); break;
-		}
+		// mov/movbu/movhu between a register and (d8,An)
+		const int type = BIT(op2, 5, 2);
+		typed_load_store(type, type == 1, BIT(op2, 2, 2), m_a[dst] + sdisp, BIT(op2, 4));
+	}
+	else if ((op2 & 0xf2) == 0x92)
+	{
+		// movbu/movhu Dm,(d8,sp) (d8 zero-extended)
+		typed_load_store(op2 & 3, false, BIT(op2, 2, 2), m_sp + b, true);
 	}
 	else
 	{
-		switch (op2 & 0xFC)
+		switch (op2 & 0xfc)
 		{
-			case 0xC0: m_d[dst] = do_add(m_d[dst], (int32_t)(int16_t)imm16, 0); break; // add imm16,dD (sx)
-			case 0xD0: m_a[dst] = do_add(m_a[dst], (int32_t)(int16_t)imm16, 0); break; // add imm16,aD (sx)
-			case 0xC8: do_sub(m_d[dst], (int32_t)(int16_t)imm16, 0); break;            // cmp imm16,dD (sx)
-			case 0xD8: do_sub(m_a[dst], (uint32_t)imm16, 0); break;                    // cmp imm16,aD (zx)
-			case 0xE0: m_d[dst] &= (uint32_t)imm16; set_logic_flags(m_d[dst]); break;  // and imm16,dD (zx)
-			case 0xE4: m_d[dst] |= (uint32_t)imm16; set_logic_flags(m_d[dst]); break;  // or
-			case 0xE8: m_d[dst] ^= (uint32_t)imm16; set_logic_flags(m_d[dst]); break;  // xor
-			case 0xEC: set_logic_flags(m_d[dst] & imm16); break;                   // btst imm16,dD (zx)
-			case 0x80: case 0x84: case 0x88: case 0x8C:                           // mov aM,(abs16)
-				if (op2 & 3)
-					logerror("illegal FA %02X @ %08X\n", op2, start_pc);
-				else
-					write_mem32(imm16, m_a[(op2 >> 2) & 3]);
-				break;
-			case 0xF0: case 0xF4: case 0xF8:                                       // bset/bclr/btst imm8,(d8,aN)
+		case 0xb8: // movbu (d8,sp),Dn
+		case 0xbc: // movhu (d8,sp),Dn
+			typed_load_store(BIT(op2, 2, 2), false, dst, m_sp + b, false);
+			break;
+		case 0xc0: // asl imm8,Dn
+		case 0xc4: // lsr imm8,Dn
+		case 0xc8: // asr imm8,Dn
+			do_shift(BIT(op2, 2, 2), dst, b);
+			break;
+		case 0xe0: // and imm8,Dn
+			m_d[dst] &= b;
+			set_logic_flags(m_d[dst]);
+			break;
+		case 0xe4: // or imm8,Dn
+			m_d[dst] |= b;
+			set_logic_flags(m_d[dst]);
+			break;
+		case 0xec: // btst imm8,Dn
+			set_logic_flags(m_d[dst] & b);
+			break;
+		case 0xe8: // bvc, bvs, bnc, bns
+		{
+			bool take = false;
+			switch (dst)
 			{
-				const uint32_t ea = m_a[dst] + int8_t(imm16 & 0xff);
-				const uint8_t mask = imm16 >> 8;
-				const uint8_t v = read_mem8(ea);
-				set_logic_flags(v & mask);
-				if ((op2 & 0xfc) == 0xf0)
-					write_mem8(ea, v | mask);
-				else if ((op2 & 0xfc) == 0xf4)
-					write_mem8(ea, v & ~mask);
-				break;
+			case 0: take = !(m_psw & FLAG_VF); break;
+			case 1: take = m_psw & FLAG_VF; break;
+			case 2: take = !(m_psw & FLAG_NF); break;
+			case 3: take = m_psw & FLAG_NF; break;
 			}
-			case 0xB0: m_a[dst] = read_mem32(m_sp + imm16); break;                     // mov (disp16,sp),aD
-			case 0xB4: m_d[dst] = read_mem32(m_sp + imm16); break;                     // mov (disp16,sp),dD
-			case 0xB8: m_d[dst] = read_mem8 (m_sp + imm16); break;                     // movbu (disp16,sp),dD
-			case 0xBC: m_d[dst] = read_mem16(m_sp + imm16); break;                     // movhu (disp16,sp),dD
-			// store reg -> (disp16,sp): op2 = 1001_rrtt, reg=bits[3:2], tt=bits[1:0]
-			// (0 mov aM / 1 mov dM / 2 movbu dM / 3 movhu dM). binutils 0xfa90..0xfa93.
-			case 0x90: case 0x94: case 0x98: case 0x9C:
+			if (take)
 			{
-				const int reg = (op2 >> 2) & 3;
-				const uint32_t ea = m_sp + imm16;
-				switch (op2 & 3)
-				{
-					case 0: write_mem32(ea, m_a[reg]); break; // mov   aM,(disp16,sp)
-					case 1: write_mem32(ea, m_d[reg]); break; // mov   dM,(disp16,sp)
-					case 2: write_mem8 (ea, m_d[reg]); break; // movbu dM,(disp16,sp)
-					case 3: write_mem16(ea, m_d[reg]); break; // movhu dM,(disp16,sp)
-				}
-				break;
+				m_pc = start_pc + sdisp;
+				return;
 			}
-			case 0xA0: m_a[dst] = read_mem32(imm16); break;                            // mov (abs16),aD
-			case 0xFC:
-				if (op2 == 0xFE)      { m_sp += (int32_t)(int16_t)imm16; }             // add imm16,sp
-				else if (op2 == 0xFF) { write_mem32(m_sp, start_pc + 4); m_mdr = start_pc + 4; m_pc = start_pc + (int32_t)(int16_t)imm16; return; } // calls (disp16): PC->[SP], SP unchanged
-				else if (op2 == 0xFC) { m_psw &= (uint32_t)imm16; }                    // and imm16,psw
-				else if (op2 == 0xFD) { m_psw |= (uint32_t)imm16; }                    // or imm16,psw
-				break;
-			default:
-				logerror("MN10300: unimplemented FA %02X @ %08X\n", op2, start_pc);
-				break;
+			break;
+		}
+		case 0xf0: // mov (d8,An),sp
+			m_sp = read_mem32(m_a[dst] + sdisp);
+			break;
+		case 0xf4: // mov sp,(d8,An)
+			write_mem32(m_a[dst] + sdisp, m_sp);
+			break;
+		case 0xfc:
+			if (op2 == 0xfe) // add imm8,sp
+				m_sp += sdisp;
+			else
+				logerror("unimplemented F8 %02X @ %08X\n", op2, start_pc);
+			break;
+		default:
+			logerror("unimplemented F8 %02X @ %08X\n", op2, start_pc);
+			break;
+		}
+	}
+	m_pc = start_pc + 3;
+}
+
+// 0xfa: 16-bit immediate and displacement forms. Always 4 bytes.
+void mn10300_device::execute_fa()
+{
+	const u32 start_pc = m_pc - 1;
+	const u8 op2 = read_arg8(m_pc);
+	const u16 imm16 = read_arg16(m_pc + 1);
+	const int dst = op2 & 3;
+
+	if (op2 < 0x80)
+	{
+		// mov/movbu/movhu between a register and (d16,An)
+		const int type = BIT(op2, 5, 2);
+		typed_load_store(type, type == 1, BIT(op2, 2, 2), m_a[dst] + util::sext(imm16, 16), BIT(op2, 4));
+	}
+	else
+	{
+		switch (op2 & 0xfc)
+		{
+		case 0x80: case 0x84: case 0x88: case 0x8c: // mov Am,(abs16)
+			if (op2 & 3)
+				logerror("illegal FA %02X @ %08X\n", op2, start_pc);
+			else
+				write_mem32(imm16, m_a[BIT(op2, 2, 2)]);
+			break;
+		case 0x90: case 0x94: case 0x98: case 0x9c:
+		{
+			// mov Am / mov Dm / movbu Dm / movhu Dm,(d16,sp) (d16 zero-extended)
+			const int type = op2 & 3;
+			typed_load_store(type, type == 0, BIT(op2, 2, 2), m_sp + imm16, true);
+			break;
+		}
+		case 0xa0: // mov (abs16),An
+			m_a[dst] = read_mem32(imm16);
+			break;
+		case 0xb0: case 0xb4: case 0xb8: case 0xbc:
+		{
+			// mov (d16,sp),An / mov / movbu / movhu (d16,sp),Dn (d16 zero-extended)
+			const int type = BIT(op2, 2, 2);
+			typed_load_store(type, type == 0, dst, m_sp + imm16, false);
+			break;
+		}
+		case 0xc0: // add imm16,Dn (sign-extended)
+			m_d[dst] = do_add(m_d[dst], util::sext(imm16, 16), 0);
+			break;
+		case 0xc8: // cmp imm16,Dn (sign-extended)
+			do_sub(m_d[dst], util::sext(imm16, 16), 0);
+			break;
+		case 0xd0: // add imm16,An (sign-extended)
+			m_a[dst] = do_add(m_a[dst], util::sext(imm16, 16), 0);
+			break;
+		case 0xd8: // cmp imm16,An (zero-extended)
+			do_sub(m_a[dst], imm16, 0);
+			break;
+		case 0xe0: // and imm16,Dn
+			m_d[dst] &= imm16;
+			set_logic_flags(m_d[dst]);
+			break;
+		case 0xe4: // or imm16,Dn
+			m_d[dst] |= imm16;
+			set_logic_flags(m_d[dst]);
+			break;
+		case 0xe8: // xor imm16,Dn
+			m_d[dst] ^= imm16;
+			set_logic_flags(m_d[dst]);
+			break;
+		case 0xec: // btst imm16,Dn
+			set_logic_flags(m_d[dst] & imm16);
+			break;
+		case 0xf0: // bset imm8,(d8,An)
+		case 0xf4: // bclr imm8,(d8,An)
+		case 0xf8: // btst imm8,(d8,An)
+		{
+			const u32 ea = m_a[dst] + util::sext(imm16 & 0xff, 8);
+			const u8 mask = imm16 >> 8;
+			const u8 v = read_mem8(ea);
+			set_logic_flags(v & mask);
+			if ((op2 & 0xfc) == 0xf0)
+				write_mem8(ea, v | mask);
+			else if ((op2 & 0xfc) == 0xf4)
+				write_mem8(ea, v & ~mask);
+			break;
+		}
+		case 0xfc:
+			if (op2 == 0xfc)      // and imm16,psw
+			{
+				m_psw &= imm16;
+			}
+			else if (op2 == 0xfd) // or imm16,psw
+			{
+				m_psw |= imm16;
+			}
+			else if (op2 == 0xfe) // add imm16,sp
+			{
+				m_sp += util::sext(imm16, 16);
+			}
+			else                  // calls d16: the return address goes at (sp) and in MDR
+			{
+				write_mem32(m_sp, start_pc + 4);
+				m_mdr = start_pc + 4;
+				m_pc = start_pc + util::sext(imm16, 16);
+				return;
+			}
+			break;
+		default:
+			logerror("unimplemented FA %02X @ %08X\n", op2, start_pc);
+			break;
 		}
 	}
 	m_pc = start_pc + 4;
 }
 
-// 0xFE: bit set/clear/test on an absolute address. 5 bytes (abs16) or 7 (abs32).
+// 0xfc: 32-bit immediate, displacement and absolute forms. Always 6 bytes.
+void mn10300_device::execute_fc()
+{
+	const u32 start_pc = m_pc - 1;
+	const u8 op2 = read_arg8(m_pc);
+	const u32 imm = read_arg32(m_pc + 1);
+	const int dst = op2 & 3;
+
+	if (op2 < 0x80)
+	{
+		// mov/movbu/movhu between a register and (d32,An)
+		const int type = BIT(op2, 5, 2);
+		typed_load_store(type, type == 1, BIT(op2, 2, 2), m_a[dst] + imm, BIT(op2, 4));
+	}
+	else if (op2 < 0xa0)
+	{
+		// store to (d32,sp) or (abs32)
+		const int type = op2 & 3;
+		typed_load_store(type, type == 0, BIT(op2, 2, 2), BIT(op2, 4) ? m_sp + imm : imm, true);
+	}
+	else if (op2 < 0xc0)
+	{
+		// load from (d32,sp) or (abs32)
+		const int type = BIT(op2, 2, 2);
+		typed_load_store(type, type == 0, dst, BIT(op2, 4) ? m_sp + imm : imm, false);
+	}
+	else
+	{
+		switch (op2 & 0xfc)
+		{
+		case 0xc0: m_d[dst] = do_add(m_d[dst], imm, 0); break;  // add imm32,Dn
+		case 0xc4: m_d[dst] = do_sub(m_d[dst], imm, 0); break;  // sub imm32,Dn
+		case 0xc8: do_sub(m_d[dst], imm, 0); break;             // cmp imm32,Dn
+		case 0xcc: m_d[dst] = imm; break;                       // mov imm32,Dn
+		case 0xd0: m_a[dst] = do_add(m_a[dst], imm, 0); break;  // add imm32,An
+		case 0xd4: m_a[dst] = do_sub(m_a[dst], imm, 0); break;  // sub imm32,An
+		case 0xd8: do_sub(m_a[dst], imm, 0); break;             // cmp imm32,An
+		case 0xdc: m_a[dst] = imm; break;                       // mov imm32,An
+		case 0xe0: // and imm32,Dn
+			m_d[dst] &= imm;
+			set_logic_flags(m_d[dst]);
+			break;
+		case 0xe4: // or imm32,Dn
+			m_d[dst] |= imm;
+			set_logic_flags(m_d[dst]);
+			break;
+		case 0xe8: // xor imm32,Dn
+			m_d[dst] ^= imm;
+			set_logic_flags(m_d[dst]);
+			break;
+		case 0xec: // btst imm32,Dn
+			set_logic_flags(m_d[dst] & imm);
+			break;
+		case 0xfc:
+			if (op2 == 0xfe)      // add imm32,sp
+			{
+				m_sp += imm;
+			}
+			else if (op2 == 0xff) // calls d32: the return address goes at (sp) and in MDR
+			{
+				write_mem32(m_sp, start_pc + 6);
+				m_mdr = start_pc + 6;
+				m_pc = start_pc + imm;
+				return;
+			}
+			else
+			{
+				logerror("unimplemented FC %02X @ %08X\n", op2, start_pc);
+			}
+			break;
+		default:
+			logerror("unimplemented FC %02X @ %08X\n", op2, start_pc);
+			break;
+		}
+	}
+	m_pc = start_pc + 6;
+}
+
+// 0xfe: bset/bclr/btst imm8 on an absolute byte, 7 bytes for abs32 and 5 for abs16.
 void mn10300_device::execute_fe()
 {
-	const uint32_t start_pc = m_pc - 1;
-	const uint8_t op2 = read_arg8(m_pc);
-	uint32_t addr; uint8_t imm8; int len;
+	const u32 start_pc = m_pc - 1;
+	const u8 op2 = read_arg8(m_pc);
+	u32 addr;
+	u8 mask;
+	int len;
 
-	if (op2 <= 0x02)      { addr = read_arg32(m_pc + 1); imm8 = read_arg8(m_pc + 5); len = 7; }
-	else if (op2 >= 0x80 && op2 <= 0x82) { addr = read_arg16(m_pc + 1); imm8 = read_arg8(m_pc + 3); len = 5; }
-	else { logerror("MN10300: illegal FE %02X @ %08X\n", op2, start_pc); m_pc = start_pc + 2; return; }
+	if (op2 <= 0x02)
+	{
+		addr = read_arg32(m_pc + 1);
+		mask = read_arg8(m_pc + 5);
+		len = 7;
+	}
+	else if (op2 >= 0x80 && op2 <= 0x82)
+	{
+		addr = read_arg16(m_pc + 1);
+		mask = read_arg8(m_pc + 3);
+		len = 5;
+	}
+	else
+	{
+		logerror("illegal FE %02X @ %08X\n", op2, start_pc);
+		m_pc = start_pc + 2;
+		return;
+	}
 
-	const uint8_t v = read_mem8(addr);
-	set_logic_flags(v & imm8);
-	const int kind = op2 & 0x0F;
-	if (kind == 0x00)      write_mem8(addr, v | imm8);    // bset
-	else if (kind == 0x01) write_mem8(addr, v & ~imm8);   // bclr
-	// kind == 0x02: btst (no write)
+	const u8 v = read_mem8(addr);
+	set_logic_flags(v & mask);
+	if ((op2 & 0x0f) == 0x00)
+		write_mem8(addr, v | mask);
+	else if ((op2 & 0x0f) == 0x01)
+		write_mem8(addr, v & ~mask);
 	m_pc = start_pc + len;
-}
-
-void mn10300_device::store_regs(uint8_t mask)  // push (regs -> stack, SP down)
-{
-	if (mask & 0x04) { push32(m_e[2]); push32(m_e[3]); }
-	if (mask & 0x02) { push32(m_e[4]); push32(m_e[5]); push32(m_e[6]); push32(m_e[7]); }
-	if (mask & 0x01) { push32(m_e[0]); push32(m_e[1]); m_sp -= 16; } // + MDRQ/MCRH/MCRL/MCVF gap
-	if (mask & 0x80) push32(m_d[2]);
-	if (mask & 0x40) push32(m_d[3]);
-	if (mask & 0x20) push32(m_a[2]);
-	if (mask & 0x10) push32(m_a[3]);
-	if (mask & 0x08) // {D0,D1,A0,A1,MDR,LIR,LAR} + a 4-byte dummy slot
-	{
-		push32(m_d[0]); push32(m_d[1]); push32(m_a[0]); push32(m_a[1]);
-		push32(m_mdr);  push32(m_lir);  push32(m_lar);  m_sp -= 4;
-	}
-}
-void mn10300_device::load_regs(uint8_t mask)   // pop (stack -> regs, SP up); exact reverse
-{
-	if (mask & 0x08) // {D0,D1,A0,A1,MDR,LIR,LAR} + dummy (reverse of store)
-	{
-		m_sp += 4;   // skip the dummy slot
-		m_lar = pop32();
-		m_lir = pop32();
-		m_mdr = pop32();
-		m_a[1] = pop32();
-		m_a[0] = pop32();
-		m_d[1] = pop32();
-		m_d[0] = pop32();
-	}
-	if (mask & 0x10) m_a[3] = pop32();
-	if (mask & 0x20) m_a[2] = pop32();
-	if (mask & 0x40) m_d[3] = pop32();
-	if (mask & 0x80) m_d[2] = pop32();
-	if (mask & 0x01) { m_sp += 16; m_e[1] = pop32(); m_e[0] = pop32(); } // MDRQ/... gap + E0/E1
-	if (mask & 0x02) { m_e[7] = pop32(); m_e[6] = pop32(); m_e[5] = pop32(); m_e[4] = pop32(); }
-	if (mask & 0x04) { m_e[3] = pop32(); m_e[2] = pop32(); }
-}
-
-void mn10300_device::store_regs_at(uint32_t base, uint8_t mask)
-{
-	int32_t off = -4;
-	if (mask & 0x04) { write_mem32(base + off, m_e[2]); off -= 4; write_mem32(base + off, m_e[3]); off -= 4; }
-	if (mask & 0x02) { write_mem32(base + off, m_e[4]); off -= 4; write_mem32(base + off, m_e[5]); off -= 4;
-					   write_mem32(base + off, m_e[6]); off -= 4; write_mem32(base + off, m_e[7]); off -= 4; }
-	if (mask & 0x01) { off -= 16; write_mem32(base + off, m_e[0]); off -= 4; write_mem32(base + off, m_e[1]); off -= 4; }
-	if (mask & 0x80) { write_mem32(base + off, m_d[2]); off -= 4; }
-	if (mask & 0x40) { write_mem32(base + off, m_d[3]); off -= 4; }
-	if (mask & 0x20) { write_mem32(base + off, m_a[2]); off -= 4; }
-	if (mask & 0x10) { write_mem32(base + off, m_a[3]); off -= 4; }
-	if (mask & 0x08) { write_mem32(base + off, m_d[0]); off -= 4; write_mem32(base + off, m_d[1]); off -= 4;
-					   write_mem32(base + off, m_a[0]); off -= 4; write_mem32(base + off, m_a[1]); off -= 4;
-					   write_mem32(base + off, m_mdr); off -= 4; write_mem32(base + off, m_lir); off -= 4;
-					   write_mem32(base + off, m_lar); off -= 4; }
-}
-void mn10300_device::load_regs_at(uint32_t base, uint8_t mask)
-{
-	int32_t off = -4;
-	if (mask & 0x04) { m_e[2] = read_mem32(base + off); off -= 4; m_e[3] = read_mem32(base + off); off -= 4; }
-	if (mask & 0x02) { m_e[4] = read_mem32(base + off); off -= 4; m_e[5] = read_mem32(base + off); off -= 4;
-					   m_e[6] = read_mem32(base + off); off -= 4; m_e[7] = read_mem32(base + off); off -= 4; }
-	if (mask & 0x01) { off -= 16; m_e[0] = read_mem32(base + off); off -= 4; m_e[1] = read_mem32(base + off); off -= 4; }
-	if (mask & 0x80) { m_d[2] = read_mem32(base + off); off -= 4; }
-	if (mask & 0x40) { m_d[3] = read_mem32(base + off); off -= 4; }
-	if (mask & 0x20) { m_a[2] = read_mem32(base + off); off -= 4; }
-	if (mask & 0x10) { m_a[3] = read_mem32(base + off); off -= 4; }
-	if (mask & 0x08) { m_d[0] = read_mem32(base + off); off -= 4; m_d[1] = read_mem32(base + off); off -= 4;
-					   m_a[0] = read_mem32(base + off); off -= 4; m_a[1] = read_mem32(base + off); off -= 4;
-					   m_mdr = read_mem32(base + off); off -= 4; m_lir = read_mem32(base + off); off -= 4;
-					   m_lar = read_mem32(base + off); off -= 4; }
 }

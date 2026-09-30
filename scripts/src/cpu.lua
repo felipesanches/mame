@@ -4407,7 +4407,6 @@ if CPUS["MN10300"] then
 	files {
 		MAME_DIR .. "src/devices/cpu/mn10300/mn10300.cpp",
 		MAME_DIR .. "src/devices/cpu/mn10300/mn10300.h",
-		MAME_DIR .. "src/devices/cpu/mn10300/mn10300_insn_length.h",
 	}
 end
 
