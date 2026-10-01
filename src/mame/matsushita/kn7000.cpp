@@ -734,7 +734,7 @@ void kn_sd_state::machine_reset()
 	if (!BIT(m_sdcover->read(), 0) && m_sdcard->get_card_present())
 		m_sd_insert_timer->adjust(attotime::from_seconds(6));
 	else
-		m_sd_insert_timer->adjust(attotime::never);
+		m_sd_insert_timer->enable(false);
 
 	m_gpio8004 = 0xffff;
 	m_sdcard->spi_ss_w(0);
