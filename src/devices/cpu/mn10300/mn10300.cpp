@@ -221,6 +221,8 @@ void mn10300_device::device_reset()
 
 	for (unsigned ch = 0; ch < NUM_SIO; ch++)
 	{
+		if (BIT(m_sio_config[ch], 14))
+			m_sio_rx_enable_cb[ch](0);
 		m_sio_config[ch] = 0;
 		m_sio_control[ch] = 0;
 		m_sio_rx_full[ch] = false;
@@ -559,6 +561,8 @@ TIMER_CALLBACK_MEMBER(mn10300_device::sio_tx_shifted)
 template <unsigned Ch>
 void mn10300_device::sio_rx_w(u8 data)
 {
+	if (!BIT(m_sio_config[Ch], 14))
+		return;
 	m_sio_rxbuf[Ch] = data;
 	m_sio_rx_full[Ch] = true;
 	intc_assert(SIO0_GROUP + Ch * 2);
@@ -1128,7 +1132,7 @@ void mn10300_device::execute_run()
 			m_pc = start_pc + insn_length(op);
 			if ((op == 0xf9 || op == 0xfb || op == 0xfd) && op2 <= 0x03)
 			{
-				// udf00 imm,Dn: signed multiply by an immediate, high word to MDRQ
+				// mulq imm,Dn: signed multiply by an immediate, high word to MDRQ
 				const s32 imm = (op == 0xf9) ? util::sext(read_arg8(start_pc + 2), 8)
 						: (op == 0xfb) ? util::sext(read_arg16(start_pc + 2), 16)
 						: s32(read_arg32(start_pc + 2));
