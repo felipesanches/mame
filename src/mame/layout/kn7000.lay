@@ -81,7 +81,7 @@
 		<image state="0"><data><![CDATA[<svg width="82.438" height="45.072" viewBox="0 0 82.438 45.072"><path d="M 70.5664 1.5 A 143.1168 143.1168 0 0 0 68.2012 1.7637 A 143.1168 143.1168 0 0 0 7.164 23.8965 A 143.1168 143.1168 0 0 0 5.2344 25.1758 A 10.4102 10.4102 0 0 0 1.5 33.1621 A 10.4102 10.4102 0 0 0 11.9101 43.5723 A 10.4102 10.4102 0 0 0 16.8594 42.3203 A 122.4028 122.4028 0 0 1 18.4101 41.2949 A 122.4028 122.4028 0 0 1 70.7851 22.3164 A 122.4028 122.4028 0 0 1 72.5625 22.1192 A 10.4102 10.4102 0 0 0 80.9375 11.9102 A 10.4102 10.4102 0 0 0 77.2031 3.9238 A 143.1168 143.1168 0 0 0 75.2734 2.6445 A 10.4102 10.4102 0 0 0 70.5664 1.5 z" fill="#909097" stroke="#231f18" stroke-width="1.0"/></svg>]]></data></image>
 		<image state="1"><data><![CDATA[<svg width="82.438" height="45.072" viewBox="0 0 82.438 45.072"><path d="M 70.5664 1.5 A 143.1168 143.1168 0 0 0 68.2012 1.7637 A 143.1168 143.1168 0 0 0 7.164 23.8965 A 143.1168 143.1168 0 0 0 5.2344 25.1758 A 10.4102 10.4102 0 0 0 1.5 33.1621 A 10.4102 10.4102 0 0 0 11.9101 43.5723 A 10.4102 10.4102 0 0 0 16.8594 42.3203 A 122.4028 122.4028 0 0 1 18.4101 41.2949 A 122.4028 122.4028 0 0 1 70.7851 22.3164 A 122.4028 122.4028 0 0 1 72.5625 22.1192 A 10.4102 10.4102 0 0 0 80.9375 11.9102 A 10.4102 10.4102 0 0 0 77.2031 3.9238 A 143.1168 143.1168 0 0 0 75.2734 2.6445 A 10.4102 10.4102 0 0 0 70.5664 1.5 z" fill="#7a7a82" stroke="#231f18" stroke-width="1.0"/></svg>]]></data></image>
 	</element>
-	<element name="pm_rim"><image><data><![CDATA[<svg width="195.838" height="195.838" viewBox="0 0 195.838 195.838"><defs><radialGradient id="pm_rimg" gradientUnits="userSpaceOnUse" cx="97.919" cy="97.919" r="96.419"><stop offset="0.0000" stop-color="#2b2b2b"/><stop offset="1.0000" stop-color="#2b2b2b"/></radialGradient></defs><circle cx="97.919" cy="97.919" r="96.4189" fill="url(#pm_rimg)" stroke="#000" stroke-width="1.0"/></svg>]]></data></image></element>
+	<element name="pm_rim"><image><data><![CDATA[<svg width="195.838" height="195.838" viewBox="0 0 195.838 195.838"><circle cx="97.919" cy="97.919" r="96.4189" fill="#2b2b2b" stroke="#000" stroke-width="1.0"/></svg>]]></data></image></element>
 	<element name="pm_hub"><image><data><![CDATA[<svg width="95.223" height="95.223" viewBox="0 0 95.223 95.223"><defs><radialGradient id="pm_hubg" gradientUnits="userSpaceOnUse" cx="47.611" cy="47.611" r="46.111"><stop offset="0.0000" stop-color="#dbdbdb"/><stop offset="0.6200" stop-color="#898989"/><stop offset="1.0000" stop-color="#575757"/></radialGradient></defs><circle cx="47.6115" cy="47.6115" r="46.1115" fill="url(#pm_hubg)" stroke="#231f18" stroke-width="1.0"/></svg>]]></data></image></element>
 	<element name="pm_set">
 		<image state="0"><data><![CDATA[<svg width="50.497" height="50.497" viewBox="0 0 50.497 50.497"><circle cx="25.2485" cy="25.2485" r="23.7485" fill="#4a5c5e" stroke="#231f18" stroke-width="1.5"/></svg>]]></data></image>
@@ -913,7 +913,7 @@
 	</view>
 	<script><![CDATA[
 		-- Slider and knob library starts.
-		-- Can be copied as-is to other layouts.
+		-- Based on the slider library other layouts use, with an endless rotary knob added.
 		-----------------------------------------------------------------------
 		-- Widgets are kept per view, since each view normalises coordinates differently.
 		local view_widgets = {}   -- view (userdata) -> list of its widgets
@@ -1008,7 +1008,6 @@
 			local target = math.floor(w.angle * ROTARY_STEPS_PER_REV / (2 * math.pi) + 0.5)
 			if target ~= w.notch then
 				local v = (w.field.user_value + (target - w.notch)) % 101
-				if v < 0 then v = v + 101 end
 				w.field.user_value = v
 				w.notch = target
 			end
