@@ -1,4 +1,4 @@
-// license:GPL2+
+// license:GPL-2.0+
 // copyright-holders:Felipe Sanches
 
 #ifndef MAME_BUS_TECHNICS_KN6000_HDSX3_H

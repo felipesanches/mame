@@ -1,4 +1,4 @@
-// license:GPL2+
+// license:GPL-2.0+
 // copyright-holders:Felipe Sanches
 
 #ifndef MAME_BUS_TECHNICS_KN6000_KN6000_EXPANSION_H
