@@ -70,11 +70,13 @@
 #include "machine/spi_sdcard.h"
 #include "machine/upd765.h"
 
-#include "multibyte.h"
 #include "screen.h"
 #include "speaker.h"
 
+#include "multibyte.h"
+
 #include <algorithm>
+#include <iterator>
 
 #include "kn7000.lh"
 
@@ -469,7 +471,7 @@ void kn_state::tg_wave_addr_w(offs_t offset, u16 data, u16 mem_mask)
 template <int Tg>
 u16 kn_state::tg_wave_data_r()
 {
-	const u32 bank = m_tg_wave_bank[Tg] & 0x1ff;            // bit 15 is an enable
+	const u32 bank = m_tg_wave_bank[Tg] & 0x7fff;           // bit 15 is an enable
 	const u32 word = (m_tg_wave_addr[Tg] >> 1) & 0x3fff;
 	memory_region *const rgn = BIT(m_tg_wave_addr[Tg], 0)
 			? (Tg ? m_wave_sub_x.target() : m_wave_main_x.target())
@@ -488,7 +490,7 @@ u16 kn_state::kbd_fifo_r()
 {
 	if (m_kbd_head == m_kbd_tail)
 		return 0xffff;
-	const u16 data = m_kbd_fifo[m_kbd_tail & 63];
+	const u16 data = m_kbd_fifo[m_kbd_tail % std::size(m_kbd_fifo)];
 	if (!machine().side_effects_disabled())
 		m_kbd_tail++;
 	return data;
@@ -516,7 +518,9 @@ u16 kn_state::strap_r()
 
 INPUT_CHANGED_MEMBER(kn_state::kbd_key)
 {
-	m_kbd_fifo[m_kbd_head & 63] = newval ? (u16(param) | 0x6400) : (u16(param) | 0xff80);
+	if (u8(m_kbd_head - m_kbd_tail) >= std::size(m_kbd_fifo))
+		return;
+	m_kbd_fifo[m_kbd_head % std::size(m_kbd_fifo)] = newval ? (u16(param) | 0x6400) : (u16(param) | 0xff80);
 	m_kbd_head++;
 }
 
@@ -1010,7 +1014,7 @@ void kn_sd_state::kn2600(machine_config &config)
     IC21         C3FBMD000050   16 Mbit custom flash (user data).  The service
                                 manual captions this "32M FLASH", but that is
                                 copied from IC20: the firmware's flash device
-                                table (0x485CF9E0) accepts only 16 Mbit parts,
+                                table (0x485cf9e0) accepts only 16 Mbit parts,
                                 so a 32 Mbit device would fail its autoselect
                                 check.  It also builds a 0x200000 sector map,
                                 and the board decodes a 2 MB window at
