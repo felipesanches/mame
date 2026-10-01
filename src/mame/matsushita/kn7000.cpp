@@ -250,7 +250,7 @@ protected:
 	virtual void machine_reset() override ATTR_COLD;
 
 private:
-	optional_device<spi_sdcard_device> m_sdcard;
+	required_device<spi_sdcard_device> m_sdcard;
 	required_ioport m_sdsw;
 	required_ioport m_sdcover;
 	output_finder<2> m_sd_leds;              // SD in use, SD play/pause
@@ -258,7 +258,7 @@ private:
 	emu_timer *m_sd_insert_timer = nullptr;  // the power-on card-detect hack, see machine_reset()
 	emu_timer *m_sd_inuse_off = nullptr;
 	emu_timer *m_sd_led_timer = nullptr;
-	u8 m_sdmbx_miso = 0;
+	u8 m_sd_miso = 1;                        // the card's DO line
 	u16 m_gpio8004 = 0xffff;
 
 	void sd_add(machine_config &config) ATTR_COLD;
@@ -532,35 +532,33 @@ TIMER_CALLBACK_MEMBER(kn_state::volume_scan)
 void kn_sd_state::sd_update_carddetect()
 {
 	const bool cover_open = BIT(m_sdcover->read(), 0);
-	const bool card = m_sdcard && m_sdcard->get_card_present();
+	const bool card = m_sdcard->get_card_present();
 	m_maincpu->set_input_line(mn10300_device::IRQ4, (!cover_open && card) ? CLEAR_LINE : ASSERT_LINE);
 }
 
-// The firmware talks SPI to the card a byte at a time through this mailbox; each
-// write clocks a byte out and the reply in, then raises the sub tone generator's
-// interrupt.
+// The firmware talks SPI (mode 3) to the card a byte at a time through this
+// mailbox; each write clocks a byte out and the reply in, then raises the sub
+// tone generator's interrupt. A deselected card leaves DO pulled up.
 void kn_sd_state::sd_sdmbx_w(u16 data)
 {
 	m_sd_leds[0] = 1;
 	m_sd_inuse_off->adjust(attotime::from_msec(250));
 
-	if (m_sdcard)
+	u8 reply = 0;
+	for (int bit = 7; bit >= 0; bit--)
 	{
-		m_sdmbx_miso = 0;
-		for (int bit = 7; bit >= 0; bit--)
-		{
-			m_sdcard->spi_clock_w(CLEAR_LINE);
-			m_sdcard->spi_mosi_w(BIT(data, bit));
-			m_sdcard->spi_clock_w(ASSERT_LINE);
-		}
-		m_sdmbx_out = m_sdmbx_miso;
+		m_sdcard->spi_clock_w(0);
+		m_sdcard->spi_mosi_w(BIT(data, bit));
+		m_sdcard->spi_clock_w(1);
+		reply = (reply << 1) | m_sd_miso;
 	}
+	m_sdmbx_out = BIT(m_gpio8004, 1) ? 0xff : reply;
 	m_maincpu->set_input_line(mn10300_device::IRQ5, HOLD_LINE);
 }
 
 void kn_sd_state::sd_miso_w(int state)
 {
-	m_sdmbx_miso = (m_sdmbx_miso << 1) | (state & 1);
+	m_sd_miso = state ? 1 : 0;
 }
 
 // The six SD transport buttons, active low in bits 5-0; the rest reads back RAM
@@ -578,8 +576,7 @@ u16 kn_sd_state::gpio8004_r()
 void kn_sd_state::gpio8004_w(offs_t offset, u16 data, u16 mem_mask)
 {
 	COMBINE_DATA(&m_gpio8004);
-	if (m_sdcard)
-		m_sdcard->spi_ss_w(BIT(~m_gpio8004, 1));
+	m_sdcard->spi_ss_w(BIT(~m_gpio8004, 1));
 }
 
 TIMER_CALLBACK_MEMBER(kn_sd_state::sd_insert)
@@ -698,7 +695,7 @@ void kn_sd_state::machine_start()
 	m_sd_inuse_off = timer_alloc(FUNC(kn_sd_state::sd_inuse_off), this);
 	m_sd_led_timer = timer_alloc(FUNC(kn_sd_state::sd_led_scan), this);
 
-	save_item(NAME(m_sdmbx_miso));
+	save_item(NAME(m_sd_miso));
 	save_item(NAME(m_gpio8004));
 }
 
@@ -712,14 +709,14 @@ void kn_sd_state::machine_reset()
 	// the card is reported absent at reset and inserted 6 seconds later.
 	// FIXME: find what it really waits for at power on
 	m_maincpu->set_input_line(mn10300_device::IRQ4, ASSERT_LINE);
-	if (!BIT(m_sdcover->read(), 0) && m_sdcard && m_sdcard->get_card_present())
+	if (!BIT(m_sdcover->read(), 0) && m_sdcard->get_card_present())
 		m_sd_insert_timer->adjust(attotime::from_seconds(6));
 	else
 		m_sd_insert_timer->adjust(attotime::never);
 
 	m_gpio8004 = 0xffff;
-	if (m_sdcard)
-		m_sdcard->spi_ss_w(0);
+	m_sdcard->spi_ss_w(0);
+	m_sdcard->spi_clock_w(1);           // mode 3: the clock idles high
 }
 
 // The KN6000 and KN6500 read their library at 0x4c000000 without writing it
