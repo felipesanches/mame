@@ -4,11 +4,11 @@
 
     Technics SX-KN7000 and related MN10300-based keyboards
 
-    All five machines are built around a Panasonic MN103002A (MN10300 family,
-    AM33 core), running Panasonic's "MILK" object framework. LCD, control
-    panel, floppy, SD and MIDI are emulated. The tone generators' registers are
-    decoded, but they produce no sound: the wave ROMs are undumped and the
-    ADSP-21065L effects DSP is not emulated.
+    All five machines are built around a Panasonic MN103002A (MN1030 series),
+    running Panasonic's "MILK" object framework. LCD, control panel, floppy, SD
+    and MIDI are emulated. The tone generators' registers are decoded, but they
+    produce no sound: the wave ROMs are undumped and the ADSP-21065L effects
+    DSP is not emulated.
 
     Design notes: https://arqueologiadigital.github.io/technics-docs/kn7000-driver-internals/
 
@@ -71,6 +71,7 @@
 #include "machine/spi_sdcard.h"
 #include "machine/upd765.h"
 
+#include "multibyte.h"
 #include "screen.h"
 #include "speaker.h"
 
@@ -93,9 +94,11 @@ public:
 	void write(u8 data) { transmit_register_setup(data); }
 
 protected:
+	// device_t implementation
 	virtual void device_start() override ATTR_COLD { }
 	virtual void device_reset() override ATTR_COLD;
 
+	// device_serial_interface implementation
 	virtual void tra_callback() override { m_tx_cb(transmit_register_get_data_bit()); }
 	virtual void rcv_complete() override;
 
@@ -135,12 +138,12 @@ public:
 		: driver_device(mconfig, type, tag)
 		, m_maincpu(*this, "maincpu")
 		, m_screen(*this, "screen")
-		, m_customflash(*this, "custom_data")
-		, m_fdc(*this, "fdc")
 		, m_cpanel(*this, "cpanel")
 		, m_tonegen(*this, "tonegen")
-		, m_midi_uart(*this, "midi_uart%u", 0U)
 		, m_lcdbuf(*this, "lcdbuf")
+		, m_customflash(*this, "custom_data")
+		, m_fdc(*this, "fdc")
+		, m_midi_uart(*this, "midi_uart%u", 0U)
 		, m_wave_main_y(*this, "waveform_main_y")
 		, m_wave_main_x(*this, "waveform_main_x")
 		, m_wave_sub_y(*this, "waveform_sub_y")
@@ -157,8 +160,6 @@ public:
 	DECLARE_INPUT_CHANGED_MEMBER(kbd_key);
 
 protected:
-	enum { SIO_PANEL = 0, SIO_MIDI1 = 1, SIO_MIDI2 = 2 };
-
 	virtual void machine_start() override ATTR_COLD;
 	virtual void machine_reset() override ATTR_COLD;
 
@@ -172,17 +173,22 @@ protected:
 	void fdc_map(address_map &map) ATTR_COLD;
 
 	u32 screen_update_rgb565(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	u32 screen_update_rgb555_rotated(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	u32 screen_update_gray(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
+	u32 screen_update_rgb555(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 
 	required_device<mn10300_device> m_maincpu;
 	required_device<screen_device> m_screen;
-	required_device<fujitsu_29lv160b_device> m_customflash;
-	optional_device<n82077aa_device> m_fdc;
 	required_device<kn_cpanel_base_device> m_cpanel;
 	required_device<kn_tonegen_base_device> m_tonegen;
-	required_device_array<kn7000_sio_uart_device, 2> m_midi_uart;
 	required_shared_ptr<u32> m_lcdbuf;
+
+	u16 m_sdmbx_out = 0xff;
+
+private:
+	enum { SIO_PANEL = 0, SIO_MIDI1 = 1, SIO_MIDI2 = 2 };
+
+	required_device<fujitsu_29lv160b_device> m_customflash;
+	optional_device<n82077aa_device> m_fdc;
+	required_device_array<kn7000_sio_uart_device, 2> m_midi_uart;
 	optional_memory_region m_wave_main_y;
 	optional_memory_region m_wave_main_x;
 	optional_memory_region m_wave_sub_y;
@@ -194,7 +200,6 @@ protected:
 	required_ioport m_tempoknob;
 
 	emu_timer *m_vol_timer = nullptr;
-	u16 m_sdmbx_out = 0xff;
 	u16 m_sdspi_rate = 0;
 	u16 m_kbd_fifo[64];
 	u8 m_kbd_head = 0;
@@ -203,22 +208,19 @@ protected:
 	u16 m_tg_wave_bank[2];
 	u16 m_tg_wave_addr[2];
 
-private:
-	u16 io_r(offs_t offset, u16 mem_mask = ~0);
-	void io_w(offs_t offset, u16 data, u16 mem_mask = ~0);
-	u16 snd_r(offs_t offset, u16 mem_mask = ~0);
-	void snd_w(offs_t offset, u16 data, u16 mem_mask = ~0);
+	u32 screen_update_gray(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
+
+	template <u32 Base> u16 io_r(offs_t offset, u16 mem_mask = ~0);
+	template <u32 Base> void io_w(offs_t offset, u16 data, u16 mem_mask = ~0);
 	template <int Tg> void tg_addr_w(offs_t offset, u16 data, u16 mem_mask = ~0);
-	template <int Tg> void tg_data_w(offs_t offset, u16 data, u16 mem_mask = ~0);
+	template <int Tg> void tg_data_w(u16 data);
 	template <int Tg> void tg_wave_bank_w(offs_t offset, u16 data, u16 mem_mask = ~0);
 	template <int Tg> void tg_wave_addr_w(offs_t offset, u16 data, u16 mem_mask = ~0);
 	template <int Tg> u16 tg_wave_data_r();
 	u16 kbd_fifo_r();
 	u16 strap_r();
 	u16 sdmbx_r();
-	void sdmbx_w(offs_t offset, u16 data, u16 mem_mask = ~0);
-	u32 customflash_r(offs_t offset, u32 mem_mask = ~0);
-	void customflash_w(offs_t offset, u32 data, u32 mem_mask = ~0);
+	void sdmbx_w(u16 data);
 	void kn2400_map(address_map &map) ATTR_COLD;
 	TIMER_CALLBACK_MEMBER(volume_scan);
 };
@@ -263,7 +265,7 @@ private:
 	void kn2600_map(address_map &map) ATTR_COLD;
 
 	void sd_update_carddetect();
-	void sd_sdmbx_w(offs_t offset, u16 data, u16 mem_mask = ~0);
+	void sd_sdmbx_w(u16 data);
 	void sd_miso_w(int state);
 	u32 sdsw_r();
 	u16 gpio8004_r();
@@ -313,7 +315,7 @@ void kn_state::common_map(address_map &map)
 	map(0x8c000000, 0x8cffffff).ram().share("libram");
 	map(0x50000000, 0x503fffff).ram().share("workram");
 	map(0x90000000, 0x903fffff).ram().share("workram");
-	map(0x96800000, 0x969fffff).rw(FUNC(kn_state::customflash_r), FUNC(kn_state::customflash_w));
+	map(0x96800000, 0x969fffff).rw(m_customflash, FUNC(fujitsu_29lv160b_device::read), FUNC(fujitsu_29lv160b_device::write));
 	map(0x9c000000, 0x9cffffff).ram().share("lcdbuf");
 
 	map(0x41000000, 0x41ffffff).lr8(NAME([] () -> u8 { return 0x00; })).nopw();
@@ -321,13 +323,13 @@ void kn_state::common_map(address_map &map)
 
 	// On-chip registers the CPU core does not decode yet. The core's internal
 	// map takes precedence for the ones it does.
-	map(0x20000000, 0x2000ffff).rw(FUNC(kn_state::io_r), FUNC(kn_state::io_w));
-	map(0x32000000, 0x3200ffff).rw(FUNC(kn_state::io_r), FUNC(kn_state::io_w));
-	map(0x34000000, 0x3400ffff).rw(FUNC(kn_state::io_r), FUNC(kn_state::io_w));
-	map(0x36008000, 0x360080ff).rw(FUNC(kn_state::io_r), FUNC(kn_state::io_w));
+	map(0x20000000, 0x2000ffff).rw(FUNC(kn_state::io_r<0x20000000>), FUNC(kn_state::io_w<0x20000000>));
+	map(0x32000000, 0x3200ffff).rw(FUNC(kn_state::io_r<0x32000000>), FUNC(kn_state::io_w<0x32000000>));
+	map(0x34000000, 0x3400ffff).rw(FUNC(kn_state::io_r<0x34000000>), FUNC(kn_state::io_w<0x34000000>));
+	map(0x36008000, 0x360080ff).rw(FUNC(kn_state::io_r<0x36008000>), FUNC(kn_state::io_w<0x36008000>));
 	map(0x36008084, 0x36008085).lr16(NAME([] () -> u16 { return 0x0001; }));   // bit 0: panel link present
 
-	map(0x98000000, 0x9807ffff).rw(FUNC(kn_state::snd_r), FUNC(kn_state::snd_w));
+	map(0x98000000, 0x9807ffff).rw(FUNC(kn_state::io_r<0x98000000>), FUNC(kn_state::io_w<0x98000000>));
 	map(0x98020000, 0x9802000f).lr8(NAME([] () -> u8 { return 0xff; })).nopw();
 	map(0x98040000, 0x98040001).w(FUNC(kn_state::tg_addr_w<0>));
 	map(0x98040002, 0x98040003).w(FUNC(kn_state::tg_data_w<0>));
@@ -344,7 +346,7 @@ void kn_state::common_map(address_map &map)
 	map(0x9805000a, 0x9805000b).r(FUNC(kn_state::tg_wave_data_r<1>));
 	map(0x9805000c, 0x9805000d).rw(FUNC(kn_state::sdmbx_r), FUNC(kn_state::sdmbx_w));
 	map(0x9805000e, 0x9805000f).lrw16(
-			NAME([this] () { return m_sdspi_rate; }),
+			NAME([this] () -> u16 { return m_sdspi_rate; }),
 			NAME([this] (offs_t offset, u16 data, u16 mem_mask) { COMBINE_DATA(&m_sdspi_rate); }));
 	map(0x98070000, 0x98070001).r(FUNC(kn_state::strap_r));
 }
@@ -402,28 +404,19 @@ void kn_sd_state::kn2600_map(address_map &map)
 //  Handlers
 //**************************************************************************
 
+// Registers that are not emulated
+template <u32 Base>
 u16 kn_state::io_r(offs_t offset, u16 mem_mask)
 {
 	if (!machine().side_effects_disabled())
-		logerror("io_r +%06X mask %04X\n", offset << 1, mem_mask);
+		logerror("%s: unemulated read %08x & %04x\n", machine().describe_context(), Base + (offset << 1), mem_mask);
 	return 0;
 }
 
+template <u32 Base>
 void kn_state::io_w(offs_t offset, u16 data, u16 mem_mask)
 {
-	logerror("io_w +%06X = %04X mask %04X\n", offset << 1, data, mem_mask);
-}
-
-u16 kn_state::snd_r(offs_t offset, u16 mem_mask)
-{
-	if (!machine().side_effects_disabled())
-		logerror("snd_r +%06X mask %04X\n", offset << 1, mem_mask);
-	return 0;
-}
-
-void kn_state::snd_w(offs_t offset, u16 data, u16 mem_mask)
-{
-	logerror("snd_w +%06X = %04X mask %04X\n", offset << 1, data, mem_mask);
+	logerror("%s: unemulated write %08x = %04x & %04x\n", machine().describe_context(), Base + (offset << 1), data, mem_mask);
 }
 
 // Each tone generator takes a register address, then its data
@@ -434,7 +427,7 @@ void kn_state::tg_addr_w(offs_t offset, u16 data, u16 mem_mask)
 }
 
 template <int Tg>
-void kn_state::tg_data_w(offs_t offset, u16 data, u16 mem_mask)
+void kn_state::tg_data_w(u16 data)
 {
 	m_tonegen->tg_write(Tg, m_tg_addr[Tg], data);
 }
@@ -466,7 +459,7 @@ u16 kn_state::tg_wave_data_r()
 	const u32 a = (bank * 0x4000 + word) * 2;
 	if (a + 1 >= rgn->bytes())
 		return 0xffff;
-	return rgn->base()[a] | (rgn->base()[a + 1] << 8);
+	return get_u16le(rgn->base() + a);
 }
 
 // The key bed's event FIFO: the key index in the low byte, bit 7 set on
@@ -489,7 +482,7 @@ u16 kn_state::sdmbx_r()
 	return m_sdmbx_out;
 }
 
-void kn_state::sdmbx_w(offs_t offset, u16 data, u16 mem_mask)
+void kn_state::sdmbx_w(u16 data)
 {
 	m_maincpu->set_input_line(mn10300_device::IRQ5, HOLD_LINE);
 }
@@ -500,23 +493,6 @@ u16 kn_state::strap_r()
 	return 0x8006 | (m_rearsw->read() & 0x1000);
 }
 
-u32 kn_state::customflash_r(offs_t offset, u32 mem_mask)
-{
-	u32 data = 0;
-	if (ACCESSING_BITS_0_15)
-		data |= m_customflash->read(offset * 2);
-	if (ACCESSING_BITS_16_31)
-		data |= u32(m_customflash->read(offset * 2 + 1)) << 16;
-	return data;
-}
-
-void kn_state::customflash_w(offs_t offset, u32 data, u32 mem_mask)
-{
-	if (ACCESSING_BITS_0_15)
-		m_customflash->write(offset * 2, data & 0xffff);
-	if (ACCESSING_BITS_16_31)
-		m_customflash->write(offset * 2 + 1, data >> 16);
-}
 
 INPUT_CHANGED_MEMBER(kn_state::kbd_key)
 {
@@ -543,7 +519,7 @@ void kn_sd_state::sd_update_carddetect()
 // The firmware talks SPI to the card a byte at a time through this mailbox; each
 // write clocks a byte out and the reply in, then raises the sub tone generator's
 // interrupt.
-void kn_sd_state::sd_sdmbx_w(offs_t offset, u16 data, u16 mem_mask)
+void kn_sd_state::sd_sdmbx_w(u16 data)
 {
 	m_sd_leds[0] = 1;
 	m_sd_inuse_off->adjust(attotime::from_msec(250));
@@ -583,7 +559,7 @@ void kn_sd_state::gpio8004_w(offs_t offset, u16 data, u16 mem_mask)
 {
 	COMBINE_DATA(&m_gpio8004);
 	if (m_sdcard)
-		m_sdcard->spi_ss_w(BIT(m_gpio8004, 1) ? 0 : 1);
+		m_sdcard->spi_ss_w(BIT(~m_gpio8004, 1));
 }
 
 TIMER_CALLBACK_MEMBER(kn_sd_state::sd_insert)
@@ -629,15 +605,15 @@ u32 kn_state::screen_update_rgb565(screen_device &screen, bitmap_rgb32 &bitmap, 
 	return 0;
 }
 
-// The KN6000's is RGB555, and the panel is mounted upside down
-u32 kn_state::screen_update_rgb555_rotated(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
+// The KN6000's is RGB555, and the panel is mounted upside down (ROT180)
+u32 kn_state::screen_update_rgb555(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
 {
 	for (int y = cliprect.top(); y <= cliprect.bottom(); y++)
 	{
 		u32 *const dst = &bitmap.pix(y);
 		for (int x = cliprect.left(); x <= cliprect.right(); x++)
 		{
-			const offs_t k = offs_t(239 - y) * 640 + (639 - x);
+			const offs_t k = offs_t(y) * 640 + x;
 			const u32 w = m_lcdbuf[(0x00e00000 >> 2) + (k >> 1)];
 			const u16 v = BIT(k, 0) ? u16(w >> 16) : u16(w);
 			dst[x] = rgb_t(pal5bit(BIT(v, 10, 5)), pal5bit(BIT(v, 5, 5)), pal5bit(BIT(v, 0, 5)));
@@ -845,7 +821,7 @@ INPUT_PORTS_END
 //  Machine configurations
 //**************************************************************************
 
-static void kn_floppies(device_slot_interface &device)
+void kn_floppies(device_slot_interface &device)
 {
 	device.option_add("35hd", FLOPPY_35_HD);
 	device.option_add("35dd", FLOPPY_35_DD);
@@ -962,7 +938,7 @@ void kn6000_state::kn6000(machine_config &config)
 {
 	kn_common(config);
 	m_maincpu->set_addrmap(AS_PROGRAM, &kn6000_state::kn6000_map);
-	m_screen->set_screen_update(FUNC(kn6000_state::screen_update_rgb555_rotated));
+	m_screen->set_screen_update(FUNC(kn6000_state::screen_update_rgb555));
 	KN6000_CPANEL(config, m_cpanel);
 	configure_cpanel();
 	KN6000_TONEGEN(config, m_tonegen);
@@ -1272,7 +1248,7 @@ ROM_END
 
 //   YEAR  NAME    PARENT  COMPAT  MACHINE  INPUT  CLASS         INIT        COMPANY     FULLNAME      FLAGS
 SYST(2002, kn7000, 0,      0,      kn7000,  kn_sd, kn_sd_state,  empty_init, "Technics", "SX-KN7000", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
-SYST(1999, kn6000, 0,      0,      kn6000,  kn,    kn6000_state, empty_init, "Technics", "SX-KN6000", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
-SYST(2001, kn6500, 0,      0,      kn6000,  kn,    kn6000_state, empty_init, "Technics", "SX-KN6500", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
+SYST(1999, kn6000, 0,      0,      kn6000,  kn,    kn6000_state, empty_init, "Technics", "SX-KN6000", ROT180 | MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
+SYST(2001, kn6500, 0,      0,      kn6000,  kn,    kn6000_state, empty_init, "Technics", "SX-KN6500", ROT180 | MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
 SYST(2000, kn2400, 0,      0,      kn2400,  kn,    kn_state,     empty_init, "Technics", "SX-KN2400", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
 SYST(2000, kn2600, kn2400, 0,      kn2600,  kn_sd, kn_sd_state,  empty_init, "Technics", "SX-KN2600", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
