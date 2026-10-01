@@ -9,6 +9,9 @@
 
 #pragma once
 
+#include <array>
+#include <span>
+
 class kn_cpanel_base_device : public device_t
 {
 public:
@@ -24,32 +27,34 @@ public:
 	void rx_enable(int state);               // the main CPU's receiver is enabled
 
 protected:
+	static constexpr int MAX_PORTS = 22;
 	static constexpr int MAX_SEGS = 0x40;
 
-	kn_cpanel_base_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, u32 clock);
+	// The model's button matrix: its scan ports, the segment each one reports,
+	// and the wire address of each segment (0xff: none)
+	kn_cpanel_base_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, u32 clock,
+			const std::array<char const *, MAX_PORTS> &scan_tags, std::span<const u8> port_seg, std::span<const u8> seg_wire_addr);
 
 	// device_t implementation
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
 
-	// The model's button matrix and LEDs
-	virtual int num_scan_ports() const = 0;
-	virtual u8 scan_port_read(int port) = 0;
-	virtual u8 port_seg(int port) const = 0;
-	virtual int num_segs() const = 0;
-	virtual u8 seg_wire_addr(int seg) const = 0;   // 0xff: no wire address
+	// The model's LEDs
 	virtual void panel_led_frame(u8 addr, u8 data) = 0;
 
 private:
+	optional_ioport_array<MAX_PORTS> m_scan;
+	const std::span<const u8> m_port_seg;
+	const std::span<const u8> m_seg_wire_addr;
 	optional_ioport m_dial;
 	optional_ioport m_volapcseq;
 	optional_ioport m_tempoknob;
 	devcb_write_line m_atn_cb;
 	devcb_write8 m_rxd_cb;
 
-	emu_timer *m_panel_evt;                  // param: 1 = raise ATN, 2 = deliver a byte, 3 = drop ATN
+	emu_timer *m_atn_timer;                  // param: the ATN level to drive
+	emu_timer *m_rx_timer;
 	emu_timer *m_panel_timer;
-	ioport_field *m_tempoknob_field;
 
 	u8 m_panel_pos;                          // position within the 7-byte frame from the main CPU
 	u8 m_panel_p1;
@@ -66,7 +71,8 @@ private:
 	bool m_tempoknob_synced;
 
 	void panel_queue(const u8 *bytes, int n);
-	TIMER_CALLBACK_MEMBER(panel_event);
+	TIMER_CALLBACK_MEMBER(atn_event);
+	TIMER_CALLBACK_MEMBER(rx_event);
 	TIMER_CALLBACK_MEMBER(panel_scan);
 };
 

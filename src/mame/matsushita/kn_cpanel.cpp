@@ -11,16 +11,20 @@
 #include <iterator>
 
 
-kn_cpanel_base_device::kn_cpanel_base_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, u32 clock)
+kn_cpanel_base_device::kn_cpanel_base_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, u32 clock,
+		const std::array<char const *, MAX_PORTS> &scan_tags, std::span<const u8> port_seg, std::span<const u8> seg_wire_addr)
 	: device_t(mconfig, type, tag, owner, clock)
+	, m_scan(*this, scan_tags)
+	, m_port_seg(port_seg)
+	, m_seg_wire_addr(seg_wire_addr)
 	, m_dial(*this, finder_base::DUMMY_TAG)
 	, m_volapcseq(*this, finder_base::DUMMY_TAG)
 	, m_tempoknob(*this, finder_base::DUMMY_TAG)
 	, m_atn_cb(*this)
 	, m_rxd_cb(*this)
-	, m_panel_evt(nullptr)
+	, m_atn_timer(nullptr)
+	, m_rx_timer(nullptr)
 	, m_panel_timer(nullptr)
-	, m_tempoknob_field(nullptr)
 	, m_panel_pos(0)
 	, m_panel_p1(0)
 	, m_panel_p2(0)
@@ -39,21 +43,9 @@ kn_cpanel_base_device::kn_cpanel_base_device(const machine_config &mconfig, devi
 
 void kn_cpanel_base_device::device_start()
 {
-	m_panel_evt = timer_alloc(FUNC(kn_cpanel_base_device::panel_event), this);
+	m_atn_timer = timer_alloc(FUNC(kn_cpanel_base_device::atn_event), this);
+	m_rx_timer = timer_alloc(FUNC(kn_cpanel_base_device::rx_event), this);
 	m_panel_timer = timer_alloc(FUNC(kn_cpanel_base_device::panel_scan), this);
-
-	// The TEMPO/PROGRAM knob is an adjuster read raw, bypassing analog interpolation
-	if (m_tempoknob)
-	{
-		for (ioport_field &f : m_tempoknob->fields())
-		{
-			if (f.type() == IPT_ADJUSTER)
-			{
-				m_tempoknob_field = &f;
-				break;
-			}
-		}
-	}
 
 	save_item(NAME(m_panel_pos));
 	save_item(NAME(m_panel_p1));
@@ -75,7 +67,9 @@ void kn_cpanel_base_device::device_reset()
 	m_panel_pos = 0;
 	m_panel_resp_len = 0;
 	m_panel_resp_pos = 0;
-	m_panel_evt->adjust(attotime::never);
+	m_atn_timer->adjust(attotime::never);
+	m_rx_timer->adjust(attotime::never);
+	m_atn_cb(0);
 	std::fill(std::begin(m_btn_prev), std::end(m_btn_prev), 0);
 	m_vol_apcseq_synced = false;
 	m_dial_synced = false;
@@ -125,41 +119,39 @@ void kn_cpanel_base_device::panel_queue(const u8 *bytes, int n)
 	if (m_panel_resp_pos == m_panel_resp_len)
 		m_panel_resp_pos = m_panel_resp_len = 0;
 	if (m_panel_resp_len + n > int(std::size(m_panel_resp)))
+	{
+		logerror("reply queue full, %d bytes dropped\n", n);
 		return;
+	}
 
 	const bool was_idle = m_panel_resp_pos == m_panel_resp_len;
 	for (int i = 0; i < n; i++)
 		m_panel_resp[m_panel_resp_len++] = bytes[i];
 	if (was_idle)
-		m_panel_evt->adjust(attotime::from_usec(60), 1);
+		m_atn_timer->adjust(attotime::from_usec(60), 1);
 }
 
-TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::panel_event)
+TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::atn_event)
 {
-	switch (param)
+	m_atn_cb(param);
+	if (param)
+		m_atn_timer->adjust(attotime::from_usec(100), 0);
+}
+
+TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::rx_event)
+{
+	if (m_panel_resp_pos < m_panel_resp_len)
 	{
-	case 1:
-		m_atn_cb(1);
-		m_panel_evt->adjust(attotime::from_usec(100), 3);
-		break;
-	case 2:
+		m_rxd_cb(m_panel_resp[m_panel_resp_pos++]);
 		if (m_panel_resp_pos < m_panel_resp_len)
-		{
-			m_rxd_cb(m_panel_resp[m_panel_resp_pos++]);
-			if (m_panel_resp_pos < m_panel_resp_len)
-				m_panel_evt->adjust(attotime::from_usec(120), 2);
-		}
-		break;
-	case 3:
-		m_atn_cb(0);
-		break;
+			m_rx_timer->adjust(attotime::from_usec(120));
 	}
 }
 
 void kn_cpanel_base_device::rx_enable(int state)
 {
 	if (state && m_panel_resp_pos < m_panel_resp_len)
-		m_panel_evt->adjust(attotime::from_usec(60), 2);
+		m_rx_timer->adjust(attotime::from_usec(60));
 }
 
 TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::panel_scan)
@@ -195,7 +187,7 @@ TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::panel_scan)
 	// TEMPO/PROGRAM knob, an endless encoder sent as +1 or -1 steps at wire
 	// address 0x17. The layout wraps the 0-100 adjuster at its ends, so the step
 	// goes the short way round.
-	const u8 adj = m_tempoknob_field ? u8(m_tempoknob_field->live().value) : m_tempoknob.read_safe(0);
+	const u8 adj = m_tempoknob.read_safe(0);
 	if (!m_tempoknob_synced)
 	{
 		m_tempoknob_prev = adj;
@@ -216,11 +208,11 @@ TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::panel_scan)
 
 	// Buttons: each scan column that changed is sent as [address][switch bits]
 	u8 seg_state[MAX_SEGS] = { 0 };
-	for (int p = 0; p < num_scan_ports(); p++)
-		seg_state[port_seg(p)] |= scan_port_read(p);
-	for (int seg = 0; seg < num_segs(); seg++)
+	for (int p = 0; p < int(m_port_seg.size()); p++)
+		seg_state[m_port_seg[p]] |= m_scan[p]->read();
+	for (int seg = 0; seg < int(m_seg_wire_addr.size()); seg++)
 	{
-		const u8 addr = seg_wire_addr(seg);
+		const u8 addr = m_seg_wire_addr[seg];
 		if (addr == 0xff || seg_state[seg] == m_btn_prev[seg])
 			continue;
 		m_btn_prev[seg] = seg_state[seg];
