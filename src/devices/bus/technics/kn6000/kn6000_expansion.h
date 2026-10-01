@@ -21,20 +21,14 @@
 //   CLK1  CKOUT                    clocks
 //   +15M  +5A  +5D  +3.3D  E       supplies and ground
 //
-// Modelled here: the two interrupt lines back to the host, and the address
-// space the unit decodes. The audio and clock lines are pass-through.
+// Modelled here: the slot, and a hook for the fitted unit to map itself into the
+// host's program space.
 
 class device_kn6000_expansion_interface;
 
 class kn6000_expansion_connector : public device_t, public device_single_card_slot_interface<device_kn6000_expansion_interface>
 {
 public:
-	// CN106 HDD.INT and PP.INT, back to the host CPU
-	auto hdd_int_callback() { return m_write_hdd_int.bind(); }
-	auto pp_int_callback() { return m_write_pp_int.bind(); }
-	void hdd_int_w(int state) { m_write_hdd_int(state); }
-	void pp_int_w(int state) { m_write_pp_int(state); }
-
 	// let the fitted unit decode its own window in the host program space
 	void program_map(address_space_installer &space);
 
@@ -42,19 +36,13 @@ public:
 	kn6000_expansion_connector(const machine_config &mconfig, const char *tag, device_t *owner, T &&opts, const char *dflt)
 		: kn6000_expansion_connector(mconfig, tag, owner, 0)
 	{
-		option_reset();
-		opts(*this);
-		set_default_option(dflt);
-		set_fixed(false);
+		set_options(std::forward<T>(opts), dflt, false);
 	}
 
 	kn6000_expansion_connector(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 
 protected:
 	virtual void device_start() override ATTR_COLD;
-
-	devcb_write_line m_write_hdd_int;
-	devcb_write_line m_write_pp_int;
 };
 
 class device_kn6000_expansion_interface : public device_interface
