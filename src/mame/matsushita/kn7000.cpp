@@ -184,13 +184,13 @@ protected:
 	required_device<screen_device> m_screen;
 	required_device<kn_cpanel_base_device> m_cpanel;
 	required_device<kn_tonegen_base_device> m_tonegen;
-	required_shared_ptr<u32> m_lcdbuf;
 
 	u16 m_sdmbx_out = 0xff;
 
 private:
 	enum { SIO_PANEL = 0, SIO_MIDI1 = 1, SIO_MIDI2 = 2 };
 
+	required_shared_ptr<u32> m_lcdbuf;
 	optional_device<fujitsu_29lv160b_device> m_customflash;
 	optional_device<n82077aa_device> m_fdc;
 	required_device_array<kn7000_sio_uart_device, 2> m_midi_uart;
@@ -256,13 +256,13 @@ private:
 	required_device<spi_sdcard_device> m_sdcard;
 	required_ioport m_sdsw;
 	required_ioport m_sdcover;
-	output_finder<2> m_sd_leds;              // SD in use, SD play/pause
+	output_finder<2> m_sd_leds; // SD in use, SD play/pause
 
-	emu_timer *m_sd_insert_timer = nullptr;  // the power-on card-detect hack, see machine_reset()
+	emu_timer *m_sd_insert_timer = nullptr; // the power-on card-detect hack, see machine_reset()
 	emu_timer *m_sd_inuse_off = nullptr;
-	emu_timer *m_sd_led_timer = nullptr;
-	u8 m_sd_miso = 1;                        // the card's DO line
+	u8 m_sd_miso = 1; // the card's DO line
 	u16 m_gpio8004 = 0xffff;
+	u32 m_sdport = 0;
 
 	void sd_add(machine_config &config) ATTR_COLD;
 	void sd_map(address_map &map) ATTR_COLD;
@@ -272,12 +272,12 @@ private:
 	void sd_update_carddetect();
 	void sd_sdmbx_w(u16 data);
 	void sd_miso_w(int state);
-	u32 sdsw_r();
+	u32 sdport_r();
+	void sdport_w(offs_t offset, u32 data, u32 mem_mask = ~0);
 	u16 gpio8004_r();
 	void gpio8004_w(offs_t offset, u16 data, u16 mem_mask = ~0);
 	TIMER_CALLBACK_MEMBER(sd_insert);
 	TIMER_CALLBACK_MEMBER(sd_inuse_off);
-	TIMER_CALLBACK_MEMBER(sd_led_scan);
 };
 
 
@@ -405,7 +405,7 @@ void kn_sd_state::sd_map(address_map &map)
 {
 	map(0x36008004, 0x36008005).rw(FUNC(kn_sd_state::gpio8004_r), FUNC(kn_sd_state::gpio8004_w));
 	map(0x9805000c, 0x9805000d).w(FUNC(kn_sd_state::sd_sdmbx_w));
-	map(0x9cc00008, 0x9cc0000b).r(FUNC(kn_sd_state::sdsw_r));
+	map(0x9cc00008, 0x9cc0000b).rw(FUNC(kn_sd_state::sdport_r), FUNC(kn_sd_state::sdport_w));
 }
 
 void kn_sd_state::kn7000_map(address_map &map)
@@ -569,10 +569,17 @@ void kn_sd_state::sd_miso_w(int state)
 	m_sd_miso = state ? 1 : 0;
 }
 
-// The six SD transport buttons, active low in bits 5-0; the rest reads back RAM
-u32 kn_sd_state::sdsw_r()
+// The SD transport panel: the six buttons, active low, are read in bits 5-0 and
+// the play/pause LED is written in bits 7-6
+u32 kn_sd_state::sdport_r()
 {
-	return (m_lcdbuf[0x00c00008 >> 2] & 0xffffffc0) | (m_sdsw->read() & 0x3f);
+	return (m_sdport & ~u32(0x3f)) | (m_sdsw->read() & 0x3f);
+}
+
+void kn_sd_state::sdport_w(offs_t offset, u32 data, u32 mem_mask)
+{
+	COMBINE_DATA(&m_sdport);
+	m_sd_leds[1] = (m_sdport & 0xc0) ? 1 : 0;
 }
 
 u16 kn_sd_state::gpio8004_r()
@@ -595,11 +602,6 @@ TIMER_CALLBACK_MEMBER(kn_sd_state::sd_insert)
 TIMER_CALLBACK_MEMBER(kn_sd_state::sd_inuse_off)
 {
 	m_sd_leds[0] = 0;
-}
-
-TIMER_CALLBACK_MEMBER(kn_sd_state::sd_led_scan)
-{
-	m_sd_leds[1] = (m_lcdbuf[0x00c00008 >> 2] & 0xc0) ? 1 : 0;
 }
 
 INPUT_CHANGED_MEMBER(kn_sd_state::sd_cover_changed)
@@ -701,17 +703,15 @@ void kn_sd_state::machine_start()
 
 	m_sd_insert_timer = timer_alloc(FUNC(kn_sd_state::sd_insert), this);
 	m_sd_inuse_off = timer_alloc(FUNC(kn_sd_state::sd_inuse_off), this);
-	m_sd_led_timer = timer_alloc(FUNC(kn_sd_state::sd_led_scan), this);
 
 	save_item(NAME(m_sd_miso));
 	save_item(NAME(m_gpio8004));
+	save_item(NAME(m_sdport));
 }
 
 void kn_sd_state::machine_reset()
 {
 	kn_state::machine_reset();
-
-	m_sd_led_timer->adjust(attotime::from_hz(250), 0, attotime::from_hz(250));
 
 	// HACK: the firmware's SD state machine runs on a card-detect transition, so
 	// the card is reported absent at reset and inserted 6 seconds later.
