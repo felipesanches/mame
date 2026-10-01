@@ -27,8 +27,8 @@ public:
 	void rx_enable(int state);               // the main CPU's receiver is enabled
 
 protected:
-	static constexpr int MAX_PORTS = 22;
-	static constexpr int MAX_SEGS = 0x40;
+	static constexpr unsigned MAX_PORTS = 22;
+	static constexpr unsigned MAX_SEGS = 0x40;
 
 	// The model's button matrix: its scan ports, the segment each one reports,
 	// and the wire address of each segment (0xff: none)
@@ -70,7 +70,7 @@ private:
 	u8 m_tempoknob_prev;
 	bool m_tempoknob_synced;
 
-	void panel_queue(const u8 *bytes, int n);
+	void panel_queue(std::span<const u8> bytes);
 	TIMER_CALLBACK_MEMBER(atn_event);
 	TIMER_CALLBACK_MEMBER(rx_event);
 	TIMER_CALLBACK_MEMBER(panel_scan);

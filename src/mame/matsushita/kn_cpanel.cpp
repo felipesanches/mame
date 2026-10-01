@@ -102,7 +102,7 @@ void kn_cpanel_base_device::tx_byte(u8 data)
 	case 0x1d: case 0x1e: case 0x1f: case 0x20: case 0x29: case 0xdd: case 0xe0:
 	{
 		static constexpr u8 SYNC_REPLY[2] = { 0x18, 0x00 };
-		panel_queue(SYNC_REPLY, 2);
+		panel_queue(SYNC_REPLY);
 		break;
 	}
 	default:
@@ -114,19 +114,19 @@ void kn_cpanel_base_device::tx_byte(u8 data)
 // To send, the panel pulses ATN. The main CPU's interrupt handler runs once for
 // each level of the pulse, then enables its receiver and takes the bytes one
 // receive interrupt at a time.
-void kn_cpanel_base_device::panel_queue(const u8 *bytes, int n)
+void kn_cpanel_base_device::panel_queue(std::span<const u8> bytes)
 {
 	if (m_panel_resp_pos == m_panel_resp_len)
 		m_panel_resp_pos = m_panel_resp_len = 0;
-	if (m_panel_resp_len + n > int(std::size(m_panel_resp)))
+	if (m_panel_resp_len + bytes.size() > std::size(m_panel_resp))
 	{
-		logerror("reply queue full, %d bytes dropped\n", n);
+		logerror("reply queue full, %u bytes dropped\n", unsigned(bytes.size()));
 		return;
 	}
 
 	const bool was_idle = m_panel_resp_pos == m_panel_resp_len;
-	for (int i = 0; i < n; i++)
-		m_panel_resp[m_panel_resp_len++] = bytes[i];
+	for (const u8 b : bytes)
+		m_panel_resp[m_panel_resp_len++] = b;
 	if (was_idle)
 		m_atn_timer->adjust(attotime::from_usec(60), 1);
 }
@@ -167,7 +167,7 @@ TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::panel_scan)
 	{
 		m_vol_apcseq_prev = vol;
 		const u8 pkt[2] = { 0xd2, vol };
-		panel_queue(pkt, 2);
+		panel_queue(pkt);
 	}
 
 	// DATA dial, sent as its position at wire address 0x10
@@ -181,7 +181,7 @@ TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::panel_scan)
 	{
 		m_dial_prev = pos;
 		const u8 pkt[2] = { 0x10, pos };
-		panel_queue(pkt, 2);
+		panel_queue(pkt);
 	}
 
 	// TEMPO/PROGRAM knob, an endless encoder sent as +1 or -1 steps at wire
@@ -203,7 +203,7 @@ TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::panel_scan)
 		const int step = (delta > 0) ? 1 : -1;
 		m_tempoknob_prev = u8((int(m_tempoknob_prev) + step + 101) % 101);
 		const u8 pkt[2] = { 0x17, u8(s8(step)) };
-		panel_queue(pkt, 2);
+		panel_queue(pkt);
 	}
 
 	// Buttons: each scan column that changed is sent as [address][switch bits]
@@ -217,6 +217,6 @@ TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::panel_scan)
 			continue;
 		m_btn_prev[seg] = seg_state[seg];
 		const u8 pkt[2] = { addr, seg_state[seg] };
-		panel_queue(pkt, 2);
+		panel_queue(pkt);
 	}
 }
