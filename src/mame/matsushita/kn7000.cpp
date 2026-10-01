@@ -57,9 +57,8 @@
 #include "emu.h"
 
 #include "kn6000_cpanel.h"
-#include "kn6000_tonegen.h"
 #include "kn7000_cpanel.h"
-#include "kn7000_tonegen.h"
+#include "kn_tonegen.h"
 
 #include "bus/midi/midi.h"
 #include "bus/midi/midiinport.h"
@@ -171,6 +170,9 @@ protected:
 	void common_map(address_map &map) ATTR_COLD;
 	void table_map(address_map &map) ATTR_COLD;
 	void fdc_map(address_map &map) ATTR_COLD;
+	template <int Tg> void tg_map(address_map &map, offs_t base) ATTR_COLD;
+	void single_tg_map(address_map &map) ATTR_COLD;
+	void kn24_map(address_map &map) ATTR_COLD;
 
 	u32 screen_update_rgb565(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 	u32 screen_update_rgb555(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
@@ -331,19 +333,7 @@ void kn_state::common_map(address_map &map)
 
 	map(0x98000000, 0x9807ffff).rw(FUNC(kn_state::io_r<0x98000000>), FUNC(kn_state::io_w<0x98000000>));
 	map(0x98020000, 0x9802000f).lr8(NAME([] () -> u8 { return 0xff; })).nopw();
-	map(0x98040000, 0x98040001).w(FUNC(kn_state::tg_addr_w<0>));
-	map(0x98040002, 0x98040003).w(FUNC(kn_state::tg_data_w<0>));
-	map(0x98040004, 0x98040007).nopw();
-	map(0x98040006, 0x98040007).w(FUNC(kn_state::tg_wave_bank_w<0>));
-	map(0x98040008, 0x98040009).w(FUNC(kn_state::tg_wave_addr_w<0>));
-	map(0x9804000a, 0x9804000b).r(FUNC(kn_state::tg_wave_data_r<0>));
-	map(0x98040010, 0x98040013).nopw();
-	map(0x98050000, 0x98050001).w(FUNC(kn_state::tg_addr_w<1>));
-	map(0x98050002, 0x98050003).w(FUNC(kn_state::tg_data_w<1>));
 	map(0x98050004, 0x98050005).r(FUNC(kn_state::kbd_fifo_r));
-	map(0x98050006, 0x98050007).w(FUNC(kn_state::tg_wave_bank_w<1>));
-	map(0x98050008, 0x98050009).w(FUNC(kn_state::tg_wave_addr_w<1>));
-	map(0x9805000a, 0x9805000b).r(FUNC(kn_state::tg_wave_data_r<1>));
 	map(0x9805000c, 0x9805000d).rw(FUNC(kn_state::sdmbx_r), FUNC(kn_state::sdmbx_w));
 	map(0x9805000e, 0x9805000f).lrw16(
 			NAME([this] () -> u16 { return m_sdspi_rate; }),
@@ -351,11 +341,36 @@ void kn_state::common_map(address_map &map)
 	map(0x98070000, 0x98070001).r(FUNC(kn_state::strap_r));
 }
 
+// A tone generator's window: register address and data, and the wave ROM
+// bank, address and data that the service mode's wave ROM test uses
+template <int Tg>
+void kn_state::tg_map(address_map &map, offs_t base)
+{
+	map(base + 0x0, base + 0x1).w(FUNC(kn_state::tg_addr_w<Tg>));
+	map(base + 0x2, base + 0x3).w(FUNC(kn_state::tg_data_w<Tg>));
+	map(base + 0x6, base + 0x7).w(FUNC(kn_state::tg_wave_bank_w<Tg>));
+	map(base + 0x8, base + 0x9).w(FUNC(kn_state::tg_wave_addr_w<Tg>));
+	map(base + 0xa, base + 0xb).r(FUNC(kn_state::tg_wave_data_r<Tg>));
+}
+
+// The models with one tone generator have it at 0x98050000
+void kn_state::single_tg_map(address_map &map)
+{
+	tg_map<0>(map, 0x98050000);
+}
+
 // A22 of the IC16/IC17 pair selects the table data (low) or the program (high)
 void kn_state::table_map(address_map &map)
 {
 	common_map(map);
 	map(0x48000000, 0x483fffff).rom().region("table_data", 0);
+}
+
+// The KN2400 and KN2600 board
+void kn_state::kn24_map(address_map &map)
+{
+	common_map(map);
+	single_tg_map(map);
 }
 
 void kn_state::fdc_map(address_map &map)
@@ -369,7 +384,14 @@ void kn_state::fdc_map(address_map &map)
 
 void kn_state::kn2400_map(address_map &map)
 {
-	common_map(map);
+	kn24_map(map);
+	fdc_map(map);
+}
+
+void kn6000_state::kn6000_map(address_map &map)
+{
+	table_map(map);
+	single_tg_map(map);
 	fdc_map(map);
 }
 
@@ -380,22 +402,20 @@ void kn_sd_state::sd_map(address_map &map)
 	map(0x9cc00008, 0x9cc0000b).r(FUNC(kn_sd_state::sdsw_r));
 }
 
-void kn6000_state::kn6000_map(address_map &map)
-{
-	table_map(map);
-	fdc_map(map);
-}
-
 void kn_sd_state::kn7000_map(address_map &map)
 {
 	table_map(map);
+	map(0x98040004, 0x98040007).nopw();
+	map(0x98040010, 0x98040013).nopw();
+	tg_map<0>(map, 0x98040000);
+	tg_map<1>(map, 0x98050000);
 	fdc_map(map);
 	sd_map(map);
 }
 
 void kn_sd_state::kn2600_map(address_map &map)
 {
-	common_map(map);
+	kn24_map(map);
 	sd_map(map);
 }
 

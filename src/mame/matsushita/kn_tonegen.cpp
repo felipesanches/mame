@@ -1,11 +1,14 @@
 // license:GPL-2.0+
 // copyright-holders:Felipe Sanches
 
-// Register interface shared by the KN6000 and KN7000 tone generators. The
-// synthesis datapath is not emulated, so the stream is silent.
+// Tone generators of the KN6000 and KN7000 families. The register interface is
+// decoded; the synthesis datapath is not emulated, so the stream is silent.
 
 #include "emu.h"
 #include "kn_tonegen.h"
+
+DEFINE_DEVICE_TYPE(KN6000_TONEGEN, kn6000_tonegen_device, "kn6000_tonegen", "KN6000 tone generator")
+DEFINE_DEVICE_TYPE(KN7000_TONEGEN, kn7000_tonegen_device, "kn7000_tonegen", "KN7000 tone generator")
 
 kn_tonegen_base_device::kn_tonegen_base_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, int chips)
 	: device_t(mconfig, type, tag, owner, clock)
@@ -18,18 +21,33 @@ kn_tonegen_base_device::kn_tonegen_base_device(const machine_config &mconfig, de
 void kn_tonegen_base_device::device_start()
 {
 	m_stream = stream_alloc(0, 2, 44100);
-	m_regs = std::make_unique<uint16_t []>(m_chips * 0x10000);
+	m_regs = make_unique_clear<uint16_t []>(m_chips * 0x10000);
 	save_pointer(NAME(m_regs), m_chips * 0x10000);
 }
 
 void kn_tonegen_base_device::tg_write(int chip, uint16_t addr, uint16_t data)
 {
+	if (chip >= m_chips)
+	{
+		logerror("write to absent chip %d: %04x = %04x\n", chip, addr, data);
+		return;
+	}
 	m_stream->update();
-	m_regs[(chip % m_chips) * 0x10000 + addr] = data;
+	m_regs[chip * 0x10000 + addr] = data;
 }
 
 void kn_tonegen_base_device::sound_stream_update(sound_stream &stream)
 {
 	stream.fill(0, 0.0);
 	stream.fill(1, 0.0);
+}
+
+kn6000_tonegen_device::kn6000_tonegen_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: kn_tonegen_base_device(mconfig, KN6000_TONEGEN, tag, owner, clock, 1)
+{
+}
+
+kn7000_tonegen_device::kn7000_tonegen_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: kn_tonegen_base_device(mconfig, KN7000_TONEGEN, tag, owner, clock, 2)
+{
 }
