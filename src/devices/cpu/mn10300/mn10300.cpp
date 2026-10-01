@@ -1472,8 +1472,7 @@ void mn10300_device::execute_f2()
 		{
 			m_d[dst] = u32(q);
 			m_mdr = u32(num % dv);
-			m_psw &= ~FLAG_VF;
-			set_nz32(m_d[dst]);
+			set_logic_flags(m_d[dst]);
 		}
 		else
 		{
@@ -1489,8 +1488,7 @@ void mn10300_device::execute_f2()
 		{
 			m_d[dst] = u32(num / dv);
 			m_mdr = u32(num % dv);
-			m_psw &= ~FLAG_VF;
-			set_nz32(m_d[dst]);
+			set_logic_flags(m_d[dst]);
 		}
 		else
 		{
@@ -1517,8 +1515,9 @@ void mn10300_device::execute_f2()
 			out = BIT(m_d[dst], 0);
 			m_d[dst] = (m_d[dst] >> 1) | (c << 31);
 		}
-		m_psw = (m_psw & ~FLAG_CF) | (out ? FLAG_CF : 0);
-		set_nz32(m_d[dst]);
+		set_logic_flags(m_d[dst]);
+		if (out)
+			m_psw |= FLAG_CF;
 		break;
 	}
 	case 0x9: // asl Dm,Dn
@@ -1661,6 +1660,7 @@ void mn10300_device::execute_f6()
 		break;
 	case 0xf: // getx Dn
 		m_d[dst] = m_mdrq;
+		set_logic_flags(m_d[dst]);
 		break;
 	default:
 		logerror("unimplemented F6 %02X @ %08X\n", op2, start_pc);
