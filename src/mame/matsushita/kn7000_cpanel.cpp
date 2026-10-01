@@ -16,8 +16,8 @@ DEFINE_DEVICE_TYPE(KN7000_CPANEL, kn7000_cpanel_device, "kn7000_cpanel", "KN7000
 
 namespace {
 
-// The segment each scan port reports, in the order of m_phys: CPL columns 0-4, 6
-// and 7, CPC columns 5 and 8-11, then CPR columns 0-9
+// The segment each scan port reports, in the order of the scan tags below: CPL
+// columns 0-4, 6 and 7, CPC columns 5 and 8-11, then CPR columns 0-9
 constexpr u8 PORT_SEG[22] = {
 	0x00, 0x01, 0x02, 0x03, 0x04, 0x06, 0x07,
 	0x05, 0x08, 0x09, 0x0a, 0x0b,
@@ -238,7 +238,8 @@ kn7000_cpanel_device::kn7000_cpanel_device(const machine_config &mconfig, const 
 
 // An LED frame writes eight LEDs, bit n to LED 8 * register + n. Register
 // addresses 0x00-0x3f are the CPR board's, 0xe1-0xff the CPC board's, and the
-// rest the CPL board's. 0xe0 is a sync code, so CPC register 0 is never written. The schematic designators, bits 0-7 of each register:
+// rest the CPL board's. 0xe0 is a sync code, so CPC register 0 is never
+// written. The schematic designators, bits 0-7 of each register:
 //
 // CPR
 //   00: D1009 D1023 D1037 D1051 D1065 D1079 D1093 D1107
