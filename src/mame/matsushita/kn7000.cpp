@@ -177,6 +177,7 @@ protected:
 	template <int Tg> void tg_map(address_map &map, offs_t base) ATTR_COLD;
 	void single_tg_map(address_map &map) ATTR_COLD;
 	void kn24_map(address_map &map) ATTR_COLD;
+	template <u16 Straps> u16 strap_r();
 
 	u32 screen_update_rgb565(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 	u32 screen_update_rgb555(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
@@ -225,7 +226,6 @@ private:
 	template <int Tg> void tg_wave_addr_w(offs_t offset, u16 data, u16 mem_mask = ~0);
 	template <int Tg> u16 tg_wave_data_r();
 	u16 kbd_fifo_r();
-	u16 strap_r();
 	u16 sdmbx_r();
 	void sdmbx_w(u16 data);
 	void update_volume();
@@ -343,7 +343,7 @@ void kn_state::common_map(address_map &map)
 	map(0x9805000e, 0x9805000f).lrw16(
 			NAME([this] () -> u16 { return m_sdspi_rate; }),
 			NAME([this] (offs_t offset, u16 data, u16 mem_mask) { COMBINE_DATA(&m_sdspi_rate); }));
-	map(0x98070000, 0x98070001).r(FUNC(kn_state::strap_r));
+	map(0x98070000, 0x98070001).r(FUNC(kn_state::strap_r<0x8006>));
 }
 
 // A tone generator's window: register address and data, and the wave ROM
@@ -427,6 +427,7 @@ void kn_sd_state::kn2600_map(address_map &map)
 {
 	kn24_map(map);
 	sd_map(map);
+	map(0x98070000, 0x98070001).r(FUNC(kn_sd_state::strap_r<0x8007>));
 }
 
 
@@ -517,10 +518,13 @@ void kn_state::sdmbx_w(u16 data)
 	m_maincpu->set_input_line(mn10300_device::IRQ5, HOLD_LINE);
 }
 
-// Bit 12 is the rear panel's MIDI IN / BASS PEDAL switch
+// Board straps. Bit 12 is the rear panel's MIDI IN / BASS PEDAL switch; the
+// KN2400/KN2600 firmware tells the models apart by bits 1-0 (11: KN2600,
+// 10: KN2400).
+template <u16 Straps>
 u16 kn_state::strap_r()
 {
-	return 0x8006 | (m_rearsw->read() & 0x1000);
+	return Straps | (m_rearsw->read() & 0x1000);
 }
 
 
@@ -1017,6 +1021,8 @@ void kn_state::kn2400(machine_config &config)
 	fdc_add(config);
 }
 
+// FIXME: identified as a KN2600, the firmware runs its SD start-up and then leaves
+// the LCD blank; its SD sub-CPU (IC404) is not dumped
 void kn_sd_state::kn2600(machine_config &config)
 {
 	kn24_common(config);
