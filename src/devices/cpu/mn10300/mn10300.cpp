@@ -206,6 +206,7 @@ void mn10300_device::device_reset()
 	std::fill(std::begin(m_gxicr), std::end(m_gxicr), 0);
 	std::fill(std::begin(m_ivar), std::end(m_ivar), 0);
 	m_extmd = 0;
+	m_iagr = 0;
 	m_irq_pending = false;
 	m_irq_level = 7;
 
@@ -854,7 +855,7 @@ void mn10300_device::execute_run()
 		case 0x01: case 0x05: case 0x09: case 0x0d:
 		case 0x02: case 0x06: case 0x0a: case 0x0e:
 		case 0x03: case 0x07: case 0x0b: case 0x0f:
-			typed_load_store((op & 3) == 1 ? 0 : (op & 3), false, src, read_arg16(m_pc), true);
+			typed_load_store(op & 3, false, src, read_arg16(m_pc), true);
 			m_pc += 2;
 			break;
 
@@ -1498,11 +1499,13 @@ void mn10300_device::execute_f6()
 		set_logic_flags(m_d[dst]);
 		break;
 	}
-	case 0x4: // sat16 Dm,Dn
+	case 0x4: // sat16 Dm,Dn: Z and N from the 16-bit result, C and V unchanged
 		m_d[dst] = u32(std::clamp<s32>(s32(m_d[src]), -0x8000, 0x7fff));
+		m_psw = (m_psw & ~(FLAG_ZF | FLAG_NF)) | (m_d[dst] ? 0 : FLAG_ZF) | (BIT(m_d[dst], 15) ? FLAG_NF : 0);
 		break;
-	case 0x5: // sat24 Dm,Dn
+	case 0x5: // sat24 Dm,Dn: Z and N from the 24-bit result, C and V unchanged
 		m_d[dst] = u32(std::clamp<s32>(s32(m_d[src]), -0x800000, 0x7fffff));
+		m_psw = (m_psw & ~(FLAG_ZF | FLAG_NF)) | (m_d[dst] ? 0 : FLAG_ZF) | (BIT(m_d[dst], 23) ? FLAG_NF : 0);
 		break;
 	// udf07 Dm,Dn: a user-defined instruction; the firmware's JPEG decoder uses
 	// it to find the highest set bit of Dm's low half (0 if none)
