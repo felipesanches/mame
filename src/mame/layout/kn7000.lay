@@ -453,8 +453,8 @@
 		<element ref="led" name="cpl_led41"><!-- CUSTOM --><bounds x="908" y="149" width="8" height="8"/><color red="0.125" green="1.0" blue="0.125"/></element>
 
 		<element ref="memory_text"><bounds x="939" y="140" width="56" height="8"/></element>
-		<element ref="metal_btn" inputtag="cpanel:CPL_SEG1" inputmask="0x01"><!-- MEMORY --><bounds x="949" y="160" width="37" height="37"/></element>
-		<element ref="led" name="cpl_led57"><!-- MEMORY --><bounds x="963" y="149" width="8" height="8"/><color red="0.125" green="1.0" blue="0.125"/></element>
+		<element ref="metal_btn" inputtag="cpanel:CPL_SEG1" inputmask="0x01"><!-- RHYTHM GROUP/MEMORY --><bounds x="949" y="160" width="37" height="37"/></element>
+		<element ref="led" name="cpl_led57"><!-- RHYTHM GROUP/MEMORY --><bounds x="963" y="149" width="8" height="8"/><color red="0.125" green="1.0" blue="0.125"/></element>
 
 		<element ref="music_stylist_text"><bounds x="414.4" y="206.4" width="120" height="10"/></element>
 		<element ref="led" name="cpl_led28"><!-- MUSIC STYLIST --><bounds x="470.0" y="219.3" width="8" height="8"/><color red="0.125" green="1.0" blue="0.125"/></element>
@@ -708,8 +708,8 @@
 		<element ref="led" name="cpr_led88"><!-- DRUM KITS --><bounds x="379" y="149" width="8" height="8"/><color red="1.0" green="0.125" blue="0.125"/></element>
 
 		<element ref="memory_text"><bounds x="410" y="140" width="56" height="8"/></element>
-		<element ref="metal_btn" inputtag="cpanel:CPR_SEG7" inputmask="0x04"><!-- MEMORY --><bounds x="420" y="160" width="37" height="37"/></element>
-		<element ref="led" name="cpr_led31"><!-- MEMORY --><bounds x="434" y="149" width="8" height="8"/><color red="0.125" green="1.0" blue="0.125"/></element>
+		<element ref="metal_btn" inputtag="cpanel:CPR_SEG7" inputmask="0x04"><!-- SOUND GROUP/MEMORY --><bounds x="420" y="160" width="37" height="37"/></element>
+		<element ref="led" name="cpr_led31"><!-- SOUND GROUP/MEMORY --><bounds x="434" y="149" width="8" height="8"/><color red="0.125" green="1.0" blue="0.125"/></element>
 
 		<element ref="expansion_text"><bounds x="465" y="140" width="56" height="8"/></element>
 		<element ref="round_btn2" inputtag="cpanel:CPR_SEG6" inputmask="0x04"><!-- EW EXPANSION --><bounds x="475" y="160" width="37" height="37"/></element>

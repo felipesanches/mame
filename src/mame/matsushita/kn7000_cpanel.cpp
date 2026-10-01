@@ -39,7 +39,7 @@ INPUT_PORTS_START(kn7000_cpanel)
 	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("INTRO & ENDING 2 (SW6)")
 	PORT_BIT(0x80, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("SYNCHRO & BREAK (SW7)")
 	PORT_START("CPL_SEG1")   // CPL scan column 1, segment 0x01 (wire address 0xc1)
-	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("MEMORY (SW0)")
+	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("RHYTHM GROUP/MEMORY (SW0)")
 	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("ORGANIST (SW1)")
 	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("CUSTOM (SW2)")
 	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("ENTERTAINER (SW3)")
@@ -200,7 +200,7 @@ INPUT_PORTS_START(kn7000_cpanel)
 	PORT_START("CPR_SEG7")   // CPR scan column 7, segment 0x13 (wire address 0x07)
 	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("LCDR 3 (SW0)")
 	PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("R1/R2 OCTAVE - (SW1)")
-	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("MEMORY (SW2)")
+	PORT_BIT(0x04, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("SOUND GROUP/MEMORY (SW2)")
 	PORT_BIT(0x08, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("ORGAN & ACCORDION (SW3)")
 	PORT_BIT(0x30, IP_ACTIVE_HIGH, IPT_UNUSED)
 	PORT_BIT(0x40, IP_ACTIVE_HIGH, IPT_OTHER) PORT_NAME("PANEL MEMORY SET (SW6)")
@@ -236,9 +236,8 @@ kn7000_cpanel_device::kn7000_cpanel_device(const machine_config &mconfig, const 
 {
 }
 
-// An LED frame writes eight LEDs, bit n to LED 8 * register + n. Register
-// addresses 0x00-0x3f are the CPR board's, 0xe1-0xff the CPC board's, and the
-// rest the CPL board's. 0xe0 is a sync code, so CPC register 0 is never
+// Register addresses 0x00-0x3f are the CPR board's, 0xe1-0xff the CPC board's,
+// and the rest the CPL board's. 0xe0 is a sync code, so CPC register 0 is never
 // written. The schematic designators, bits 0-7 of each register ("-": not
 // identified):
 //
