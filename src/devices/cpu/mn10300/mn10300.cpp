@@ -73,7 +73,6 @@ mn10300_device::mn10300_device(const machine_config &mconfig, device_type type, 
 	, m_ivar{}
 	, m_irq_pin{}
 	, m_irq_pending(false)
-	, m_irq_vector(0)
 	, m_irq_level(7)
 	, m_tm_mode{ 0, 0 }
 	, m_tm_base{ 0, 0 }
@@ -162,7 +161,6 @@ void mn10300_device::device_start()
 	save_item(NAME(m_ivar));
 	save_item(NAME(m_irq_pin));
 	save_item(NAME(m_irq_pending));
-	save_item(NAME(m_irq_vector));
 	save_item(NAME(m_irq_level));
 	save_item(NAME(m_tm_mode));
 	save_item(NAME(m_tm_base));
@@ -209,7 +207,6 @@ void mn10300_device::device_reset()
 	std::fill(std::begin(m_ivar), std::end(m_ivar), 0);
 	m_extmd = 0;
 	m_irq_pending = false;
-	m_irq_vector = 0;
 	m_irq_level = 7;
 
 	for (unsigned n = 0; n < 2; n++)
@@ -319,14 +316,11 @@ void mn10300_device::intc_recompute()
 {
 	const int g = intc_pending_group();
 	if (g)
-	{
 		m_irq_level = BIT(m_gxicr[g], 12, 3);
-		m_irq_vector = level_vector(m_irq_level);
-	}
 	m_irq_pending = g != 0;
 }
 
-// The group and its vector are latched when the CPU accepts the interrupt.
+// The group is latched when the CPU accepts the interrupt.
 void mn10300_device::intc_accept()
 {
 	const int g = intc_pending_group();
@@ -334,13 +328,12 @@ void mn10300_device::intc_accept()
 	{
 		m_iagr = g;
 		m_irq_level = BIT(m_gxicr[g], 12, 3);
-		m_irq_vector = level_vector(m_irq_level);
 	}
 }
 
 u32 mn10300_device::level_vector(int level) const
 {
-	return (level < 7) ? m_vector_base + m_ivar[level] : 0;
+	return (level < 7) ? (m_vector_base + m_ivar[level]) : 0;
 }
 
 void mn10300_device::check_irq()
@@ -349,15 +342,15 @@ void mn10300_device::check_irq()
 		return;
 
 	const int im = (m_psw & FLAG_IM) >> IM_SHIFT;
-	if (m_irq_pending && m_irq_vector && m_irq_level < im)
+	if (m_irq_pending && m_irq_level < im)
 		take_irq(m_irq_level);
 }
 
 void mn10300_device::take_irq(int level)
 {
-	// Latch the vector first: releasing a held pin recomputes m_irq_vector
+	// Take the vector first: releasing a held pin recomputes m_irq_level
 	intc_accept();
-	const u32 vector = m_irq_vector;
+	const u32 vector = level_vector(m_irq_level);
 	if (m_iagr >= IRQ0_GROUP && m_iagr <= IRQ0_GROUP + IRQ7)
 		standard_irq_callback(m_iagr - IRQ0_GROUP, m_pc);
 	push32(m_pc);
@@ -367,6 +360,8 @@ void mn10300_device::take_irq(int level)
 	m_icount -= 7;
 }
 
+// IAGR (0x34000100) and 0x34000200 both read back the accepted group, scaled by
+// 8 and by 4.
 u16 mn10300_device::iagr_r()
 {
 	return m_iagr << 3;
@@ -705,8 +700,9 @@ void mn10300_device::typed_load_store(int type, bool a_reg, int reg, u32 ea, boo
 // op: 0 = asl, 1 = lsr, 2 = asr
 void mn10300_device::do_shift(int op, int dst, u32 count)
 {
+	// C is the last bit shifted out
 	count &= 0x1f;
-	u32 carry = 0;
+	bool carry = false;
 	if (count)
 	{
 		if (op == 0)
@@ -903,7 +899,7 @@ void mn10300_device::execute_run()
 		case 0x30: case 0x31: case 0x32: case 0x33:
 		case 0x34: case 0x35: case 0x36: case 0x37:
 		case 0x38: case 0x39: case 0x3a: case 0x3b:
-			typed_load_store(src ? src + 1 : 0, false, dst, read_arg16(m_pc), false);
+			typed_load_store(src ? (src + 1) : 0, false, dst, read_arg16(m_pc), false);
 			m_pc += 2;
 			break;
 
@@ -1372,7 +1368,7 @@ void mn10300_device::execute_f2()
 		}
 		const u32 c = (m_psw & FLAG_CF) ? 1 : 0;
 		const bool left = op2 < 0x84;
-		const u32 out = left ? BIT(m_d[dst], 31) : BIT(m_d[dst], 0);
+		const bool out = left ? BIT(m_d[dst], 31) : BIT(m_d[dst], 0);
 		m_d[dst] = left ? ((m_d[dst] << 1) | c) : ((m_d[dst] >> 1) | (c << 31));
 		set_logic_flags(m_d[dst]);
 		if (out)
@@ -1740,13 +1736,13 @@ void mn10300_device::execute_fc()
 	{
 		// store to (d32,sp) or (abs32)
 		const int type = op2 & 3;
-		typed_load_store(type, type == 0, BIT(op2, 2, 2), BIT(op2, 4) ? m_sp + imm : imm, true);
+		typed_load_store(type, type == 0, BIT(op2, 2, 2), BIT(op2, 4) ? (m_sp + imm) : imm, true);
 	}
 	else if (op2 < 0xc0)
 	{
 		// load from (d32,sp) or (abs32)
 		const int type = BIT(op2, 2, 2);
-		typed_load_store(type, type == 0, dst, BIT(op2, 4) ? m_sp + imm : imm, false);
+		typed_load_store(type, type == 0, dst, BIT(op2, 4) ? (m_sp + imm) : imm, false);
 	}
 	else
 	{

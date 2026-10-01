@@ -106,7 +106,6 @@ private:
 	u16 m_ivar[7];
 	u8 m_irq_pin[8];
 	bool m_irq_pending;
-	u32 m_irq_vector;
 	u8 m_irq_level;
 
 	// TM4 and TM5
