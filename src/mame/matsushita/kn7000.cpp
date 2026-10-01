@@ -364,8 +364,9 @@ void kn_state::single_tg_map(address_map &map)
 	tg_map<0>(map, 0x98050000);
 }
 
-// The KN6000 and KN7000 boards. A22 of the program flash pair selects the table
-// data (low) or the program (high).
+// The KN6000 and KN7000 boards: table data below the program. On the KN7000 both
+// are halves of the program flash pair, selected by A22; on the KN6000 and KN6500
+// the table data are IC13 and IC14.
 void kn_state::table_map(address_map &map)
 {
 	common_map(map);
@@ -622,7 +623,8 @@ TIMER_CALLBACK_MEMBER(kn_sd_state::sd_inuse_off)
 
 INPUT_CHANGED_MEMBER(kn_sd_state::sd_cover_changed)
 {
-	sd_update_carddetect();
+	if (!m_sd_insert_timer->enabled())
+		sd_update_carddetect();
 }
 
 
@@ -1038,13 +1040,13 @@ void kn_sd_state::kn2600(machine_config &config)
                                 states IC20 is not supplied as a spare part)
     IC19         C3CBMD000098   64 Mbit picture ROM
     IC21         C3FBMD000050   16 Mbit custom flash (user data).  The service
-                                manual captions this "32M FLASH", but that is
-                                copied from IC20: the firmware's flash device
-                                table (0x485cf9e0) accepts only 16 Mbit parts,
-                                so a 32 Mbit device would fail its autoselect
-                                check.  It also builds a 0x200000 sector map,
-                                and the board decodes a 2 MB window at
-                                0x96800000.
+                                manual gives it IC20's part code and caption
+                                "32M FLASH", but that is copied from IC20: the
+                                firmware's flash device table (0x485cf9e0)
+                                accepts only 16 Mbit parts, so a 32 Mbit
+                                device would fail its autoselect check.  It
+                                also builds a 0x200000 sector map, and the
+                                board decodes a 2 MB window at 0x96800000.
     IC203        C3CBQD000002  128 Mbit mask ROM, wave, main TG bank Y (AWAY)
     IC204        C3CBQD000001  128 Mbit mask ROM, wave, main TG bank X (AWAX)
     IC207        C3CBQD000004  128 Mbit mask ROM, wave, sub TG bank Y (BWAY)
@@ -1263,15 +1265,15 @@ ROM_END
 	ROM_REGION32_LE(0x400000, "program", 0) \
 	ROM_LOAD32_WORD("kn2400_program_even.ic13", 0x000000, 0x200000, CRC(b94fc8a8) SHA1(86d5d9916afdb90f82de78064b1d76fce3a21d7b)) \
 	ROM_LOAD32_WORD("kn2400_program_odd.ic12",  0x000002, 0x200000, CRC(73781cbc) SHA1(d90a3560561efd94322dca1a6710f2d5d3837cd2)) \
- \
+	\
 	ROM_REGION32_LE(0x400000, "table_data", ROMREGION_ERASEFF) \
- \
+	\
 	ROM_REGION(0x800000, "rhythm_data", 0) \
 	ROM_LOAD("c3zbng000023.ic14", 0x000000, 0x800000, NO_DUMP) \
- \
+	\
 	ROM_REGION(0x800000, "waveform_main_y", 0) \
 	ROM_LOAD("c3zbp0000003.ic302", 0x000000, 0x800000, NO_DUMP) \
- \
+	\
 	ROM_REGION(0x800000, "waveform_main_x", 0) \
 	ROM_LOAD("c3zbp0000004.ic303", 0x000000, 0x800000, NO_DUMP)
 
