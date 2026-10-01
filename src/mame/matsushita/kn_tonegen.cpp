@@ -8,6 +8,7 @@
 #include "kn_tonegen.h"
 
 DEFINE_DEVICE_TYPE(KN6000_TONEGEN, kn6000_tonegen_device, "kn6000_tonegen", "KN6000 tone generator")
+DEFINE_DEVICE_TYPE(KN2400_TONEGEN, kn2400_tonegen_device, "kn2400_tonegen", "KN2400 tone generator")
 DEFINE_DEVICE_TYPE(KN7000_TONEGEN, kn7000_tonegen_device, "kn7000_tonegen", "KN7000 tone generator")
 
 kn_tonegen_base_device::kn_tonegen_base_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, int chips)
@@ -44,6 +45,11 @@ void kn_tonegen_base_device::sound_stream_update(sound_stream &stream)
 
 kn6000_tonegen_device::kn6000_tonegen_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: kn_tonegen_base_device(mconfig, KN6000_TONEGEN, tag, owner, clock, 1)
+{
+}
+
+kn2400_tonegen_device::kn2400_tonegen_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: kn_tonegen_base_device(mconfig, KN2400_TONEGEN, tag, owner, clock, 1)
 {
 }
 

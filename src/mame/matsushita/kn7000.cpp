@@ -972,7 +972,7 @@ void kn_state::kn24_common(machine_config &config)
 	// FIXME: the KN2400 and KN2600 panel is not emulated; the KN7000's stands in
 	KN7000_CPANEL(config, m_cpanel);
 	configure_cpanel();
-	KN7000_TONEGEN(config, m_tonegen);
+	KN2400_TONEGEN(config, m_tonegen);
 	configure_tonegen();
 }
 

@@ -41,6 +41,13 @@ public:
 	kn6000_tonegen_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 };
 
+// KN2400/KN2600: one tone generator
+class kn2400_tonegen_device : public kn_tonegen_base_device
+{
+public:
+	kn2400_tonegen_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
+};
+
 // KN7000: IC201 (main) and IC205 (sub), 64 voices each
 class kn7000_tonegen_device : public kn_tonegen_base_device
 {
@@ -49,6 +56,7 @@ public:
 };
 
 DECLARE_DEVICE_TYPE(KN6000_TONEGEN, kn6000_tonegen_device)
+DECLARE_DEVICE_TYPE(KN2400_TONEGEN, kn2400_tonegen_device)
 DECLARE_DEVICE_TYPE(KN7000_TONEGEN, kn7000_tonegen_device)
 
 #endif // MAME_MATSUSHITA_KN_TONEGEN_H
