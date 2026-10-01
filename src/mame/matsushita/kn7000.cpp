@@ -152,6 +152,8 @@ public:
 		, m_tempoknob(*this, "TEMPO_KNOB")
 	{ }
 
+	void kn2400(machine_config &config) ATTR_COLD;
+
 	DECLARE_INPUT_CHANGED_MEMBER(kbd_key);
 
 protected:
@@ -161,10 +163,13 @@ protected:
 	virtual void machine_reset() override ATTR_COLD;
 
 	void kn_common(machine_config &config) ATTR_COLD;
+	void kn24_common(machine_config &config) ATTR_COLD;
+	void fdc_add(machine_config &config) ATTR_COLD;
 	void configure_cpanel() ATTR_COLD;
 	void configure_tonegen() ATTR_COLD;
 	void common_map(address_map &map) ATTR_COLD;
 	void table_map(address_map &map) ATTR_COLD;
+	void fdc_map(address_map &map) ATTR_COLD;
 
 	u32 screen_update_rgb565(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 	u32 screen_update_rgb555_rotated(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
@@ -173,7 +178,7 @@ protected:
 	required_device<mn10300_device> m_maincpu;
 	required_device<screen_device> m_screen;
 	required_device<fujitsu_29lv160b_device> m_customflash;
-	required_device<n82077aa_device> m_fdc;
+	optional_device<n82077aa_device> m_fdc;
 	required_device<kn_cpanel_base_device> m_cpanel;
 	required_device<kn_tonegen_base_device> m_tonegen;
 	required_device_array<kn7000_sio_uart_device, 2> m_midi_uart;
@@ -214,12 +219,12 @@ private:
 	void sdmbx_w(offs_t offset, u16 data, u16 mem_mask = ~0);
 	u32 customflash_r(offs_t offset, u32 mem_mask = ~0);
 	void customflash_w(offs_t offset, u32 data, u32 mem_mask = ~0);
+	void kn2400_map(address_map &map) ATTR_COLD;
 	TIMER_CALLBACK_MEMBER(volume_scan);
 };
 
 
-// The models with the SD sub-CPU interface: SX-KN7000, SX-KN2400 and SX-KN2600.
-// The KN2400 shares the KN2600's board and firmware but has no card slot.
+// The models with the SD sub-CPU interface: SX-KN7000 and SX-KN2600
 class kn_sd_state : public kn_state
 {
 public:
@@ -232,7 +237,6 @@ public:
 	{ }
 
 	void kn7000(machine_config &config) ATTR_COLD;
-	void kn2400(machine_config &config) ATTR_COLD;
 	void kn2600(machine_config &config) ATTR_COLD;
 
 	DECLARE_INPUT_CHANGED_MEMBER(sd_cover_changed);
@@ -256,7 +260,7 @@ private:
 	void sd_add(machine_config &config) ATTR_COLD;
 	void sd_map(address_map &map) ATTR_COLD;
 	void kn7000_map(address_map &map) ATTR_COLD;
-	void kn24_map(address_map &map) ATTR_COLD;
+	void kn2600_map(address_map &map) ATTR_COLD;
 
 	void sd_update_carddetect();
 	void sd_sdmbx_w(offs_t offset, u16 data, u16 mem_mask = ~0);
@@ -288,6 +292,8 @@ protected:
 private:
 	required_region_ptr<u32> m_program;
 	required_shared_ptr<u32> m_libram;
+
+	void kn6000_map(address_map &map) ATTR_COLD;
 };
 
 
@@ -322,12 +328,7 @@ void kn_state::common_map(address_map &map)
 	map(0x36008084, 0x36008085).lr16(NAME([] () -> u16 { return 0x0001; }));   // bit 0: panel link present
 
 	map(0x98000000, 0x9807ffff).rw(FUNC(kn_state::snd_r), FUNC(kn_state::snd_w));
-	map(0x98010000, 0x98010003).rw(m_fdc, FUNC(n82077aa_device::dma_r), FUNC(n82077aa_device::dma_w));
 	map(0x98020000, 0x9802000f).lr8(NAME([] () -> u8 { return 0xff; })).nopw();
-	map(0x98020004, 0x98020004).rw(m_fdc, FUNC(n82077aa_device::dor_r), FUNC(n82077aa_device::dor_w));
-	map(0x98020008, 0x98020008).rw(m_fdc, FUNC(n82077aa_device::msr_r), FUNC(n82077aa_device::dsr_w));
-	map(0x9802000a, 0x9802000a).rw(m_fdc, FUNC(n82077aa_device::fifo_r), FUNC(n82077aa_device::fifo_w));
-	map(0x9802000e, 0x9802000e).rw(m_fdc, FUNC(n82077aa_device::dir_r), FUNC(n82077aa_device::ccr_w));
 	map(0x98040000, 0x98040001).w(FUNC(kn_state::tg_addr_w<0>));
 	map(0x98040002, 0x98040003).w(FUNC(kn_state::tg_data_w<0>));
 	map(0x98040004, 0x98040007).nopw();
@@ -355,6 +356,21 @@ void kn_state::table_map(address_map &map)
 	map(0x48000000, 0x483fffff).rom().region("table_data", 0);
 }
 
+void kn_state::fdc_map(address_map &map)
+{
+	map(0x98010000, 0x98010003).rw(m_fdc, FUNC(n82077aa_device::dma_r), FUNC(n82077aa_device::dma_w));
+	map(0x98020004, 0x98020004).rw(m_fdc, FUNC(n82077aa_device::dor_r), FUNC(n82077aa_device::dor_w));
+	map(0x98020008, 0x98020008).rw(m_fdc, FUNC(n82077aa_device::msr_r), FUNC(n82077aa_device::dsr_w));
+	map(0x9802000a, 0x9802000a).rw(m_fdc, FUNC(n82077aa_device::fifo_r), FUNC(n82077aa_device::fifo_w));
+	map(0x9802000e, 0x9802000e).rw(m_fdc, FUNC(n82077aa_device::dir_r), FUNC(n82077aa_device::ccr_w));
+}
+
+void kn_state::kn2400_map(address_map &map)
+{
+	common_map(map);
+	fdc_map(map);
+}
+
 void kn_sd_state::sd_map(address_map &map)
 {
 	map(0x36008004, 0x36008005).rw(FUNC(kn_sd_state::gpio8004_r), FUNC(kn_sd_state::gpio8004_w));
@@ -362,13 +378,20 @@ void kn_sd_state::sd_map(address_map &map)
 	map(0x9cc00008, 0x9cc0000b).r(FUNC(kn_sd_state::sdsw_r));
 }
 
+void kn6000_state::kn6000_map(address_map &map)
+{
+	table_map(map);
+	fdc_map(map);
+}
+
 void kn_sd_state::kn7000_map(address_map &map)
 {
 	table_map(map);
+	fdc_map(map);
 	sd_map(map);
 }
 
-void kn_sd_state::kn24_map(address_map &map)
+void kn_sd_state::kn2600_map(address_map &map)
 {
 	common_map(map);
 	sd_map(map);
@@ -879,6 +902,13 @@ void kn_state::kn_common(machine_config &config)
 	MIDI_PORT(config, "mdin2", midiin_slot, "midiin").rxd_handler().set(m_midi_uart[1], FUNC(kn7000_sio_uart_device::rx_w));
 	MIDI_PORT(config, "mdout2", midiout_slot, "midiout");
 
+	SPEAKER(config, "speaker", 2).front();
+
+	// TODO: the effects DSP and its SDRAM (IC307, IC308); USB
+}
+
+void kn_state::fdc_add(machine_config &config)
+{
 	// IC103: a custom part (C1DB00000607) compatible with the N82077AA
 	N82077AA(config, m_fdc, 24'000'000);
 	// INTRQ and DRQ share IRQ1: the firmware moves each sector byte through the
@@ -888,10 +918,6 @@ void kn_state::kn_common(machine_config &config)
 	m_fdc->intrq_wr_callback().set(fdc_irq, FUNC(input_merger_device::in_w<0>));
 	m_fdc->drq_wr_callback().set(fdc_irq, FUNC(input_merger_device::in_w<1>));
 	FLOPPY_CONNECTOR(config, "fdc:0", kn_floppies, "35hd", floppy_image_device::default_pc_floppy_formats).enable_sound(true);
-
-	SPEAKER(config, "speaker", 2).front();
-
-	// TODO: the effects DSP and its SDRAM (IC307, IC308); USB
 }
 
 void kn_state::configure_cpanel()
@@ -926,6 +952,7 @@ void kn_sd_state::kn7000(machine_config &config)
 	configure_cpanel();
 	KN7000_TONEGEN(config, m_tonegen);
 	configure_tonegen();
+	fdc_add(config);
 	sd_add(config);
 	config.set_default_layout(layout_kn7000);
 }
@@ -934,32 +961,41 @@ void kn_sd_state::kn7000(machine_config &config)
 void kn6000_state::kn6000(machine_config &config)
 {
 	kn_common(config);
-	m_maincpu->set_addrmap(AS_PROGRAM, &kn6000_state::table_map);
+	m_maincpu->set_addrmap(AS_PROGRAM, &kn6000_state::kn6000_map);
 	m_screen->set_screen_update(FUNC(kn6000_state::screen_update_rgb555_rotated));
 	KN6000_CPANEL(config, m_cpanel);
 	configure_cpanel();
 	KN6000_TONEGEN(config, m_tonegen);
 	configure_tonegen();
+	fdc_add(config);
 }
 
-void kn_sd_state::kn2400(machine_config &config)
+void kn_state::kn24_common(machine_config &config)
 {
 	kn_common(config);
-	m_maincpu->set_addrmap(AS_PROGRAM, &kn_sd_state::kn24_map);
 	m_screen->set_size(320, 240);
 	m_screen->set_visarea_full();
-	m_screen->set_screen_update(FUNC(kn_sd_state::screen_update_gray));
+	m_screen->set_screen_update(FUNC(kn_state::screen_update_gray));
+	// FIXME: the KN2400 and KN2600 panel is not emulated; the KN7000's stands in
 	KN7000_CPANEL(config, m_cpanel);
 	configure_cpanel();
 	KN7000_TONEGEN(config, m_tonegen);
 	configure_tonegen();
 }
 
-// The card slot, and IC404 with the SD sub-CPU's program, are fitted only on the
-// KN2600
+// The KN2400 has the floppy drive, the KN2600 the card slot and IC404 with the
+// SD sub-CPU's program
+void kn_state::kn2400(machine_config &config)
+{
+	kn24_common(config);
+	m_maincpu->set_addrmap(AS_PROGRAM, &kn_state::kn2400_map);
+	fdc_add(config);
+}
+
 void kn_sd_state::kn2600(machine_config &config)
 {
-	kn2400(config);
+	kn24_common(config);
+	m_maincpu->set_addrmap(AS_PROGRAM, &kn_sd_state::kn2600_map);
 	sd_add(config);
 }
 
@@ -1238,5 +1274,5 @@ ROM_END
 SYST(2002, kn7000, 0,      0,      kn7000,  kn_sd, kn_sd_state,  empty_init, "Technics", "SX-KN7000", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
 SYST(1999, kn6000, 0,      0,      kn6000,  kn,    kn6000_state, empty_init, "Technics", "SX-KN6000", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
 SYST(2001, kn6500, 0,      0,      kn6000,  kn,    kn6000_state, empty_init, "Technics", "SX-KN6500", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
-SYST(2000, kn2400, 0,      0,      kn2400,  kn_sd, kn_sd_state,  empty_init, "Technics", "SX-KN2400", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
+SYST(2000, kn2400, 0,      0,      kn2400,  kn,    kn_state,     empty_init, "Technics", "SX-KN2400", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
 SYST(2000, kn2600, kn2400, 0,      kn2600,  kn_sd, kn_sd_state,  empty_init, "Technics", "SX-KN2600", MACHINE_NOT_WORKING | MACHINE_NO_SOUND)
