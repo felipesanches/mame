@@ -166,6 +166,7 @@ protected:
 
 	void kn_common(machine_config &config) ATTR_COLD;
 	void kn24_common(machine_config &config) ATTR_COLD;
+	void custom_flash_add(machine_config &config) ATTR_COLD;
 	void fdc_add(machine_config &config) ATTR_COLD;
 	void configure_cpanel() ATTR_COLD;
 	void configure_tonegen() ATTR_COLD;
@@ -190,7 +191,7 @@ protected:
 private:
 	enum { SIO_PANEL = 0, SIO_MIDI1 = 1, SIO_MIDI2 = 2 };
 
-	required_device<fujitsu_29lv160b_device> m_customflash;
+	optional_device<fujitsu_29lv160b_device> m_customflash;
 	optional_device<n82077aa_device> m_fdc;
 	required_device_array<kn7000_sio_uart_device, 2> m_midi_uart;
 	optional_memory_region m_wave_main_y;
@@ -319,7 +320,6 @@ void kn_state::common_map(address_map &map)
 	map(0x8c000000, 0x8cffffff).ram().share("libram");
 	map(0x50000000, 0x503fffff).ram().share("workram");
 	map(0x90000000, 0x903fffff).ram().share("workram");
-	map(0x96800000, 0x969fffff).rw(m_customflash, FUNC(fujitsu_29lv160b_device::read), FUNC(fujitsu_29lv160b_device::write));
 	map(0x9c000000, 0x9cffffff).ram().share("lcdbuf");
 
 	map(0x41000000, 0x41ffffff).lr8(NAME([] () -> u8 { return 0x00; })).nopw();
@@ -361,17 +361,21 @@ void kn_state::single_tg_map(address_map &map)
 	tg_map<0>(map, 0x98050000);
 }
 
-// A22 of the IC16/IC17 pair selects the table data (low) or the program (high)
+// The KN6000 and KN7000 boards. A22 of the program flash pair selects the table
+// data (low) or the program (high).
 void kn_state::table_map(address_map &map)
 {
 	common_map(map);
 	map(0x48000000, 0x483fffff).rom().region("table_data", 0);
+	map(0x96800000, 0x969fffff).rw(m_customflash, FUNC(fujitsu_29lv160b_device::read), FUNC(fujitsu_29lv160b_device::write));
 }
 
-// The KN2400 and KN2600 board
+// The KN2400 and KN2600 board. The firmware also reads the half of the program
+// flash pair that is not dumped.
 void kn_state::kn24_map(address_map &map)
 {
 	common_map(map);
+	map(0x48000000, 0x483fffff).rom().region("table_data", 0);
 	single_tg_map(map);
 }
 
@@ -850,20 +854,6 @@ void kn_floppies(device_slot_interface &device)
 
 void kn_state::kn_common(machine_config &config)
 {
-	// IC21, the custom-data flash. The firmware drives it with the AMD command set
-	// and checks its autoselect ID against a table of accepted parts at 0x485cf9e0
-	// before it will program it:
-	//
-	//   maker  device  sectors  name
-	//   0x04   0x2249  35       Fujitsu MBM29LV160B
-	//   0xc2   0x2249  35       Macronix MX29LV160B
-	//   0x1f   0x00c0  40       Atmel AT49BV16X4
-	//
-	// All are 2 MiB bottom boot parts. Which one is fitted is not recorded: IC21 is
-	// marked with the house code C3FBMD000050. The KN6000 and KN6500 accept the
-	// MBM29LV160B or the AT49BV16X4.
-	FUJITSU_29LV160B(config, m_customflash);
-
 	MN103002A(config, m_maincpu, 32_MHz_XTAL);
 	// The MMODE and BMODE straps (R30, R31) select the boot configuration. The
 	// firmware has to start at the program flash's own address: its reset code
@@ -902,6 +892,25 @@ void kn_state::kn_common(machine_config &config)
 	SPEAKER(config, "speaker", 2).front();
 
 	// TODO: the effects DSP and its SDRAM (IC307, IC308); USB
+}
+
+void kn_state::custom_flash_add(machine_config &config)
+{
+	// The custom-data flash: IC21 on the KN7000, IC18 on the KN6000 and KN6500. The
+	// KN7000 firmware drives it with the AMD command set and checks its autoselect
+	// ID against a table of accepted parts at 0x485cf9e0 before it will program it:
+	//
+	//   maker  device  sectors  name
+	//   0x04   0x2249  35       Fujitsu MBM29LV160B
+	//   0xc2   0x2249  35       Macronix MX29LV160B
+	//   0x1f   0x00c0  40       Atmel AT49BV16X4
+	//
+	// All are 2 MiB bottom boot parts. Which one is fitted is not recorded: IC21 is
+	// marked with the house code C3FBMD000050. The KN6000 and KN6500 accept the
+	// MBM29LV160B or the AT49BV16X4.
+	// FIXME: the KN6000's A49BV161490T and the KN6500's M29LV160B8TN are modelled
+	// by the Fujitsu part, whose ID their firmware accepts
+	FUJITSU_29LV160B(config, m_customflash);
 }
 
 void kn_state::fdc_add(machine_config &config)
@@ -949,6 +958,7 @@ void kn_sd_state::kn7000(machine_config &config)
 	configure_cpanel();
 	KN7000_TONEGEN(config, m_tonegen);
 	configure_tonegen();
+	custom_flash_add(config);
 	fdc_add(config);
 	sd_add(config);
 	config.set_default_layout(layout_kn7000);
@@ -964,6 +974,7 @@ void kn6000_state::kn6000(machine_config &config)
 	configure_cpanel();
 	KN6000_TONEGEN(config, m_tonegen);
 	configure_tonegen();
+	custom_flash_add(config);
 	fdc_add(config);
 }
 
@@ -1232,9 +1243,9 @@ ROM_END
 
     A note on IC12/IC13: the schematics show 21 address inputs driven from CPU
     address lines A2-A22, making these 32 Mbit devices that together span
-    8 MiB. The dumps below cover 4 MiB of that pair. The remainder has not been
-    read, so it is not described here; on the KN7000 the equivalent pair holds
-    the table data in the half that these dumps do not cover.
+    8 MiB. The dumps below cover 4 MiB of that pair. The firmware also reads the
+    other half, at 0x48000000; it has not been read, so it is mapped erased. On
+    the KN7000 the equivalent pair holds the table data in that half.
 
 ***************************************************************************/
 
@@ -1242,6 +1253,8 @@ ROM_END
 	ROM_REGION32_LE(0x400000, "program", 0) \
 	ROM_LOAD32_WORD("kn2400_program_even.ic13", 0x000000, 0x200000, CRC(b94fc8a8) SHA1(86d5d9916afdb90f82de78064b1d76fce3a21d7b)) \
 	ROM_LOAD32_WORD("kn2400_program_odd.ic12",  0x000002, 0x200000, CRC(73781cbc) SHA1(d90a3560561efd94322dca1a6710f2d5d3837cd2)) \
+ \
+	ROM_REGION32_LE(0x400000, "table_data", ROMREGION_ERASEFF) \
  \
 	ROM_REGION(0x800000, "rhythm_data", 0) \
 	ROM_LOAD("c3zbng000023.ic14", 0x000000, 0x800000, NO_DUMP) \
