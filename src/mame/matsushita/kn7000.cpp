@@ -1097,9 +1097,7 @@ ROM_START(kn7000)
 	// firmware places in the device for one published data set, so a part programmed
 	// from that floppy reads back as declared.  They are offered as a BIOS choice
 	// because a real instrument holds exactly one of them at a time.
-	// 16_BE: intelfsh preloads a 16-bit part with m_region->as_u16(), a host-native
-	// read, so a byte-wide region would reach the device halfword-swapped.
-	ROM_REGION16_BE(0x200000, "custom_data", ROMREGION_ERASEFF)
+	ROM_REGION(0x200000, "custom_data", ROMREGION_ERASEFF)
 	ROM_SYSTEM_BIOS(0, "ctmini",  "Initial Data Disk (factory default)")
 	ROMX_LOAD("01ctmini.ic21", 0x020000, 0x1e0000, BAD_DUMP CRC(2a133ea7) SHA1(67b2a0fe8154c4d15557399a86bf0d0b49813ced), ROM_BIOS(0))
 	ROM_SYSTEM_BIOS(1, "custm1",  "Custom Data: Blue Bayou")
@@ -1161,7 +1159,7 @@ ROM_START(kn6000)
 
 	// Populated from the IDD6000 Initial Data Disk, which serves both the KN6000 and
 	// the KN6500; see the note in the KN7000 set above.  Not a chip dump.
-	ROM_REGION16_BE(0x200000, "custom_data", ROMREGION_ERASEFF)
+	ROM_REGION(0x200000, "custom_data", ROMREGION_ERASEFF)
 	ROM_LOAD("01ctmini.ic18", 0x020000, 0x1e0000, BAD_DUMP CRC(f108e4c7) SHA1(8c6d62a8afab717a2b59e9242bbf897b01369416))
 ROM_END
 
@@ -1220,7 +1218,7 @@ ROM_START(kn6500)
 	ROM_LOAD("qsigx3c32021.ic15", 0x000000, 0x400000, NO_DUMP)
 
 	// Same IDD6000 payload as the KN6000; not a chip dump.
-	ROM_REGION16_BE(0x200000, "custom_data", ROMREGION_ERASEFF)
+	ROM_REGION(0x200000, "custom_data", ROMREGION_ERASEFF)
 	ROM_LOAD("01ctmini.ic18", 0x020000, 0x1e0000, BAD_DUMP CRC(f108e4c7) SHA1(8c6d62a8afab717a2b59e9242bbf897b01369416))
 ROM_END
 
