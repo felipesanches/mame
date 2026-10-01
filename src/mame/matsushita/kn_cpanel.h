@@ -41,8 +41,13 @@ protected:
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
 
-	// The model's LEDs
+	// The model's LEDs: each frame writes eight of them, bit n to LED 8 * reg + n
 	virtual void panel_led_frame(u8 addr, u8 data) = 0;
+	template <unsigned N> static void set_led_reg(output_finder<N> &leds, unsigned reg, u8 data)
+	{
+		for (int bit = 0; bit < 8; bit++)
+			leds[reg * 8 + bit] = BIT(data, bit);
+	}
 
 private:
 	optional_ioport_array<MAX_PORTS> m_scan;

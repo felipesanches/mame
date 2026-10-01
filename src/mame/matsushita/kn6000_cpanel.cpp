@@ -231,9 +231,6 @@ kn6000_cpanel_device::kn6000_cpanel_device(const machine_config &mconfig, const 
 // board's, the rest the CPL board's
 void kn6000_cpanel_device::panel_led_frame(u8 addr, u8 data)
 {
-	const int reg = addr & 0x3f;
-	output_finder<512> &bank = (addr & 0xc0) ? m_cpl_leds : m_cpr_leds;
-	for (int bit = 0; bit < 8; bit++)
-		bank[reg * 8 + bit] = BIT(data, bit);
+	set_led_reg((addr & 0xc0) ? m_cpl_leds : m_cpr_leds, addr & 0x3f, data);
 	LOGMASKED(LOG_LEDS, "LED frame addr=%02X data=%02X\n", addr, data);
 }

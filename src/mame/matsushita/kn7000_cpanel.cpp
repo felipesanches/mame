@@ -267,16 +267,11 @@ kn7000_cpanel_device::kn7000_cpanel_device(const machine_config &mconfig, const 
 //   07: -     D1125 D1144 D1157 D1173 -     -     -
 void kn7000_cpanel_device::panel_led_frame(u8 addr, u8 data)
 {
-	auto const set = [data] (auto &leds, unsigned reg)
-	{
-		for (int bit = 0; bit < 8; bit++)
-			leds[reg * 8 + bit] = BIT(data, bit);
-	};
 	if ((addr & 0xc0) == 0)
-		set(m_cpr_leds, addr & 0x3f);
+		set_led_reg(m_cpr_leds, addr & 0x3f, data);
 	else if (addr >= 0xe1)
-		set(m_cpc_leds, addr & 0x1f);
+		set_led_reg(m_cpc_leds, addr & 0x1f, data);
 	else
-		set(m_cpl_leds, addr & 0x3f);
+		set_led_reg(m_cpl_leds, addr & 0x3f, data);
 	LOGMASKED(LOG_LEDS, "LED frame addr=%02X data=%02X\n", addr, data);
 }

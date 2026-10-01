@@ -120,7 +120,7 @@ void kn_cpanel_base_device::panel_queue(std::span<const u8> bytes)
 		m_panel_resp_pos = m_panel_resp_len = 0;
 	if (m_panel_resp_len + bytes.size() > std::size(m_panel_resp))
 	{
-		logerror("reply queue full, %u bytes dropped\n", unsigned(bytes.size()));
+		logerror("reply queue full, %u bytes dropped\n", bytes.size());
 		return;
 	}
 
@@ -185,8 +185,8 @@ TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::panel_scan)
 	}
 
 	// TEMPO/PROGRAM knob, an endless encoder sent as +1 or -1 steps at wire
-	// address 0x17. The layout wraps the 0-100 adjuster at its ends, so the step
-	// goes the short way round.
+	// address 0x17. A change of more than half the 0-100 range is taken as a wrap
+	// past the ends, so the step goes the short way round.
 	const u8 adj = m_tempoknob.read_safe(0);
 	if (!m_tempoknob_synced)
 	{
@@ -208,9 +208,9 @@ TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::panel_scan)
 
 	// Buttons: each scan column that changed is sent as [address][switch bits]
 	u8 seg_state[MAX_SEGS] = { 0 };
-	for (int p = 0; p < int(m_port_seg.size()); p++)
+	for (unsigned p = 0; p < m_port_seg.size(); p++)
 		seg_state[m_port_seg[p]] |= m_scan[p]->read();
-	for (int seg = 0; seg < int(m_seg_wire_addr.size()); seg++)
+	for (unsigned seg = 0; seg < m_seg_wire_addr.size(); seg++)
 	{
 		const u8 addr = m_seg_wire_addr[seg];
 		if (addr == 0xff || seg_state[seg] == m_btn_prev[seg])
