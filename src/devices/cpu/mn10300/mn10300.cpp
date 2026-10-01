@@ -28,70 +28,16 @@ enum : u16
 
 constexpr int IM_SHIFT = 8;
 
-// Length of an instruction the core does not execute, so it can be skipped
-int insn_length(u8 op, u8 op2)
+// Length of an instruction the main decoder does not handle (F7, F9, FB, FD and FF)
+int insn_length(u8 op)
 {
-	if (op < 0xf0)
-	{
-		const int lo = op & 3;
-		switch (op & 0xf0)
-		{
-		case 0x00: return (lo == 0) ? 1 : 3;
-		case 0x10: return 1;
-		case 0x20: return (op < 0x24) ? 2 : (op < 0x28) ? 3 : (op < 0x2c) ? 2 : 3;
-		case 0x30: return (op < 0x3c) ? 3 : 1;
-		case 0x40: return (lo < 2) ? 1 : 2;
-		case 0x50: return (op < 0x58) ? 1 : 2;
-		case 0x60: return 1;
-		case 0x70: return 1;
-		case 0x80:
-		case 0x90:
-		case 0xa0:
-		case 0xb0:
-			// the immediate forms are the ones whose two register fields are equal
-			return (((op >> 2) & 3) == (op & 3)) ? 2 : 1;
-		case 0xc0:
-			if (op <= 0xca)
-				return 2;
-			if (op == 0xcb)
-				return 1;
-			if (op == 0xcc)
-				return 3;
-			if (op == 0xcd)
-				return 5;
-			return 2;
-		case 0xd0:
-			if (op <= 0xdb)
-				return 1;
-			if (op == 0xdc)
-				return 5;
-			if (op == 0xdd)
-				return 7;
-			return 3;
-		case 0xe0: return 1;
-		}
-		return 1;
-	}
-
 	switch (op)
 	{
-	case 0xf0: case 0xf1: case 0xf2: case 0xf3:
-	case 0xf4: case 0xf5: case 0xf6:
-		return 2;
-	case 0xf8: case 0xf9:
-		return 3;
-	case 0xfa: case 0xfb:
-		return 4;
-	case 0xfc: case 0xfd:
-		return 6;
-	case 0xfe:
-		if (op2 <= 0x02)
-			return 7;
-		if (op2 >= 0x80 && op2 <= 0x82)
-			return 5;
-		return 2;
+	case 0xf9: return 3;
+	case 0xfb: return 4;
+	case 0xfd: return 6;
+	default:   return 1;
 	}
-	return 1;
 }
 
 } // anonymous namespace
@@ -107,8 +53,8 @@ mn103002a_device::mn103002a_device(const machine_config &mconfig, const char *ta
 mn10300_device::mn10300_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, u32 clock, address_map_constructor program)
 	: cpu_device(mconfig, type, tag, owner, clock)
 	, m_program_config("program", ENDIANNESS_LITTLE, 32, 32, 0, program)
-	, m_reset_pc(0x40000000)
-	, m_vector_base(0x40000000)
+	, m_reset_pc(0x4000'0000)
+	, m_vector_base(0x4000'0000)
 	, m_pc(0)
 	, m_d{ 0, 0, 0, 0 }
 	, m_a{ 0, 0, 0, 0 }
@@ -230,9 +176,9 @@ void mn10300_device::device_start()
 	state_add(MN10300_PSW, "PSW", m_psw).formatstr("%04X");
 	state_add(MN10300_MDR, "MDR", m_mdr).formatstr("%08X");
 	for (int i = 0; i < 4; i++)
-		state_add(MN10300_D0 + i, util::string_format("D%d", i).c_str(), m_d[i]).formatstr("%08X");
+		state_add(MN10300_D0 + i, util::string_format("D%d", i), m_d[i]).formatstr("%08X");
 	for (int i = 0; i < 4; i++)
-		state_add(MN10300_A0 + i, util::string_format("A%d", i).c_str(), m_a[i]).formatstr("%08X");
+		state_add(MN10300_A0 + i, util::string_format("A%d", i), m_a[i]).formatstr("%08X");
 	state_add(MN10300_MDRQ, "MDRQ", m_mdrq).formatstr("%08X");
 	state_add(MN10300_MCRH, "MCRH", m_mcrh).formatstr("%08X");
 	state_add(MN10300_MCRL, "MCRL", m_mcrl).formatstr("%08X");
@@ -248,7 +194,7 @@ void mn10300_device::device_start()
 
 void mn10300_device::device_reset()
 {
-	// SP is left alone: the reset code sets it before its first push or call.
+	// SP is undefined after reset; the reset code sets it before its first push or call.
 	m_pc = m_reset_pc;
 	m_sp = 0;
 	m_psw = 0;
@@ -914,13 +860,13 @@ void mn10300_device::execute_run()
 			m_d[dst] = util::sext(m_d[dst], 8);
 			break;
 		case 0x14: case 0x15: case 0x16: case 0x17:
-			m_d[dst] &= 0x000000ff;
+			m_d[dst] &= 0x0000'00ff;
 			break;
 		case 0x18: case 0x19: case 0x1a: case 0x1b:
 			m_d[dst] = util::sext(m_d[dst], 16);
 			break;
 		case 0x1c: case 0x1d: case 0x1e: case 0x1f:
-			m_d[dst] &= 0x0000ffff;
+			m_d[dst] &= 0x0000'ffff;
 			break;
 
 		// add imm8,An
@@ -1177,17 +1123,13 @@ void mn10300_device::execute_run()
 		default:
 		{
 			const u8 op2 = read_arg8(start_pc + 1);
-			m_pc = start_pc + insn_length(op, op2);
+			m_pc = start_pc + insn_length(op);
 			if ((op == 0xf9 || op == 0xfb || op == 0xfd) && op2 <= 0x03)
 			{
 				// udf00 imm,Dn: signed multiply by an immediate, high word to MDRQ
-				s32 imm;
-				if (op == 0xf9)
-					imm = util::sext(read_arg8(start_pc + 2), 8);
-				else if (op == 0xfb)
-					imm = util::sext(read_arg16(start_pc + 2), 16);
-				else
-					imm = s32(read_arg32(start_pc + 2));
+				const s32 imm = (op == 0xf9) ? util::sext(read_arg8(start_pc + 2), 8)
+						: (op == 0xfb) ? util::sext(read_arg16(start_pc + 2), 16)
+						: s32(read_arg32(start_pc + 2));
 				const s64 t = s64(s32(m_d[op2 & 3])) * imm;
 				m_d[op2 & 3] = u32(t);
 				m_mdrq = u32(u64(t) >> 32);
@@ -1403,7 +1345,7 @@ void mn10300_device::execute_f2()
 	{
 		const u64 num = (u64(m_mdr) << 32) | m_d[dst];
 		const u32 dv = m_d[src];
-		if (dv && (num / dv) <= 0xffffffffU)
+		if (dv && (num / dv) <= 0xffff'ffffU)
 		{
 			m_d[dst] = u32(num / dv);
 			m_mdr = u32(num % dv);
@@ -1423,17 +1365,9 @@ void mn10300_device::execute_f2()
 			break;
 		}
 		const u32 c = (m_psw & FLAG_CF) ? 1 : 0;
-		u32 out;
-		if (op2 < 0x84)
-		{
-			out = BIT(m_d[dst], 31);
-			m_d[dst] = (m_d[dst] << 1) | c;
-		}
-		else
-		{
-			out = BIT(m_d[dst], 0);
-			m_d[dst] = (m_d[dst] >> 1) | (c << 31);
-		}
+		const bool left = op2 < 0x84;
+		const u32 out = left ? BIT(m_d[dst], 31) : BIT(m_d[dst], 0);
+		m_d[dst] = left ? ((m_d[dst] << 1) | c) : ((m_d[dst] >> 1) | (c << 31));
 		set_logic_flags(m_d[dst]);
 		if (out)
 			m_psw |= FLAG_CF;
@@ -1446,7 +1380,7 @@ void mn10300_device::execute_f2()
 		break;
 	case 0xd: // ext Dn
 		if (op2 < 0xd4)
-			m_mdr = BIT(m_d[dst], 31) ? 0xffffffff : 0;
+			m_mdr = BIT(m_d[dst], 31) ? 0xffff'ffff : 0;
 		else
 			logerror("illegal F2 %02X @ %08X\n", op2, start_pc);
 		break;
@@ -1865,28 +1799,17 @@ void mn10300_device::execute_fe()
 {
 	const u32 start_pc = m_pc - 1;
 	const u8 op2 = read_arg8(m_pc);
-	u32 addr;
-	u8 mask;
-	int len;
-
-	if (op2 <= 0x02)
-	{
-		addr = read_arg32(m_pc + 1);
-		mask = read_arg8(m_pc + 5);
-		len = 7;
-	}
-	else if (op2 >= 0x80 && op2 <= 0x82)
-	{
-		addr = read_arg16(m_pc + 1);
-		mask = read_arg8(m_pc + 3);
-		len = 5;
-	}
-	else
+	if (op2 > 0x02 && (op2 < 0x80 || op2 > 0x82))
 	{
 		logerror("illegal FE %02X @ %08X\n", op2, start_pc);
 		m_pc = start_pc + 2;
 		return;
 	}
+
+	const bool abs16 = BIT(op2, 7);
+	const u32 addr = abs16 ? read_arg16(m_pc + 1) : read_arg32(m_pc + 1);
+	const u8 mask = read_arg8(m_pc + (abs16 ? 3 : 5));
+	const int len = abs16 ? 5 : 7;
 
 	const u8 v = read_mem8(addr);
 	set_logic_flags(v & mask);

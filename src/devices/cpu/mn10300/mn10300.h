@@ -14,6 +14,9 @@ public:
 	// External interrupt pins; the nonmaskable interrupt is not emulated
 	enum : int { IRQ0 = 0, IRQ1, IRQ2, IRQ3, IRQ4, IRQ5, IRQ6, IRQ7 };
 
+	// Every instruction takes one cycle
+	static constexpr feature_type imperfect_features() { return feature::TIMING; }
+
 	// Execution starts at 0x40000000 and a level interrupt vectors to
 	// 0x40000000 + IVAR[level]. The MMODE and BMODE pins select how external
 	// memory answers at boot; a board whose straps put the boot code and the
