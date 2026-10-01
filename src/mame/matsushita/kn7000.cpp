@@ -96,8 +96,7 @@ public:
 
 protected:
 	// device_t implementation
-	virtual void device_start() override ATTR_COLD { }
-	virtual void device_reset() override ATTR_COLD;
+	virtual void device_start() override ATTR_COLD;
 
 	// device_serial_interface implementation
 	virtual void tra_callback() override { m_tx_cb(transmit_register_get_data_bit()); }
@@ -118,7 +117,7 @@ kn7000_sio_uart_device::kn7000_sio_uart_device(const machine_config &mconfig, co
 {
 }
 
-void kn7000_sio_uart_device::device_reset()
+void kn7000_sio_uart_device::device_start()
 {
 	set_data_frame(1, 8, PARITY_NONE, STOP_BITS_1);
 	set_rate(31250);
