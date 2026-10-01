@@ -8,22 +8,12 @@
 
 #pragma once
 
-// External interrupt pins; the nonmaskable interrupt is not emulated
-enum
-{
-	MN10300_IRQ0 = 0,
-	MN10300_IRQ1,
-	MN10300_IRQ2,
-	MN10300_IRQ3,
-	MN10300_IRQ4,
-	MN10300_IRQ5,
-	MN10300_IRQ6,
-	MN10300_IRQ7
-};
-
 class mn10300_device : public cpu_device
 {
 public:
+	// External interrupt pins; the nonmaskable interrupt is not emulated
+	enum : int { IRQ0 = 0, IRQ1, IRQ2, IRQ3, IRQ4, IRQ5, IRQ6, IRQ7 };
+
 	// Execution starts at 0x40000000 and a level interrupt vectors to
 	// 0x40000000 + IVAR[level]. The MMODE and BMODE pins select how external
 	// memory answers at boot; a board whose straps put the boot code and the
@@ -39,11 +29,7 @@ public:
 	template <unsigned Ch> auto sio_rx_enable_cb() { return m_sio_rx_enable_cb[Ch].bind(); }
 
 	// A byte received on a channel's RXD
-	void sio_rx_push(int ch, u8 data);
-
-	// Raise an interrupt group for a board source that is not wired to an
-	// external interrupt pin yet
-	void intc_assert(int group);
+	template <unsigned Ch> void sio_rx_w(u8 data);
 
 protected:
 	mn10300_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, u32 clock, address_map_constructor program);
@@ -133,9 +119,8 @@ private:
 	emu_timer *m_sio_tx_timer[NUM_SIO];
 	u16 m_sio_config[NUM_SIO];
 	u8 m_sio_control[NUM_SIO];
-	u8 m_sio_rx_fifo[NUM_SIO][64];
-	u8 m_sio_rx_head[NUM_SIO];
-	u8 m_sio_rx_tail[NUM_SIO];
+	u8 m_sio_rxbuf[NUM_SIO];
+	bool m_sio_rx_full[NUM_SIO];
 
 	u16 iagr_r();
 	u16 group_level_r();
@@ -145,6 +130,7 @@ private:
 	void extmd_w(offs_t offset, u16 data, u16 mem_mask = ~0);
 	u16 ivar_r(offs_t offset);
 	void ivar_w(offs_t offset, u16 data, u16 mem_mask = ~0);
+	void intc_assert(int group);
 	int intc_pending_group() const;
 	void intc_recompute();
 	void intc_accept();

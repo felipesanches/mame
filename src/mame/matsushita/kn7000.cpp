@@ -66,6 +66,7 @@
 #include "bus/midi/midioutport.h"
 #include "cpu/mn10300/mn10300.h"
 #include "imagedev/floppy.h"
+#include "machine/input_merger.h"
 #include "machine/intelfsh.h"
 #include "machine/spi_sdcard.h"
 #include "machine/upd765.h"
@@ -154,10 +155,6 @@ public:
 	DECLARE_INPUT_CHANGED_MEMBER(kbd_key);
 
 protected:
-	// Interrupt groups of sources that are not wired to external pins yet
-	static constexpr int IRQGRP_FDC = 0x18;       // IRQ1: FDC INTRQ and DRQ
-	static constexpr int IRQGRP_TG_SUB = 0x1c;    // IRQ5: the sub tone generator's mailbox
-
 	enum { SIO_PANEL = 0, SIO_MIDI1 = 1, SIO_MIDI2 = 2 };
 
 	virtual void machine_start() override ATTR_COLD;
@@ -217,7 +214,6 @@ private:
 	void sdmbx_w(offs_t offset, u16 data, u16 mem_mask = ~0);
 	u32 customflash_r(offs_t offset, u32 mem_mask = ~0);
 	void customflash_w(offs_t offset, u32 data, u32 mem_mask = ~0);
-	void fdc_irq_w(int state);
 	TIMER_CALLBACK_MEMBER(volume_scan);
 };
 
@@ -464,6 +460,7 @@ u16 kn_state::kbd_fifo_r()
 
 // The SD mailbox in the sub tone generator's window. With nothing attached, a
 // write still raises the sub tone generator's interrupt.
+// FIXME: what clears TGS.INT2 is unknown; it is held until the CPU accepts it
 u16 kn_state::sdmbx_r()
 {
 	return m_sdmbx_out;
@@ -471,7 +468,7 @@ u16 kn_state::sdmbx_r()
 
 void kn_state::sdmbx_w(offs_t offset, u16 data, u16 mem_mask)
 {
-	m_maincpu->intc_assert(IRQGRP_TG_SUB);
+	m_maincpu->set_input_line(mn10300_device::IRQ5, HOLD_LINE);
 }
 
 // Bit 12 is the rear panel's MIDI IN / BASS PEDAL switch
@@ -498,14 +495,6 @@ void kn_state::customflash_w(offs_t offset, u32 data, u32 mem_mask)
 		m_customflash->write(offset * 2 + 1, data >> 16);
 }
 
-// The firmware moves each sector byte through the DACK slot at 0x98010000 from
-// its interrupt handler, so INTRQ and DRQ both raise the FDC's group.
-void kn_state::fdc_irq_w(int state)
-{
-	if (state)
-		m_maincpu->intc_assert(IRQGRP_FDC);
-}
-
 INPUT_CHANGED_MEMBER(kn_state::kbd_key)
 {
 	m_kbd_fifo[m_kbd_head & 63] = newval ? (u16(param) | 0x6400) : (u16(param) | 0xff80);
@@ -525,7 +514,7 @@ void kn_sd_state::sd_update_carddetect()
 {
 	const bool cover_open = BIT(m_sdcover->read(), 0);
 	const bool card = m_sdcard && m_sdcard->get_card_present();
-	m_maincpu->set_input_line(MN10300_IRQ4, (!cover_open && card) ? CLEAR_LINE : ASSERT_LINE);
+	m_maincpu->set_input_line(mn10300_device::IRQ4, (!cover_open && card) ? CLEAR_LINE : ASSERT_LINE);
 }
 
 // The firmware talks SPI to the card a byte at a time through this mailbox; each
@@ -547,7 +536,7 @@ void kn_sd_state::sd_sdmbx_w(offs_t offset, u16 data, u16 mem_mask)
 		}
 		m_sdmbx_out = m_sdmbx_miso;
 	}
-	m_maincpu->intc_assert(IRQGRP_TG_SUB);
+	m_maincpu->set_input_line(mn10300_device::IRQ5, HOLD_LINE);
 }
 
 void kn_sd_state::sd_miso_w(int state)
@@ -703,7 +692,7 @@ void kn_sd_state::machine_reset()
 	// The firmware's SD state machine runs on a card-detect transition, so the
 	// card is reported absent at reset and inserted a few seconds later.
 	// FIXME: find what it really waits for at power on
-	m_maincpu->set_input_line(MN10300_IRQ4, ASSERT_LINE);
+	m_maincpu->set_input_line(mn10300_device::IRQ4, ASSERT_LINE);
 	if (!BIT(m_sdcover->read(), 0) && m_sdcard && m_sdcard->get_card_present())
 		m_sd_insert_timer->adjust(attotime::from_seconds(6));
 	else
@@ -880,20 +869,24 @@ void kn_state::kn_common(machine_config &config)
 
 	KN7000_SIO_UART(config, m_midi_uart[0]);
 	m_midi_uart[0]->tx_cb().set("mdout1", FUNC(midi_port_device::write_txd));
-	m_midi_uart[0]->rx_cb().set([this] (u8 data) { m_maincpu->sio_rx_push(SIO_MIDI1, data); });
+	m_midi_uart[0]->rx_cb().set(m_maincpu, FUNC(mn10300_device::sio_rx_w<SIO_MIDI1>));
 	MIDI_PORT(config, "mdin1", midiin_slot, "midiin").rxd_handler().set(m_midi_uart[0], FUNC(kn7000_sio_uart_device::rx_w));
 	MIDI_PORT(config, "mdout1", midiout_slot, "midiout");
 
 	KN7000_SIO_UART(config, m_midi_uart[1]);
 	m_midi_uart[1]->tx_cb().set("mdout2", FUNC(midi_port_device::write_txd));
-	m_midi_uart[1]->rx_cb().set([this] (u8 data) { m_maincpu->sio_rx_push(SIO_MIDI2, data); });
+	m_midi_uart[1]->rx_cb().set(m_maincpu, FUNC(mn10300_device::sio_rx_w<SIO_MIDI2>));
 	MIDI_PORT(config, "mdin2", midiin_slot, "midiin").rxd_handler().set(m_midi_uart[1], FUNC(kn7000_sio_uart_device::rx_w));
 	MIDI_PORT(config, "mdout2", midiout_slot, "midiout");
 
 	// IC103: a custom part (C1DB00000607) compatible with the N82077AA
 	N82077AA(config, m_fdc, 24'000'000);
-	m_fdc->intrq_wr_callback().set(FUNC(kn_state::fdc_irq_w));
-	m_fdc->drq_wr_callback().set(FUNC(kn_state::fdc_irq_w));
+	// INTRQ and DRQ share IRQ1: the firmware moves each sector byte through the
+	// DACK slot at 0x98010000 from its interrupt handler
+	input_merger_device &fdc_irq(INPUT_MERGER_ANY_HIGH(config, "fdc_irq"));
+	fdc_irq.output_handler().set_inputline(m_maincpu, mn10300_device::IRQ1);
+	m_fdc->intrq_wr_callback().set(fdc_irq, FUNC(input_merger_device::in_w<0>));
+	m_fdc->drq_wr_callback().set(fdc_irq, FUNC(input_merger_device::in_w<1>));
 	FLOPPY_CONNECTOR(config, "fdc:0", kn_floppies, "35hd", floppy_image_device::default_pc_floppy_formats).enable_sound(true);
 
 	SPEAKER(config, "speaker", 2).front();
@@ -903,8 +896,8 @@ void kn_state::kn_common(machine_config &config)
 
 void kn_state::configure_cpanel()
 {
-	m_cpanel->atn().set_inputline(m_maincpu, MN10300_IRQ3);
-	m_cpanel->rxd().set([this] (u8 data) { m_maincpu->sio_rx_push(SIO_PANEL, data); });
+	m_cpanel->atn().set_inputline(m_maincpu, mn10300_device::IRQ3);
+	m_cpanel->rxd().set(m_maincpu, FUNC(mn10300_device::sio_rx_w<SIO_PANEL>));
 	m_cpanel->set_dial_port(m_dial);
 	m_cpanel->set_volapcseq_port(m_volapcseq);
 	m_cpanel->set_tempoknob_port(m_tempoknob);

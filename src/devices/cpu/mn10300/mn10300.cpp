@@ -139,9 +139,8 @@ mn10300_device::mn10300_device(const machine_config &mconfig, device_type type, 
 	, m_sio_tx_timer{ nullptr, nullptr, nullptr }
 	, m_sio_config{ 0, 0, 0 }
 	, m_sio_control{ 0, 0, 0 }
-	, m_sio_rx_fifo{}
-	, m_sio_rx_head{ 0, 0, 0 }
-	, m_sio_rx_tail{ 0, 0, 0 }
+	, m_sio_rxbuf{ 0, 0, 0 }
+	, m_sio_rx_full{ false, false, false }
 {
 }
 
@@ -223,9 +222,8 @@ void mn10300_device::device_start()
 	save_item(NAME(m_tm_base));
 	save_item(NAME(m_sio_config));
 	save_item(NAME(m_sio_control));
-	save_item(NAME(m_sio_rx_fifo));
-	save_item(NAME(m_sio_rx_head));
-	save_item(NAME(m_sio_rx_tail));
+	save_item(NAME(m_sio_rxbuf));
+	save_item(NAME(m_sio_rx_full));
 
 	state_add(MN10300_PC, "PC", m_pc).formatstr("%08X");
 	state_add(MN10300_SP, "SP", m_sp).formatstr("%08X");
@@ -279,8 +277,7 @@ void mn10300_device::device_reset()
 	{
 		m_sio_config[ch] = 0;
 		m_sio_control[ch] = 0;
-		m_sio_rx_head[ch] = 0;
-		m_sio_rx_tail[ch] = 0;
+		m_sio_rx_full[ch] = false;
 		m_sio_tx_timer[ch]->adjust(attotime::never);
 	}
 }
@@ -308,7 +305,7 @@ void mn10300_device::state_string_export(const device_state_entry &entry, std::s
 
 void mn10300_device::execute_set_input(int inputnum, int state)
 {
-	if (inputnum < MN10300_IRQ0 || inputnum > MN10300_IRQ7)
+	if (inputnum < IRQ0 || inputnum > IRQ7)
 		return;
 
 	const u8 prev = m_irq_pin[inputnum];
@@ -410,8 +407,9 @@ void mn10300_device::check_irq()
 
 void mn10300_device::take_irq(int level)
 {
-	standard_irq_callback(0, m_pc);
 	intc_accept();
+	if (m_iagr >= IRQ0_GROUP && m_iagr <= IRQ0_GROUP + IRQ7)
+		standard_irq_callback(m_iagr - IRQ0_GROUP, m_pc);
 	push32(m_pc);
 	push32(m_psw);
 	m_psw = ((m_psw & ~FLAG_IM) | (level << IM_SHIFT)) & ~FLAG_IE;
@@ -579,23 +577,21 @@ void mn10300_device::sio_txd_w(u8 data)
 	sio_tx_byte(Ch, data);
 }
 
+// Receive is single-buffered: a byte arriving before the last one was read
+// replaces it.
 template <unsigned Ch>
 u8 mn10300_device::sio_rxd_r()
 {
-	if (m_sio_rx_head[Ch] == m_sio_rx_tail[Ch])
-		return 0;
-
-	const u8 data = m_sio_rx_fifo[Ch][m_sio_rx_tail[Ch]];
 	if (!machine().side_effects_disabled())
-		m_sio_rx_tail[Ch] = (m_sio_rx_tail[Ch] + 1) % std::size(m_sio_rx_fifo[Ch]);
-	return data;
+		m_sio_rx_full[Ch] = false;
+	return m_sio_rxbuf[Ch];
 }
 
 // Bit 4: a received byte is waiting
 template <unsigned Ch>
 u16 mn10300_device::sio_status_r()
 {
-	return (m_sio_rx_head[Ch] != m_sio_rx_tail[Ch]) ? 0x0010 : 0x0000;
+	return m_sio_rx_full[Ch] ? 0x0010 : 0x0000;
 }
 
 // Transmit is single-buffered: a write goes straight to the shifter and restarts
@@ -612,16 +608,17 @@ TIMER_CALLBACK_MEMBER(mn10300_device::sio_tx_shifted)
 	intc_assert(SIO0_GROUP + param * 2 + 1);
 }
 
-void mn10300_device::sio_rx_push(int ch, u8 data)
+template <unsigned Ch>
+void mn10300_device::sio_rx_w(u8 data)
 {
-	const u8 next = (m_sio_rx_head[ch] + 1) % std::size(m_sio_rx_fifo[ch]);
-	if (next == m_sio_rx_tail[ch])
-		return; // overrun
-
-	m_sio_rx_fifo[ch][m_sio_rx_head[ch]] = data;
-	m_sio_rx_head[ch] = next;
-	intc_assert(SIO0_GROUP + ch * 2);
+	m_sio_rxbuf[Ch] = data;
+	m_sio_rx_full[Ch] = true;
+	intc_assert(SIO0_GROUP + Ch * 2);
 }
+
+template void mn10300_device::sio_rx_w<0>(u8 data);
+template void mn10300_device::sio_rx_w<1>(u8 data);
+template void mn10300_device::sio_rx_w<2>(u8 data);
 
 
 //**************************************************************************
