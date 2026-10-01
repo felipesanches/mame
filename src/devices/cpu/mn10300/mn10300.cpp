@@ -1518,12 +1518,15 @@ void mn10300_device::execute_f6()
 		m_d[dst] = u32(std::clamp<s32>(s32(m_d[src]), -0x800000, 0x7fffff));
 		m_psw = (m_psw & ~(FLAG_ZF | FLAG_NF)) | (m_d[dst] ? 0 : FLAG_ZF) | (BIT(m_d[dst], 23) ? FLAG_NF : 0);
 		break;
-	// udf07 Dm,Dn: a user-defined instruction; the firmware's JPEG decoder uses
-	// it to find the highest set bit of Dm's low half (0 if none)
+	// bsch Dm,Dn (udf07): the highest set bit of Dm below bit Dn (searching from bit
+	// 31 when Dn is 0) to Dn, or 0 if none; C if one was found. As the AM33's bsch;
+	// the firmware's JPEG decoder uses it.
 	case 0x7:
 	{
-		const u32 v = m_d[src] & 0xffff;
+		const unsigned start = m_d[dst] & 0x1f;
+		const u32 v = start ? (m_d[src] & ((u32(1) << start) - 1)) : m_d[src];
 		m_d[dst] = v ? u32(31 - std::countl_zero(v)) : 0;
+		m_psw = (m_psw & ~FLAG_CF) | (v ? FLAG_CF : 0);
 		break;
 	}
 	case 0xc: // udf12 Dn (AM33 getchx)
