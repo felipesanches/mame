@@ -1,7 +1,7 @@
 // license:BSD-3-Clause
 // copyright-holders:Felipe Sanches
 
-// Panasonic MN10300 (AM33) execution core.
+// Panasonic MN10300 (MN1030 series) execution core.
 
 #include "emu.h"
 #include "mn10300.h"
@@ -112,7 +112,6 @@ mn10300_device::mn10300_device(const machine_config &mconfig, device_type type, 
 	, m_pc(0)
 	, m_d{ 0, 0, 0, 0 }
 	, m_a{ 0, 0, 0, 0 }
-	, m_e{ 0, 0, 0, 0, 0, 0, 0, 0 }
 	, m_sp(0)
 	, m_mdr(0)
 	, m_mdrq(0)
@@ -204,7 +203,6 @@ void mn10300_device::device_start()
 	save_item(NAME(m_pc));
 	save_item(NAME(m_d));
 	save_item(NAME(m_a));
-	save_item(NAME(m_e));
 	save_item(NAME(m_sp));
 	save_item(NAME(m_mdr));
 	save_item(NAME(m_mdrq));
@@ -237,8 +235,6 @@ void mn10300_device::device_start()
 		state_add(MN10300_D0 + i, util::string_format("D%d", i).c_str(), m_d[i]).formatstr("%08X");
 	for (int i = 0; i < 4; i++)
 		state_add(MN10300_A0 + i, util::string_format("A%d", i).c_str(), m_a[i]).formatstr("%08X");
-	for (int i = 0; i < 8; i++)
-		state_add(MN10300_E0 + i, util::string_format("E%d", i).c_str(), m_e[i]).formatstr("%08X");
 	state_add(MN10300_MDRQ, "MDRQ", m_mdrq).formatstr("%08X");
 	state_add(MN10300_MCRH, "MCRH", m_mcrh).formatstr("%08X");
 	state_add(MN10300_MCRL, "MCRL", m_mcrl).formatstr("%08X");
@@ -264,7 +260,6 @@ void mn10300_device::device_reset()
 	m_mcrl = 0;
 	std::fill(std::begin(m_d), std::end(m_d), 0);
 	std::fill(std::begin(m_a), std::end(m_a), 0);
-	std::fill(std::begin(m_e), std::end(m_e), 0);
 
 	std::fill(std::begin(m_gxicr), std::end(m_gxicr), 0);
 	std::fill(std::begin(m_ivar), std::end(m_ivar), 0);
@@ -785,29 +780,10 @@ void mn10300_device::do_shift(int op, int dst, u32 count)
 	set_nz32(m_d[dst]);
 }
 
-// movm and call/ret register lists. The "other" group (bit 0) leaves a 16-byte
-// gap for MDRQ, MCRH, MCRL and MCVF, which are not stored; the gap sits on
-// opposite sides of E0/E1 in the two families, as in the GNU simulator.
+// movm and call/ret register lists. Bit 3 is the "other" group; bits 0-2 are
+// AM33 register groups, which the MN1030 does not have.
 void mn10300_device::store_regs(u8 mask)
 {
-	if (BIT(mask, 2))
-	{
-		push32(m_e[2]);
-		push32(m_e[3]);
-	}
-	if (BIT(mask, 1))
-	{
-		push32(m_e[4]);
-		push32(m_e[5]);
-		push32(m_e[6]);
-		push32(m_e[7]);
-	}
-	if (BIT(mask, 0))
-	{
-		push32(m_e[0]);
-		push32(m_e[1]);
-		m_sp -= 16;
-	}
 	if (BIT(mask, 7))
 		push32(m_d[2]);
 	if (BIT(mask, 6))
@@ -850,48 +826,12 @@ void mn10300_device::load_regs(u8 mask)
 		m_d[3] = pop32();
 	if (BIT(mask, 7))
 		m_d[2] = pop32();
-	if (BIT(mask, 0))
-	{
-		m_sp += 16;
-		m_e[1] = pop32();
-		m_e[0] = pop32();
-	}
-	if (BIT(mask, 1))
-	{
-		m_e[7] = pop32();
-		m_e[6] = pop32();
-		m_e[5] = pop32();
-		m_e[4] = pop32();
-	}
-	if (BIT(mask, 2))
-	{
-		m_e[3] = pop32();
-		m_e[2] = pop32();
-	}
 }
 
 void mn10300_device::store_regs_at(u32 base, u8 mask)
 {
 	u32 ea = base;
 	auto const put = [this, &ea] (u32 val) { ea -= 4; write_mem32(ea, val); };
-	if (BIT(mask, 2))
-	{
-		put(m_e[2]);
-		put(m_e[3]);
-	}
-	if (BIT(mask, 1))
-	{
-		put(m_e[4]);
-		put(m_e[5]);
-		put(m_e[6]);
-		put(m_e[7]);
-	}
-	if (BIT(mask, 0))
-	{
-		ea -= 16;
-		put(m_e[0]);
-		put(m_e[1]);
-	}
 	if (BIT(mask, 7))
 		put(m_d[2]);
 	if (BIT(mask, 6))
@@ -916,24 +856,6 @@ void mn10300_device::load_regs_at(u32 base, u8 mask)
 {
 	u32 ea = base;
 	auto const get = [this, &ea] () { ea -= 4; return read_mem32(ea); };
-	if (BIT(mask, 2))
-	{
-		m_e[2] = get();
-		m_e[3] = get();
-	}
-	if (BIT(mask, 1))
-	{
-		m_e[4] = get();
-		m_e[5] = get();
-		m_e[6] = get();
-		m_e[7] = get();
-	}
-	if (BIT(mask, 0))
-	{
-		ea -= 16;
-		m_e[0] = get();
-		m_e[1] = get();
-	}
 	if (BIT(mask, 7))
 		m_d[2] = get();
 	if (BIT(mask, 6))
@@ -1590,7 +1512,7 @@ void mn10300_device::execute_f4()
 	m_pc = start_pc + 2;
 }
 
-// 0xf5: AM33 moves into the extended multiply registers. Always 2 bytes.
+// 0xf5: moves into the extended multiply registers. Always 2 bytes.
 void mn10300_device::execute_f5()
 {
 	const u32 start_pc = m_pc - 1;
@@ -1614,7 +1536,7 @@ void mn10300_device::execute_f5()
 	m_pc = start_pc + 2;
 }
 
-// 0xf6: AM33 multiply, saturate and extended-register moves. Always 2 bytes.
+// 0xf6: multiply, saturate and extended-register moves. Always 2 bytes.
 void mn10300_device::execute_f6()
 {
 	const u32 start_pc = m_pc - 1;
@@ -1646,7 +1568,9 @@ void mn10300_device::execute_f6()
 	case 0x5: // sat24 Dm,Dn
 		m_d[dst] = u32(std::clamp<s32>(s32(m_d[src]), -0x800000, 0x7fffff));
 		break;
-	case 0x7: // bsch Dm,Dn: position of the highest set bit of Dm's low half, 0 if none
+	// udf07 Dm,Dn: a user-defined instruction; the firmware's JPEG decoder uses
+	// it to find the highest set bit of Dm's low half (0 if none)
+	case 0x7:
 	{
 		const u32 v = m_d[src] & 0xffff;
 		m_d[dst] = v ? u32(31 - std::countl_zero(v)) : 0;

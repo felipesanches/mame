@@ -1,7 +1,7 @@
 // license:BSD-3-Clause
 // copyright-holders:Felipe Sanches
 
-// Panasonic MN10300 (AM33) execution core.
+// Panasonic MN10300 (MN1030 series) execution core.
 
 #ifndef MAME_CPU_MN10300_MN10300_H
 #define MAME_CPU_MN10300_MN10300_H
@@ -78,8 +78,6 @@ private:
 		MN10300_SP,
 		MN10300_D0, MN10300_D1, MN10300_D2, MN10300_D3,
 		MN10300_A0, MN10300_A1, MN10300_A2, MN10300_A3,
-		MN10300_E0, MN10300_E1, MN10300_E2, MN10300_E3,
-		MN10300_E4, MN10300_E5, MN10300_E6, MN10300_E7,
 		MN10300_MDRQ, MN10300_MCRH, MN10300_MCRL,
 		MN10300_LIR, MN10300_LAR
 	};
@@ -102,7 +100,6 @@ private:
 	u32 m_pc;
 	u32 m_d[4];
 	u32 m_a[4];
-	u32 m_e[8];
 	u32 m_sp;
 	u32 m_mdr;
 	u32 m_mdrq;
