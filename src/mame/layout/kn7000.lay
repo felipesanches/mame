@@ -2,8 +2,8 @@
 <!--
     license:CC0-1.0
 
-    Technics SX-KN7000 control panel: three reusable blocks, Compact and Full
-    Unit views.
+    Technics SX-KN7000 control panel: screen, left, right and SD blocks, shown
+    together in the Compact and Full Unit views and one per view in the others.
 -->
 <mamelayout version="2">
 
@@ -44,10 +44,6 @@
 		<image state="0"><data><![CDATA[<svg width="50" height="78" viewBox="0 0 50 78"><path stroke="#000" stroke-width="1.5" fill="#909097" d="M 2,77 V 26 A 24 24 0 0 1 26 2 A 24 24 0 0 1 48 26 V 77 Z"/></svg>]]></data></image>
 		<image state="1"><data><![CDATA[<svg width="50" height="78" viewBox="0 0 50 78"><path stroke="#000" stroke-width="1.5" fill="#7a7a82" d="M 2,77 V 26 A 24 24 0 0 1 26 2 A 24 24 0 0 1 48 26 V 77 Z"/></svg>]]></data></image>
 	</element>
-	<element name="half_b">
-		<image state="0"><data><![CDATA[<svg width="50" height="78" viewBox="0 0 50 78"><path stroke="#000" stroke-width="1.5" fill="#909097" d="M 2,1 V 52 A 24 24 0 0 0 26 76 A 24 24 0 0 0 48 52 V 1 Z"/></svg>]]></data></image>
-		<image state="1"><data><![CDATA[<svg width="50" height="78" viewBox="0 0 50 78"><path stroke="#000" stroke-width="1.5" fill="#7a7a82" d="M 2,1 V 52 A 24 24 0 0 0 26 76 A 24 24 0 0 0 48 52 V 1 Z"/></svg>]]></data></image>
-	</element>
 	<element name="sd_btn">
 		<image state="0"><data><![CDATA[<svg width="46" height="28" viewBox="0 0 46 28"><rect stroke="#4a4a52" stroke-width="1.5" fill="#303036" x="0.75" y="0.75" width="44.5" height="26.5"/></svg>]]></data></image>
 		<image state="1"><data><![CDATA[<svg width="46" height="28" viewBox="0 0 46 28"><rect stroke="#4a4a52" stroke-width="1.5" fill="#070708" x="0.75" y="0.75" width="44.5" height="26.5"/></svg>]]></data></image>
@@ -69,13 +65,9 @@
 		<image state="0"><data><![CDATA[<svg width="123" height="34" viewBox="0 0 123 34"><rect stroke="#000" stroke-width="1.5" fill="#909097" x="1" y="1" width="121" height="32" rx="3"/><line x1="28" y1="1" x2="28" y2="33" stroke="#000" stroke-width="1.5"/></svg>]]></data></image>
 		<image state="1"><data><![CDATA[<svg width="123" height="34" viewBox="0 0 123 34"><rect stroke="#000" stroke-width="1.5" fill="#7a7a82" x="1" y="1" width="121" height="32" rx="3"/><line x1="28" y1="1" x2="28" y2="33" stroke="#000" stroke-width="1.5"/></svg>]]></data></image>
 	</element>
-	<element name="mute_up">
+	<element name="mute_btn">
 		<image state="0"><data><![CDATA[<svg width="55" height="77" viewBox="0 0 55 77"><rect stroke="#000" stroke-width="1.5" fill="#909097" x="1" y="1" width="53" height="75" rx="3"/></svg>]]></data></image>
 		<image state="1"><data><![CDATA[<svg width="55" height="77" viewBox="0 0 55 77"><rect stroke="#000" stroke-width="1.5" fill="#7a7a82" x="1" y="1" width="53" height="75" rx="3"/></svg>]]></data></image>
-	</element>
-	<element name="mute_down">
-		<image state="0"><data><![CDATA[<svg width="55" height="78" viewBox="0 0 55 78"><rect stroke="#000" stroke-width="1.5" fill="#909097" x="1" y="1" width="53" height="76" rx="3"/></svg>]]></data></image>
-		<image state="1"><data><![CDATA[<svg width="55" height="78" viewBox="0 0 55 78"><rect stroke="#000" stroke-width="1.5" fill="#7a7a82" x="1" y="1" width="53" height="76" rx="3"/></svg>]]></data></image>
 	</element>
 	<element name="inv_rect"><rect><color red="0" green="0" blue="0" alpha="0"/></rect></element>
 	<element name="fader_rail"><rect><color red="0.13" green="0.13" blue="0.14"/></rect></element>
@@ -110,14 +102,6 @@
 	<element name="pm_led2">
 		<image state="0"><data><![CDATA[<svg width="33.702" height="21.735" viewBox="0 0 33.702 21.735"><path d="M 7.5165 1.5 l -6.0165 6.0165 a 54.5866 54.5866 0 0 0 30.7019 12.7184 v -8.5112 a 46.1115 46.1115 0 0 1 -24.6854 -10.2237 z" fill="#303030" stroke="#231f18" stroke-width="0.6"/></svg>]]></data></image>
 		<image state="1"><data><![CDATA[<svg width="33.702" height="21.735" viewBox="0 0 33.702 21.735"><path d="M 7.5165 1.5 l -6.0165 6.0165 a 54.5866 54.5866 0 0 0 30.7019 12.7184 v -8.5112 a 46.1115 46.1115 0 0 1 -24.6854 -10.2237 z" fill="#20ff20" stroke="#231f18" stroke-width="0.6"/></svg>]]></data></image>
-	</element>
-	<element name="pm_led3">
-		<image state="0"><data><![CDATA[<svg width="33.704" height="21.737" viewBox="0 0 33.704 21.737"><path d="M 1.5 11.7257 v 8.5112 a 54.5866 54.5866 0 0 0 30.704 -12.7163 l -6.0206 -6.0206 a 46.1115 46.1115 0 0 1 -24.6834 10.2257 z" fill="#303030" stroke="#231f18" stroke-width="0.6"/></svg>]]></data></image>
-		<image state="1"><data><![CDATA[<svg width="33.704" height="21.737" viewBox="0 0 33.704 21.737"><path d="M 1.5 11.7257 v 8.5112 a 54.5866 54.5866 0 0 0 30.704 -12.7163 l -6.0206 -6.0206 a 46.1115 46.1115 0 0 1 -24.6834 10.2257 z" fill="#20ff20" stroke="#231f18" stroke-width="0.6"/></svg>]]></data></image>
-	</element>
-	<element name="pm_led4">
-		<image state="0"><data><![CDATA[<svg width="21.737" height="33.704" viewBox="0 0 21.737 33.704"><path d="M 1.5 26.1833 l 6.0206 6.0206 a 54.5866 54.5866 0 0 0 12.7163 -30.7039 h -8.5111 a 46.1115 46.1115 0 0 1 -10.2258 24.6833 z" fill="#303030" stroke="#231f18" stroke-width="0.6"/></svg>]]></data></image>
-		<image state="1"><data><![CDATA[<svg width="21.737" height="33.704" viewBox="0 0 21.737 33.704"><path d="M 1.5 26.1833 l 6.0206 6.0206 a 54.5866 54.5866 0 0 0 12.7163 -30.7039 h -8.5111 a 46.1115 46.1115 0 0 1 -10.2258 24.6833 z" fill="#20ff20" stroke="#231f18" stroke-width="0.6"/></svg>]]></data></image>
 	</element>
 	<element name="perf_pad1">
 		<image state="0"><data><![CDATA[<svg width="98.36" height="60.81" viewBox="0 0 98.36 60.81"><path d="m 97.60881,0.7515 a 239.19189,79.542613 0 0 0 -96.85614,14.3753 v 44.9341 h 96.85614 z" fill="#5f6367" stroke="#000" stroke-width="1.5"/></svg>]]></data></image>
@@ -179,7 +163,7 @@
 	<element name="memory_text"><text string="MEMORY"><color red="0.90" green="0.90" blue="0.90"/></text></element>
 	<element name="music_stylist_text"><text string="MUSIC STYLIST"><color red="0.90" green="0.90" blue="0.90"/></text></element>
 	<element name="demo_text"><text string="DEMO"><color red="0.90" green="0.90" blue="0.90"/></text></element>
-	<element name="sym_2_text"><text string="♪"><color red="0.90" green="0.90" blue="0.90"/></text></element>
+	<element name="note_text"><text string="♪"><color red="0.90" green="0.90" blue="0.90"/></text></element>
 	<element name="performance_pads_text"><text string="PERFORMANCE PADS"><color red="0.72" green="0.72" blue="0.74"/></text></element>
 	<element name="auto_setting_text"><text string="AUTO SETTING"><color red="0.90" green="0.90" blue="0.90"/></text></element>
 	<element name="bank_text"><text string="BANK"><color red="0.90" green="0.90" blue="0.90"/></text></element>
@@ -263,8 +247,8 @@
 	<element name="bank_view_text"><text string="BANK VIEW"><color red="0.90" green="0.90" blue="0.90"/></text></element>
 	<element name="next_bank_text"><text string="NEXT BANK"><color red="0.90" green="0.90" blue="0.90"/></text></element>
 	<element name="panel_memory_text"><text string="PANEL MEMORY"><color red="0.72" green="0.72" blue="0.74"/></text></element>
-	<element name="7_text"><text string="7"><color red="0.72" green="0.72" blue="0.74"/></text></element>
-	<element name="8_text"><text string="8"><color red="0.72" green="0.72" blue="0.74"/></text></element>
+	<element name="7_text"><text string="7"/></element>
+	<element name="8_text"><text string="8"/></element>
 	<element name="panel_text"><text string="PANEL"><color red="0.90" green="0.90" blue="0.90"/></text></element>
 	<element name="customize_text"><text string="CUSTOMIZE"><color red="0.90" green="0.90" blue="0.90"/></text></element>
 	<element name="favorites_text"><text string="FAVORITES"><color red="0.90" green="0.90" blue="0.90"/></text></element>
@@ -312,19 +296,19 @@
 
 		<element ref="contrast_text"><bounds x="245.6" y="734.1" width="120" height="13"/></element>
 		<element ref="half_t" inputtag="cpanel:CPC_SEG5" inputmask="0x04"><!-- CONTRAST UP --><bounds x="282" y="756" width="50" height="77"/></element>
-		<element ref="half_b" inputtag="cpanel:CPC_SEG5" inputmask="0x08"><!-- CONTRAST DOWN --><bounds x="282" y="834" width="50" height="77"/></element>
+		<element ref="half_t" inputtag="cpanel:CPC_SEG5" inputmask="0x08"><!-- CONTRAST DOWN --><orientation flipy="yes"/><bounds x="282" y="834" width="50" height="77"/></element>
 
 		<element ref="page_text"><bounds x="1679" y="730" width="52" height="13"/></element>
 		<element ref="half_t" inputtag="cpanel:CPC_SEG11" inputmask="0x10"><!-- PAGE UP --><bounds x="1680" y="756" width="50" height="78"/></element>
-		<element ref="half_b" inputtag="cpanel:CPC_SEG11" inputmask="0x20"><!-- PAGE DOWN --><bounds x="1680" y="834" width="50" height="77"/></element>
+		<element ref="half_t" inputtag="cpanel:CPC_SEG11" inputmask="0x20"><!-- PAGE DOWN --><orientation flipy="yes"/><bounds x="1680" y="834" width="50" height="77"/></element>
 
 		<element ref="mute_text"><bounds x="335.8" y="828.1" width="42" height="13"/></element>
 		<element ref="hline"><bounds x="344" y="818" width="32" height="3"/></element>
 		<element ref="hline"><bounds x="344" y="843" width="32" height="3"/></element>
-		<element ref="mute_up" inputtag="cpanel:CPC_SEG5" inputmask="0x10"><!-- PART 1 ON --><bounds x="382.5" y="756" width="46" height="77"/></element>
-		<element ref="mute_down" inputtag="cpanel:CPC_SEG5" inputmask="0x20"><!-- PART 1 OFF --><bounds x="382.5" y="833" width="46" height="78"/></element>
-		<element ref="mute_up" inputtag="cpanel:CPC_SEG5" inputmask="0x40"><!-- PART 2 ON --><bounds x="462.5" y="756" width="46" height="77"/></element>
-		<element ref="mute_down" inputtag="cpanel:CPC_SEG5" inputmask="0x80"><!-- PART 2 OFF --><bounds x="462.5" y="833" width="46" height="78"/></element>
+		<element ref="mute_btn" inputtag="cpanel:CPC_SEG5" inputmask="0x10"><!-- PART 1 ON --><bounds x="382.5" y="756" width="46" height="77"/></element>
+		<element ref="mute_btn" inputtag="cpanel:CPC_SEG5" inputmask="0x20"><!-- PART 1 OFF --><bounds x="382.5" y="833" width="46" height="78"/></element>
+		<element ref="mute_btn" inputtag="cpanel:CPC_SEG5" inputmask="0x40"><!-- PART 2 ON --><bounds x="462.5" y="756" width="46" height="77"/></element>
+		<element ref="mute_btn" inputtag="cpanel:CPC_SEG5" inputmask="0x80"><!-- PART 2 OFF --><bounds x="462.5" y="833" width="46" height="78"/></element>
 		<!-- PARTS 3-14 -->
 		<repeat count="3">
 			<param name="seg" start="8" increment="1"/>
@@ -333,14 +317,14 @@
 				<param name="x" start="~x0~" increment="80.4"/>
 				<param name="on" start="0x01" lshift="2"/>
 				<param name="off" start="0x02" lshift="2"/>
-				<element ref="mute_up" inputtag="cpanel:CPC_SEG~seg~" inputmask="~on~"><bounds x="~x~" y="756" width="46" height="77"/></element>
-				<element ref="mute_down" inputtag="cpanel:CPC_SEG~seg~" inputmask="~off~"><bounds x="~x~" y="833" width="46" height="78"/></element>
+				<element ref="mute_btn" inputtag="cpanel:CPC_SEG~seg~" inputmask="~on~"><bounds x="~x~" y="756" width="46" height="77"/></element>
+				<element ref="mute_btn" inputtag="cpanel:CPC_SEG~seg~" inputmask="~off~"><bounds x="~x~" y="833" width="46" height="78"/></element>
 			</repeat>
 		</repeat>
-		<element ref="mute_up" inputtag="cpanel:CPC_SEG11" inputmask="0x01"><!-- PART 15 ON --><bounds x="1508.5" y="756" width="46" height="77"/></element>
-		<element ref="mute_down" inputtag="cpanel:CPC_SEG11" inputmask="0x02"><!-- PART 15 OFF --><bounds x="1508.5" y="833" width="46" height="78"/></element>
-		<element ref="mute_up" inputtag="cpanel:CPC_SEG11" inputmask="0x04"><!-- PART 16 ON --><bounds x="1588.5" y="756" width="46" height="77"/></element>
-		<element ref="mute_down" inputtag="cpanel:CPC_SEG11" inputmask="0x08"><!-- PART 16 OFF --><bounds x="1588.5" y="833" width="46" height="78"/></element>
+		<element ref="mute_btn" inputtag="cpanel:CPC_SEG11" inputmask="0x01"><!-- PART 15 ON --><bounds x="1508.5" y="756" width="46" height="77"/></element>
+		<element ref="mute_btn" inputtag="cpanel:CPC_SEG11" inputmask="0x02"><!-- PART 15 OFF --><bounds x="1508.5" y="833" width="46" height="78"/></element>
+		<element ref="mute_btn" inputtag="cpanel:CPC_SEG11" inputmask="0x04"><!-- PART 16 ON --><bounds x="1588.5" y="756" width="46" height="77"/></element>
+		<element ref="mute_btn" inputtag="cpanel:CPC_SEG11" inputmask="0x08"><!-- PART 16 OFF --><bounds x="1588.5" y="833" width="46" height="78"/></element>
 
 		<element ref="vline"><bounds x="363.4" y="765.7" width="3" height="14"/></element>
 		<element ref="vline"><bounds x="363.4" y="892.1" width="3" height="14"/></element>
@@ -484,7 +468,7 @@
 		<element ref="demo_text"><bounds x="62.4" y="262.1" width="40" height="10"/></element>
 		<element ref="demo_btn" inputtag="cpanel:CPL_SEG6" inputmask="0x40"><!-- DEMO --><bounds x="64.2" y="280.4" width="42" height="42"/></element>
 
-		<element ref="sym_2_text"><bounds x="105.0" y="257.0" width="16" height="18"/></element>
+		<element ref="note_text"><bounds x="105.0" y="257.0" width="16" height="18"/></element>
 		<element ref="hline"><bounds x="155.0" y="252.6" width="26" height="3"/></element>
 
 		<element ref="hline"><bounds x="283.8" y="252.6" width="26" height="3"/></element>
@@ -838,10 +822,10 @@
 		<element ref="pm_led2" name="cpr_led6"><!-- SOUND GROUP 2 (PANEL MEMORY 2) --><bounds x="627.724" y="395.162" width="33.702" height="21.735"/></element>
 		<element ref="pm_btn2" inputtag="cpanel:CPR_SEG6" inputmask="0x40"><!-- SOUND GROUP 2 (PANEL MEMORY 2) --><bounds x="598.545" y="401.179" width="62.881" height="56.982"/></element>
 		<element ref="2_text"><bounds x="624.149" y="454.165" width="8.386" height="8.386"/><color red="0.72" green="0.72" blue="0.74"/></element>
-		<element ref="pm_led3" name="cpr_led5"><!-- SOUND GROUP 3 (PANEL MEMORY 3) --><bounds x="667.519" y="395.16" width="33.704" height="21.737"/></element>
+		<element ref="pm_led2" name="cpr_led5"><!-- SOUND GROUP 3 (PANEL MEMORY 3) --><orientation flipx="yes"/><bounds x="667.519" y="395.16" width="33.704" height="21.737"/></element>
 		<element ref="pm_btn1" inputtag="cpanel:CPR_SEG5" inputmask="0x40"><!-- SOUND GROUP 3 (PANEL MEMORY 3) --><orientation rotate="270"/><bounds x="667.519" y="401.181" width="62.879" height="56.977"/></element>
 		<element ref="3_text"><bounds x="703.152" y="453.972" width="8.386" height="8.386"/><color red="0.72" green="0.72" blue="0.74"/></element>
-		<element ref="pm_led4" name="cpr_led4"><!-- SOUND GROUP 4 (PANEL MEMORY 4) --><bounds x="698.633" y="364.047" width="21.737" height="33.704"/></element>
+		<element ref="pm_led1" name="cpr_led4"><!-- SOUND GROUP 4 (PANEL MEMORY 4) --><orientation flipx="yes"/><bounds x="698.633" y="364.047" width="21.737" height="33.704"/></element>
 		<element ref="pm_btn2" inputtag="cpanel:CPR_SEG4" inputmask="0x40"><!-- SOUND GROUP 4 (PANEL MEMORY 4) --><orientation rotate="270"/><bounds x="704.654" y="364.047" width="56.977" height="62.879"/></element>
 		<element ref="4_text"><bounds x="758.545" y="400.082" width="8.386" height="8.386"/><color red="0.72" green="0.72" blue="0.74"/></element>
 		<element ref="pm_led1" name="cpr_led3"><!-- SOUND GROUP 5 (PANEL MEMORY 5) --><orientation rotate="180"/><bounds x="698.635" y="324.251" width="21.735" height="33.702"/></element>
@@ -850,12 +834,12 @@
 		<element ref="pm_led2" name="cpr_led13"><!-- SOUND GROUP 6 (PANEL MEMORY 6) --><orientation rotate="180"/><bounds x="667.519" y="305.103" width="33.702" height="21.735"/></element>
 		<element ref="pm_btn2" inputtag="cpanel:CPR_SEG5" inputmask="0x80"><!-- SOUND GROUP 6 (PANEL MEMORY 6) --><orientation rotate="180"/><bounds x="667.519" y="263.839" width="62.881" height="56.982"/></element>
 		<element ref="6_text"><bounds x="714.125" y="270.326" width="8.386" height="8.386"/><color red="0.72" green="0.72" blue="0.74"/></element>
-		<element ref="pm_led3" name="cpr_led14"><!-- SOUND GROUP 7 (PANEL MEMORY 7) --><orientation rotate="180"/><bounds x="627.722" y="305.103" width="33.704" height="21.737"/></element>
+		<element ref="pm_led2" name="cpr_led14"><!-- SOUND GROUP 7 (PANEL MEMORY 7) --><orientation flipy="yes"/><bounds x="627.722" y="305.103" width="33.704" height="21.737"/></element>
 		<element ref="pm_btn1" inputtag="cpanel:CPR_SEG6" inputmask="0x80"><!-- SOUND GROUP 7 (PANEL MEMORY 7) --><orientation rotate="90"/><bounds x="598.547" y="263.842" width="62.879" height="56.977"/></element>
-		<element ref="7_text"><bounds x="601.146" y="268.978" width="8.386" height="8.386"/></element>
-		<element ref="pm_led4" name="cpr_led15"><!-- SOUND GROUP 8 (PANEL MEMORY 8) --><orientation rotate="180"/><bounds x="608.575" y="324.249" width="21.737" height="33.704"/></element>
+		<element ref="7_text"><bounds x="601.146" y="268.978" width="8.386" height="8.386"/><color red="0.72" green="0.72" blue="0.74"/></element>
+		<element ref="pm_led1" name="cpr_led15"><!-- SOUND GROUP 8 (PANEL MEMORY 8) --><orientation flipy="yes"/><bounds x="608.575" y="324.249" width="21.737" height="33.704"/></element>
 		<element ref="pm_btn2" inputtag="cpanel:CPR_SEG7" inputmask="0x80"><!-- SOUND GROUP 8 (PANEL MEMORY 8) --><orientation rotate="90"/><bounds x="567.314" y="295.075" width="56.977" height="62.879"/></element>
-		<element ref="8_text"><bounds x="559.066" y="317.339" width="8.386" height="8.386"/></element>
+		<element ref="8_text"><bounds x="559.066" y="317.339" width="8.386" height="8.386"/><color red="0.72" green="0.72" blue="0.74"/></element>
 		<element ref="pm_set" inputtag="cpanel:CPR_SEG7" inputmask="0x40"><!-- SOUND SET (PANEL MEMORY SET) --><bounds x="639.224" y="335.752" width="50.497" height="50.497"/></element>
 		<element ref="set_text"><bounds x="640.168" y="357.891" width="48.609" height="13.257"/><color red="0" green="0" blue="0"/></element>
 		<element id="tempo_finger" ref="tempo_finger"><bounds x="93.3" y="370.6" width="32" height="32"/></element>
@@ -963,7 +947,7 @@
 		end
 
 		-- An endless rotary knob. A circular drag rotates the `finger_id` element around the knob centre
-		-- and steps the attached IPT_ADJUSTER, which the driver diffs wrap-aware; the angle is unbounded.
+		-- and steps the attached IPT_ADJUSTER, which the panel device diffs wrap-aware; the angle is unbounded.
 		function add_rotary_knob(view, clickarea_id, finger_id, port_name)
 			local w = {
 				clickarea = get_layout_item(view, clickarea_id),
@@ -1018,7 +1002,7 @@
 		end
 
 		-- Step the rotary encoder: map the accumulated angle to notches and nudge the adjuster by the
-		-- notch delta (wrapping 0..100). The driver diffs the adjuster wrap-aware into [0x17] encoder steps.
+		-- notch delta (wrapping 0..100). The panel device diffs the adjuster wrap-aware into [0x17] encoder steps.
 		local ROTARY_STEPS_PER_REV = 24
 		local function rotary_emit(w)
 			local target = math.floor(w.angle * ROTARY_STEPS_PER_REV / (2 * math.pi) + 0.5)
@@ -1154,7 +1138,7 @@
 		-- KN7000 draggable controls: the 4 volume faders (left_block) + the TEMPO/PROGRAM knob
 		-- (right_block). Registered per view that contains each, callbacks installed once per view.
 		file:set_resolve_tags_callback(function()
-			for vname, view in pairs(file.views) do
+			for _, view in pairs(file.views) do
 				local any = false
 				if view.items["vol_main_click"] ~= nil then
 					add_vertical_slider(view, "vol_main_click", "vol_main_knob", "VOL_MAIN")
