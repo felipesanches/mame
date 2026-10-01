@@ -28,11 +28,7 @@ void kn_tonegen_base_device::device_start()
 
 void kn_tonegen_base_device::tg_write(int chip, uint16_t addr, uint16_t data)
 {
-	if (chip >= m_chips)
-	{
-		logerror("write to absent chip %d: %04x = %04x\n", chip, addr, data);
-		return;
-	}
+	assert(chip < m_chips);
 	m_stream->update();
 	m_regs[chip * 0x10000 + addr] = data;
 }
