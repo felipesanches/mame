@@ -80,6 +80,11 @@
 
 #include "kn7000.lh"
 
+#define LOG_UNEMULATED (1U << 1)
+
+#define VERBOSE (0)
+#include "logmacro.h"
+
 
 namespace {
 
@@ -352,7 +357,9 @@ void kn_state::tg_map(address_map &map, offs_t base)
 {
 	map(base + 0x0, base + 0x1).w(FUNC(kn_state::tg_addr_w<Tg>));
 	map(base + 0x2, base + 0x3).w(FUNC(kn_state::tg_data_w<Tg>));
+	map(base + 0x4, base + 0x7).nopw();     // initialisation writes, not decoded
 	map(base + 0x6, base + 0x7).w(FUNC(kn_state::tg_wave_bank_w<Tg>));
+	map(base + 0x10, base + 0x13).nopw();
 	map(base + 0x8, base + 0x9).w(FUNC(kn_state::tg_wave_addr_w<Tg>));
 	map(base + 0xa, base + 0xb).r(FUNC(kn_state::tg_wave_data_r<Tg>));
 }
@@ -414,8 +421,6 @@ void kn_sd_state::sd_map(address_map &map)
 void kn_sd_state::kn7000_map(address_map &map)
 {
 	table_map(map);
-	map(0x98040004, 0x98040007).nopw();
-	map(0x98040010, 0x98040013).nopw();
 	tg_map<0>(map, 0x98040000);
 	tg_map<1>(map, 0x98050000);
 	fdc_map(map);
@@ -439,14 +444,14 @@ template <u32 Base>
 u16 kn_state::io_r(offs_t offset, u16 mem_mask)
 {
 	if (!machine().side_effects_disabled())
-		logerror("%s: unemulated read %08x & %04x\n", machine().describe_context(), Base + (offset << 1), mem_mask);
+		LOGMASKED(LOG_UNEMULATED, "%s: unemulated read %08x & %04x\n", machine().describe_context(), Base + (offset << 1), mem_mask);
 	return 0;
 }
 
 template <u32 Base>
 void kn_state::io_w(offs_t offset, u16 data, u16 mem_mask)
 {
-	logerror("%s: unemulated write %08x = %04x & %04x\n", machine().describe_context(), Base + (offset << 1), data, mem_mask);
+	LOGMASKED(LOG_UNEMULATED, "%s: unemulated write %08x = %04x & %04x\n", machine().describe_context(), Base + (offset << 1), data, mem_mask);
 }
 
 // Each tone generator takes a register address, then its data
