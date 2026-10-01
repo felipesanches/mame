@@ -159,6 +159,7 @@ public:
 	void kn2400(machine_config &config) ATTR_COLD;
 
 	DECLARE_INPUT_CHANGED_MEMBER(kbd_key);
+	DECLARE_INPUT_CHANGED_MEMBER(volume_changed);
 
 protected:
 	virtual void machine_start() override ATTR_COLD;
@@ -204,7 +205,6 @@ private:
 	required_ioport m_volapcseq;
 	required_ioport m_tempoknob;
 
-	emu_timer *m_vol_timer = nullptr;
 	u16 m_sdspi_rate = 0;
 	u16 m_kbd_fifo[64];
 	u8 m_kbd_head = 0;
@@ -227,7 +227,7 @@ private:
 	u16 sdmbx_r();
 	void sdmbx_w(u16 data);
 	void kn2400_map(address_map &map) ATTR_COLD;
-	TIMER_CALLBACK_MEMBER(volume_scan);
+	void update_volume();
 };
 
 
@@ -320,8 +320,9 @@ void kn_state::common_map(address_map &map)
 	map(0x8c000000, 0x8cffffff).ram().share("libram");
 	map(0x50000000, 0x503fffff).ram().share("workram");
 	map(0x90000000, 0x903fffff).ram().share("workram");
-	map(0x9c000000, 0x9cffffff).ram().share("lcdbuf");
+	map(0x9c000000, 0x9cffffff).ram().share(m_lcdbuf);
 
+	// Expansion ROM windows the firmware probes; nothing is fitted
 	map(0x41000000, 0x41ffffff).lr8(NAME([] () -> u8 { return 0x00; })).nopw();
 	map(0x56000000, 0x577fffff).lr8(NAME([] () -> u8 { return 0x00; })).nopw();
 
@@ -529,7 +530,12 @@ INPUT_CHANGED_MEMBER(kn_state::kbd_key)
 }
 
 // MAIN VOLUME sets the output gain; the squared taper is an approximation
-TIMER_CALLBACK_MEMBER(kn_state::volume_scan)
+INPUT_CHANGED_MEMBER(kn_state::volume_changed)
+{
+	update_volume();
+}
+
+void kn_state::update_volume()
 {
 	const float v = float(m_volmain->read()) / 100.0f;
 	m_tonegen->set_output_gain(ALL_OUTPUTS, v * v);
@@ -675,7 +681,6 @@ u32 kn_state::screen_update_gray(screen_device &screen, bitmap_rgb32 &bitmap, co
 
 void kn_state::machine_start()
 {
-	m_vol_timer = timer_alloc(FUNC(kn_state::volume_scan), this);
 
 	std::fill(std::begin(m_kbd_fifo), std::end(m_kbd_fifo), 0);
 	std::fill(std::begin(m_tg_addr), std::end(m_tg_addr), 0);
@@ -694,7 +699,7 @@ void kn_state::machine_start()
 
 void kn_state::machine_reset()
 {
-	m_vol_timer->adjust(attotime::from_hz(250), 0, attotime::from_hz(250));
+	update_volume();
 }
 
 void kn_sd_state::machine_start()
@@ -745,7 +750,7 @@ INPUT_PORTS_START(kn)
 	PORT_START("DIAL")
 	PORT_BIT(0xff, 0x00, IPT_DIAL) PORT_SENSITIVITY(30) PORT_KEYDELTA(1) PORT_NAME("Data Dial")
 
-	PORT_START("VOL_MAIN")   PORT_ADJUSTER(80, "Main Volume")
+	PORT_START("VOL_MAIN")   PORT_ADJUSTER(80, "Main Volume") PORT_CHANGED_MEMBER(DEVICE_SELF, FUNC(kn_state::volume_changed), 0)
 	PORT_START("VOL_APCSEQ") PORT_ADJUSTER(80, "APC/SEQ Volume")
 	PORT_START("VOL_MIC")    PORT_ADJUSTER(50, "Mic Volume")
 	PORT_START("VOL_LINEIN") PORT_ADJUSTER(50, "Line In Volume")
@@ -1029,8 +1034,7 @@ void kn_sd_state::kn2600(machine_config &config)
                                 so a 32 Mbit device would fail its autoselect
                                 check.  It also builds a 0x200000 sector map,
                                 and the board decodes a 2 MB window at
-                                0x96800000.  Three independent reasons for
-                                16 Mbit.
+                                0x96800000.
     IC203        C3CBQD000002  128 Mbit mask ROM, wave, main TG bank Y (AWAY)
     IC204        C3CBQD000001  128 Mbit mask ROM, wave, main TG bank X (AWAX)
     IC207        C3CBQD000004  128 Mbit mask ROM, wave, sub TG bank Y (BWAY)
@@ -1082,9 +1086,7 @@ ROM_START(kn7000)
 	// The images below are therefore not chip dumps.  Each is the exact content the
 	// firmware places in the device for one published data set, so a part programmed
 	// from that floppy reads back as declared.  They are offered as a BIOS choice
-	// because a real instrument holds exactly one of them at a time.  Sectors 19..29
-	// are byte-identical in all nine, so a little over a third of the region is an
-	// invariant template rather than per-set data.
+	// because a real instrument holds exactly one of them at a time.
 	// 16_BE: intelfsh preloads a 16-bit part with m_region->as_u16(), a host-native
 	// read, so a byte-wide region would reach the device halfword-swapped.
 	ROM_REGION16_BE(0x200000, "custom_data", ROMREGION_ERASEFF)
