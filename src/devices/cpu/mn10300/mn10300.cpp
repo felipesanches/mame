@@ -1382,11 +1382,23 @@ void mn10300_device::execute_f1()
 	case 0x1: m_d[dst] = do_sub(m_d[dst], m_a[src], 0); break;  // sub Am,Dn
 	case 0x2: m_a[dst] = do_sub(m_a[dst], m_d[src], 0); break;  // sub Dm,An
 	case 0x3: m_a[dst] = do_sub(m_a[dst], m_a[src], 0); break;  // sub Am,An
-	case 0x4: m_d[dst] = do_add(m_d[dst], m_d[src], c); break;  // addc Dm,Dn
+	case 0x4: // addc Dm,Dn: Z stays set only if it was set, for multi-word results
+	{
+		const u16 z = m_psw & FLAG_ZF;
+		m_d[dst] = do_add(m_d[dst], m_d[src], c);
+		m_psw &= ~FLAG_ZF | z;
+		break;
+	}
 	case 0x5: m_d[dst] = do_add(m_d[dst], m_a[src], 0); break;  // add Am,Dn
 	case 0x6: m_a[dst] = do_add(m_a[dst], m_d[src], 0); break;  // add Dm,An
 	case 0x7: m_a[dst] = do_add(m_a[dst], m_a[src], 0); break;  // add Am,An
-	case 0x8: m_d[dst] = do_sub(m_d[dst], m_d[src], c); break;  // subc Dm,Dn
+	case 0x8: // subc Dm,Dn: as addc
+	{
+		const u16 z = m_psw & FLAG_ZF;
+		m_d[dst] = do_sub(m_d[dst], m_d[src], c);
+		m_psw &= ~FLAG_ZF | z;
+		break;
+	}
 	case 0x9: do_sub(m_d[dst], m_a[src], 0); break;             // cmp Am,Dn
 	case 0xa: do_sub(m_a[dst], m_d[src], 0); break;             // cmp Dm,An
 	case 0xd: m_d[dst] = m_a[src]; break;                       // mov Am,Dn
