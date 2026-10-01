@@ -353,13 +353,15 @@ void mn10300_device::check_irq()
 
 void mn10300_device::take_irq(int level)
 {
+	// Latch the vector first: releasing a held pin recomputes m_irq_vector
 	intc_accept();
+	const u32 vector = m_irq_vector;
 	if (m_iagr >= IRQ0_GROUP && m_iagr <= IRQ0_GROUP + IRQ7)
 		standard_irq_callback(m_iagr - IRQ0_GROUP, m_pc);
 	push32(m_pc);
 	push32(m_psw);
 	m_psw = ((m_psw & ~FLAG_IM) | (level << IM_SHIFT)) & ~FLAG_IE;
-	m_pc = m_irq_vector;
+	m_pc = vector;
 	m_icount -= 7;
 }
 
