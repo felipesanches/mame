@@ -33,7 +33,7 @@ protected:
 	static constexpr unsigned MAX_SEGS = 0x40;
 
 	// The model's button matrix: its scan ports, the segment each one reports,
-	// and the wire address of each segment (0xff: none)
+	// and the wire address of each segment
 	kn_cpanel_base_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, u32 clock,
 			const std::array<char const *, MAX_PORTS> &scan_tags, std::span<const u8> port_seg, std::span<const u8> seg_wire_addr);
 

@@ -202,7 +202,7 @@ TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::panel_scan)
 			delta += 101;
 		const int step = (delta > 0) ? 1 : -1;
 		m_tempoknob_prev = u8((int(m_tempoknob_prev) + step + 101) % 101);
-		const u8 pkt[2] = { 0x17, u8(s8(step)) };
+		const u8 pkt[2] = { 0x17, u8(step) };
 		panel_queue(pkt);
 	}
 
@@ -212,11 +212,10 @@ TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::panel_scan)
 		seg_state[m_port_seg[p]] |= m_scan[p]->read();
 	for (unsigned seg = 0; seg < m_seg_wire_addr.size(); seg++)
 	{
-		const u8 addr = m_seg_wire_addr[seg];
-		if (addr == 0xff || seg_state[seg] == m_btn_prev[seg])
+		if (seg_state[seg] == m_btn_prev[seg])
 			continue;
 		m_btn_prev[seg] = seg_state[seg];
-		const u8 pkt[2] = { addr, seg_state[seg] };
+		const u8 pkt[2] = { m_seg_wire_addr[seg], seg_state[seg] };
 		panel_queue(pkt);
 	}
 }
