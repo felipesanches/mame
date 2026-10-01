@@ -342,7 +342,7 @@ void mn10300_device::check_irq()
 	if (!(m_psw & FLAG_IE))
 		return;
 
-	const int im = (m_psw & FLAG_IM) >> IM_SHIFT;
+	const int im = BIT(m_psw, IM_SHIFT, 3);
 	if (m_irq_pending && m_irq_level < im)
 		take_irq();
 }
@@ -467,7 +467,8 @@ u16 mn10300_device::tm_count_r()
 {
 	if (!BIT(m_tm_mode[N], 7) || m_tm_timer[N]->remaining().is_never())
 		return 0;
-	return u16(m_tm_timer[N]->remaining().as_ticks(clock() / 2) / TM_PRESCALE);
+	const u64 ticks = m_tm_timer[N]->remaining().as_ticks(clock() / 2);
+	return u16(ticks ? ((ticks - 1) / TM_PRESCALE) : 0);
 }
 
 void mn10300_device::tm_rearm(unsigned n, bool restart_phase)
@@ -1524,7 +1525,7 @@ void mn10300_device::execute_f6()
 	case 0x7:
 	{
 		const unsigned start = m_d[dst] & 0x1f;
-		const u32 v = start ? (m_d[src] & ((u32(1) << start) - 1)) : m_d[src];
+		const u32 v = start ? (m_d[src] & util::make_bitmask<u32>(start)) : m_d[src];
 		m_d[dst] = v ? u32(31 - std::countl_zero(v)) : 0;
 		m_psw = (m_psw & ~FLAG_CF) | (v ? FLAG_CF : 0);
 		break;
