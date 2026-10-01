@@ -251,7 +251,7 @@ private:
 	required_ioport m_sdcover;
 	output_finder<2> m_sd_leds;              // SD in use, SD play/pause
 
-	emu_timer *m_sd_insert_timer = nullptr;
+	emu_timer *m_sd_insert_timer = nullptr;  // the power-on card-detect hack, see machine_reset()
 	emu_timer *m_sd_inuse_off = nullptr;
 	emu_timer *m_sd_led_timer = nullptr;
 	u8 m_sdmbx_miso = 0;
@@ -712,8 +712,8 @@ void kn_sd_state::machine_reset()
 
 	m_sd_led_timer->adjust(attotime::from_hz(250), 0, attotime::from_hz(250));
 
-	// The firmware's SD state machine runs on a card-detect transition, so the
-	// card is reported absent at reset and inserted a few seconds later.
+	// HACK: the firmware's SD state machine runs on a card-detect transition, so
+	// the card is reported absent at reset and inserted 6 seconds later.
 	// FIXME: find what it really waits for at power on
 	m_maincpu->set_input_line(mn10300_device::IRQ4, ASSERT_LINE);
 	if (!BIT(m_sdcover->read(), 0) && m_sdcard && m_sdcard->get_card_present())
@@ -728,7 +728,7 @@ void kn_sd_state::machine_reset()
 
 // The KN6000 and KN6500 read their library at 0x4c000000 without writing it
 // first. What answers there on the board is not established; a copy of the
-// program flash is what the firmware finds.
+// program flash is what the firmware finds. It is RAM: the KN6000 writes into it.
 void kn6000_state::machine_start()
 {
 	kn_state::machine_start();
