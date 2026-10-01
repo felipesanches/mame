@@ -163,7 +163,7 @@
 	<element name="memory_text"><text string="MEMORY"><color red="0.90" green="0.90" blue="0.90"/></text></element>
 	<element name="music_stylist_text"><text string="MUSIC STYLIST"><color red="0.90" green="0.90" blue="0.90"/></text></element>
 	<element name="demo_text"><text string="DEMO"><color red="0.90" green="0.90" blue="0.90"/></text></element>
-	<element name="note_text"><text string="♪"><color red="0.90" green="0.90" blue="0.90"/></text></element>
+	<element name="note_text"><text string="&#x266a;"><color red="0.90" green="0.90" blue="0.90"/></text></element><!-- music note -->
 	<element name="performance_pads_text"><text string="PERFORMANCE PADS"><color red="0.72" green="0.72" blue="0.74"/></text></element>
 	<element name="auto_setting_text"><text string="AUTO SETTING"><color red="0.90" green="0.90" blue="0.90"/></text></element>
 	<element name="bank_text"><text string="BANK"><color red="0.90" green="0.90" blue="0.90"/></text></element>
