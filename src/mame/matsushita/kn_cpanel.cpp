@@ -114,14 +114,14 @@ void kn_cpanel_base_device::tx_byte(u8 data)
 // To send, the panel pulses ATN. The main CPU's interrupt handler runs once for
 // each level of the pulse, then enables its receiver and takes the bytes one
 // receive interrupt at a time.
-void kn_cpanel_base_device::panel_queue(std::span<const u8> bytes)
+bool kn_cpanel_base_device::panel_queue(std::span<const u8> bytes)
 {
 	if (m_panel_resp_pos == m_panel_resp_len)
 		m_panel_resp_pos = m_panel_resp_len = 0;
 	if (m_panel_resp_len + bytes.size() > std::size(m_panel_resp))
 	{
 		logerror("reply queue full, %u bytes dropped\n", bytes.size());
-		return;
+		return false;
 	}
 
 	const bool was_idle = m_panel_resp_pos == m_panel_resp_len;
@@ -129,6 +129,7 @@ void kn_cpanel_base_device::panel_queue(std::span<const u8> bytes)
 		m_panel_resp[m_panel_resp_len++] = b;
 	if (was_idle)
 		m_atn_timer->adjust(attotime::from_usec(60), 1);
+	return true;
 }
 
 TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::atn_event)
@@ -165,9 +166,9 @@ TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::panel_scan)
 	}
 	else if (vol != m_vol_apcseq_prev)
 	{
-		m_vol_apcseq_prev = vol;
 		const u8 pkt[2] = { 0xd2, vol };
-		panel_queue(pkt);
+		if (panel_queue(pkt))
+			m_vol_apcseq_prev = vol;
 	}
 
 	// DATA dial, sent as its position at wire address 0x10
@@ -179,9 +180,9 @@ TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::panel_scan)
 	}
 	else if (pos != m_dial_prev)
 	{
-		m_dial_prev = pos;
 		const u8 pkt[2] = { 0x10, pos };
-		panel_queue(pkt);
+		if (panel_queue(pkt))
+			m_dial_prev = pos;
 	}
 
 	// TEMPO/PROGRAM knob, an endless encoder sent as +1 or -1 steps at wire
@@ -201,9 +202,9 @@ TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::panel_scan)
 		else if (delta < -50)
 			delta += 101;
 		const int step = (delta > 0) ? 1 : -1;
-		m_tempoknob_prev = u8((int(m_tempoknob_prev) + step + 101) % 101);
 		const u8 pkt[2] = { 0x17, u8(step) };
-		panel_queue(pkt);
+		if (panel_queue(pkt))
+			m_tempoknob_prev = u8((int(m_tempoknob_prev) + step + 101) % 101);
 	}
 
 	// Buttons: each scan column that changed is sent as [address][switch bits]
@@ -214,8 +215,8 @@ TIMER_CALLBACK_MEMBER(kn_cpanel_base_device::panel_scan)
 	{
 		if (seg_state[seg] == m_btn_prev[seg])
 			continue;
-		m_btn_prev[seg] = seg_state[seg];
 		const u8 pkt[2] = { m_seg_wire_addr[seg], seg_state[seg] };
-		panel_queue(pkt);
+		if (panel_queue(pkt))
+			m_btn_prev[seg] = seg_state[seg];
 	}
 }

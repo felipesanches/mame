@@ -77,7 +77,7 @@ private:
 	u8 m_tempoknob_prev;
 	bool m_tempoknob_synced;
 
-	void panel_queue(std::span<const u8> bytes);
+	bool panel_queue(std::span<const u8> bytes);
 	TIMER_CALLBACK_MEMBER(atn_event);
 	TIMER_CALLBACK_MEMBER(rx_event);
 	TIMER_CALLBACK_MEMBER(panel_scan);
