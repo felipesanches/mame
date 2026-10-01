@@ -1,8 +1,9 @@
 // license:GPL-2.0+
 // copyright-holders:Felipe Sanches
 
-// Tone generators of the KN6000 and KN7000 families. The register interface is
-// decoded; the synthesis datapath is not emulated, so the stream is silent.
+// Tone generators of the KN2400, KN6000 and KN7000 families. The register
+// interface is decoded; the synthesis datapath is not emulated, so the stream is
+// silent.
 
 #include "emu.h"
 #include "kn_tonegen.h"

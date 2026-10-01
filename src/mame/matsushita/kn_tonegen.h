@@ -1,7 +1,7 @@
 // license:GPL-2.0+
 // copyright-holders:Felipe Sanches
 
-// Tone generators of the KN6000 and KN7000 families.
+// Tone generators of the KN2400, KN6000 and KN7000 families.
 
 #ifndef MAME_MATSUSHITA_KN_TONEGEN_H
 #define MAME_MATSUSHITA_KN_TONEGEN_H
