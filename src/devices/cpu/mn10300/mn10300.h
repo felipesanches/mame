@@ -104,7 +104,7 @@ private:
 	u8 m_iagr;                 // group latched when the interrupt was accepted
 	u16 m_extmd;               // two trigger-mode bits per external pin
 	u16 m_ivar[7];
-	u8 m_irq_pin[8];
+	bool m_irq_pin[8];
 	bool m_irq_pending;
 	u8 m_irq_level;
 
@@ -139,7 +139,7 @@ private:
 	u32 level_vector(int level) const;
 	void irq_pin_update(int pin);
 	void check_irq();
-	void take_irq(int level);
+	void take_irq();
 
 	template <unsigned N> u8 tm_mode_r();
 	template <unsigned N> void tm_mode_w(u8 data);

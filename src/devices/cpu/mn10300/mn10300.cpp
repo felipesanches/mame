@@ -253,13 +253,13 @@ void mn10300_device::execute_set_input(int inputnum, int state)
 	if (inputnum < IRQ0 || inputnum > IRQ7)
 		return;
 
-	const u8 prev = m_irq_pin[inputnum];
-	m_irq_pin[inputnum] = (state != CLEAR_LINE) ? 1 : 0;
+	const bool prev = m_irq_pin[inputnum];
+	m_irq_pin[inputnum] = state != CLEAR_LINE;
 	const unsigned mode = BIT(m_extmd, inputnum * 2, 2);
 	if (!BIT(mode, 1))
 	{
 		// edge triggered: 00 = rising, 01 = falling
-		if (prev != m_irq_pin[inputnum] && m_irq_pin[inputnum] == (BIT(mode, 0) ? 0 : 1))
+		if (prev != m_irq_pin[inputnum] && m_irq_pin[inputnum] == !BIT(mode, 0))
 			intc_assert(IRQ0_GROUP + inputnum);
 	}
 	else
@@ -279,7 +279,7 @@ void mn10300_device::irq_pin_update(int pin)
 		return;
 
 	u16 &icr = m_gxicr[IRQ0_GROUP + pin];
-	if (m_irq_pin[pin] == BIT(mode, 0))
+	if (m_irq_pin[pin] == bool(BIT(mode, 0)))
 		icr |= 0x0001;
 	else
 		icr &= ~0x0001;
@@ -343,14 +343,15 @@ void mn10300_device::check_irq()
 
 	const int im = (m_psw & FLAG_IM) >> IM_SHIFT;
 	if (m_irq_pending && m_irq_level < im)
-		take_irq(m_irq_level);
+		take_irq();
 }
 
-void mn10300_device::take_irq(int level)
+void mn10300_device::take_irq()
 {
-	// Take the vector first: releasing a held pin recomputes m_irq_level
+	// Take the level first: releasing a held pin recomputes m_irq_level
 	intc_accept();
-	const u32 vector = level_vector(m_irq_level);
+	const int level = m_irq_level;
+	const u32 vector = level_vector(level);
 	if (m_iagr >= IRQ0_GROUP && m_iagr <= IRQ0_GROUP + IRQ7)
 		standard_irq_callback(m_iagr - IRQ0_GROUP, m_pc);
 	push32(m_pc);
@@ -1458,7 +1459,9 @@ void mn10300_device::execute_f5()
 	case 0x0: // putx Dn
 		m_mdrq = m_d[dst];
 		break;
-	case 0x1: // putchclx Dm,Dn
+	// udf21 Dm,Dn: user-defined. The firmware stores two registers with it and reads
+	// them back with udf12/udf13, so it runs as the AM33's putchclx.
+	case 0x1:
 		m_mcrh = m_d[src];
 		m_mcrl = m_d[dst];
 		break;
@@ -1509,10 +1512,10 @@ void mn10300_device::execute_f6()
 		m_d[dst] = v ? u32(31 - std::countl_zero(v)) : 0;
 		break;
 	}
-	case 0xc: // getchx Dn
+	case 0xc: // udf12 Dn (AM33 getchx)
 		m_d[dst] = m_mcrh;
 		break;
-	case 0xd: // getclx Dn
+	case 0xd: // udf13 Dn (AM33 getclx)
 		m_d[dst] = m_mcrl;
 		break;
 	case 0xf: // getx Dn
