@@ -1139,9 +1139,20 @@ void mn10300_device::execute_run()
 				m_mdrq = u32(u64(t) >> 32);
 				set_logic_flags(m_d[op2 & 3]);
 			}
+			else if ((op == 0xf9 || op == 0xfb || op == 0xfd) && (op2 & 0xfc) == 0x14)
+			{
+				// mulqu imm,Dn: unsigned multiply by a sign-extended immediate, high word to MDRQ
+				const u32 imm = (op == 0xf9) ? u32(util::sext(read_arg8(start_pc + 2), 8))
+						: (op == 0xfb) ? u32(util::sext(read_arg16(start_pc + 2), 16))
+						: read_arg32(start_pc + 2);
+				const u64 t = u64(m_d[op2 & 3]) * imm;
+				m_d[op2 & 3] = u32(t);
+				m_mdrq = u32(t >> 32);
+				set_logic_flags(m_d[op2 & 3]);
+			}
 			else
 			{
-				logerror("unimplemented opcode %02X op2=%02X @ %08X (skipped %d bytes)\n", op, op2, start_pc, int(m_pc - start_pc));
+				logerror("unimplemented opcode %02X op2=%02X @ %08X (skipped %d bytes)\n", op, op2, start_pc, m_pc - start_pc);
 			}
 			break;
 		}
