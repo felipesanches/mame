@@ -354,7 +354,7 @@
 		<element ref="apc_sequencer_text"><bounds x="125.5" y="44.3" width="76" height="9"/></element>
 		<element ref="volume_text"><bounds x="140.4" y="52.4" width="48" height="9"/></element>
 		<element ref="fader_rail"><bounds x="163" y="60" width="6" height="112"/></element>
-		<element name="cpl_led20" ref="led"><!-- APC/SEQ VOLUME (state LED, no button) --><bounds x="141.6" y="63.7" width="8" height="8"/><color red="0.125" green="1.0" blue="0.125"/></element>
+		<element ref="led" name="cpl_led20"><!-- APC/SEQ VOLUME (state LED, no button) --><bounds x="141.6" y="63.7" width="8" height="8"/><color red="0.125" green="1.0" blue="0.125"/></element>
 		<element id="vol_apcseq_click" ref="inv_rect"><bounds x="151" y="51" width="30" height="130"/></element>
 		<element id="vol_apcseq_knob" ref="slider_knob"><animate inputtag="VOL_APCSEQ" inputmask="0xffff"/><bounds state="100" x="151" y="51" width="30" height="18"/><bounds state="0" x="151" y="163" width="30" height="18"/></element>
 
@@ -1001,8 +1001,7 @@
 			return field
 		end
 
-		-- Step the rotary encoder: map the accumulated angle to notches and nudge the adjuster by the
-		-- notch delta (wrapping 0..100). The panel device diffs the adjuster wrap-aware into [0x17] encoder steps.
+		-- Map the accumulated angle to encoder notches and nudge the adjuster by the notch delta
 		local ROTARY_STEPS_PER_REV = 24
 		local function rotary_emit(w)
 			local target = math.floor(w.angle * ROTARY_STEPS_PER_REV / (2 * math.pi) + 0.5)
@@ -1147,7 +1146,6 @@
 					any = true
 				end
 				if view.items["tempo_click"] ~= nil and view.items["tempo_finger"] ~= nil then
-					-- endless encoder: 24 notches per revolution, each sent by the panel as a [0x17][+1/-1] step
 					add_rotary_knob(view, "tempo_click", "tempo_finger", "TEMPO_KNOB")
 					any = true
 				end
