@@ -410,8 +410,8 @@
 		<element ref="led" name="cpl_led34"><!-- BALLAD --><bounds x="687" y="77" width="8" height="8"/><color red="1.0" green="0.125" blue="0.125"/></element>
 
 		<element ref="swing_text"><bounds x="718" y="68" width="56" height="8"/></element>
-		<element ref="metal_btn" inputtag="cpanel:CPL_SEG2" inputmask="0x02"><!-- JAZZ COMBO --><bounds x="728" y="88" width="37" height="37"/></element>
-		<element ref="led" name="cpl_led50"><!-- JAZZ COMBO --><bounds x="742" y="77" width="8" height="8"/><color red="1.0" green="0.125" blue="0.125"/></element>
+		<element ref="metal_btn" inputtag="cpanel:CPL_SEG2" inputmask="0x02"><!-- JAZZ & SWING --><bounds x="728" y="88" width="37" height="37"/></element>
+		<element ref="led" name="cpl_led50"><!-- JAZZ & SWING --><bounds x="742" y="77" width="8" height="8"/><color red="1.0" green="0.125" blue="0.125"/></element>
 		<element ref="country_and_text"><bounds x="718" y="131" width="56" height="8"/></element>
 
 		<element ref="ballroom_text"><bounds x="774" y="68" width="56" height="8"/></element>
@@ -420,8 +420,8 @@
 		<element ref="march_and_text"><bounds x="774" y="131" width="56" height="8"/></element>
 
 		<element ref="show_text"><bounds x="829" y="68" width="56" height="8"/></element>
-		<element ref="metal_btn" inputtag="cpanel:CPL_SEG1" inputmask="0x20"><!-- MOVIE SHOW --><bounds x="839" y="88" width="37" height="37"/></element>
-		<element ref="led" name="cpl_led17"><!-- MOVIE SHOW --><bounds x="853" y="77" width="8" height="8"/><color red="1.0" green="0.125" blue="0.125"/></element>
+		<element ref="metal_btn" inputtag="cpanel:CPL_SEG1" inputmask="0x20"><!-- MOVIE & SHOW --><bounds x="839" y="88" width="37" height="37"/></element>
+		<element ref="led" name="cpl_led17"><!-- MOVIE & SHOW --><bounds x="853" y="77" width="8" height="8"/><color red="1.0" green="0.125" blue="0.125"/></element>
 		<element ref="latin_and_text"><bounds x="829" y="131" width="56" height="8"/></element>
 
 		<element ref="entertainer_text"><bounds x="884" y="68" width="56" height="8"/></element>
@@ -449,16 +449,16 @@
 		<element ref="led" name="cpl_led26"><!-- MODERN DANCE --><bounds x="632" y="149" width="8" height="8"/><color red="1.0" green="0.125" blue="0.125"/></element>
 
 		<element ref="soul_and_r_and_b_text"><bounds x="663" y="140" width="56" height="8"/></element>
-		<element ref="metal_btn" inputtag="cpanel:CPL_SEG2" inputmask="0x04"><!-- SOUL & FUNK --><bounds x="673" y="160" width="37" height="37"/></element>
-		<element ref="led" name="cpl_led42"><!-- SOUL & FUNK --><bounds x="687" y="149" width="8" height="8"/><color red="1.0" green="0.125" blue="0.125"/></element>
+		<element ref="metal_btn" inputtag="cpanel:CPL_SEG2" inputmask="0x04"><!-- SOUL & R&B --><bounds x="673" y="160" width="37" height="37"/></element>
+		<element ref="led" name="cpl_led42"><!-- SOUL & R&B --><bounds x="687" y="149" width="8" height="8"/><color red="1.0" green="0.125" blue="0.125"/></element>
 
 		<element ref="western_text"><bounds x="718" y="140" width="56" height="8"/></element>
-		<element ref="metal_btn" inputtag="cpanel:CPL_SEG2" inputmask="0x01"><!-- COUNTRY --><bounds x="728" y="160" width="37" height="37"/></element>
-		<element ref="led" name="cpl_led58"><!-- COUNTRY --><bounds x="742" y="149" width="8" height="8"/><color red="1.0" green="0.125" blue="0.125"/></element>
+		<element ref="metal_btn" inputtag="cpanel:CPL_SEG2" inputmask="0x01"><!-- COUNTRY & WESTERN --><bounds x="728" y="160" width="37" height="37"/></element>
+		<element ref="led" name="cpl_led58"><!-- COUNTRY & WESTERN --><bounds x="742" y="149" width="8" height="8"/><color red="1.0" green="0.125" blue="0.125"/></element>
 
 		<element ref="waltz_text"><bounds x="774" y="140" width="56" height="8"/></element>
-		<element ref="metal_btn" inputtag="cpanel:CPL_SEG1" inputmask="0x40"><!-- MARCH --><bounds x="784" y="160" width="37" height="37"/></element>
-		<element ref="led" name="cpl_led9"><!-- MARCH --><bounds x="798" y="149" width="8" height="8"/><color red="1.0" green="0.125" blue="0.125"/></element>
+		<element ref="metal_btn" inputtag="cpanel:CPL_SEG1" inputmask="0x40"><!-- MARCH & WALTZ --><bounds x="784" y="160" width="37" height="37"/></element>
+		<element ref="led" name="cpl_led9"><!-- MARCH & WALTZ --><bounds x="798" y="149" width="8" height="8"/><color red="1.0" green="0.125" blue="0.125"/></element>
 
 		<element ref="world_text"><bounds x="829" y="140" width="56" height="8"/></element>
 		<element ref="metal_btn" inputtag="cpanel:CPL_SEG1" inputmask="0x10"><!-- LATIN & WORLD --><bounds x="839" y="160" width="37" height="37"/></element>
@@ -469,8 +469,8 @@
 		<element ref="led" name="cpl_led41"><!-- CUSTOM --><bounds x="908" y="149" width="8" height="8"/><color red="0.125" green="1.0" blue="0.125"/></element>
 
 		<element ref="memory_text"><bounds x="939" y="140" width="56" height="8"/></element>
-		<element ref="metal_btn" inputtag="cpanel:CPL_SEG1" inputmask="0x01"><!-- MEMORY/LOAD --><bounds x="949" y="160" width="37" height="37"/></element>
-		<element ref="led" name="cpl_led57"><!-- MEMORY/LOAD --><bounds x="963" y="149" width="8" height="8"/><color red="0.125" green="1.0" blue="0.125"/></element>
+		<element ref="metal_btn" inputtag="cpanel:CPL_SEG1" inputmask="0x01"><!-- MEMORY --><bounds x="949" y="160" width="37" height="37"/></element>
+		<element ref="led" name="cpl_led57"><!-- MEMORY --><bounds x="963" y="149" width="8" height="8"/><color red="0.125" green="1.0" blue="0.125"/></element>
 
 		<element ref="music_stylist_text"><bounds x="414.4" y="206.4" width="120" height="10"/></element>
 		<element ref="led" name="cpl_led28"><!-- MUSIC STYLIST --><bounds x="470.0" y="219.3" width="8" height="8"/><color red="0.125" green="1.0" blue="0.125"/></element>
@@ -700,8 +700,8 @@
 		<element ref="pill_ring_pair"><bounds x="33" y="158" width="93" height="40"/></element>
 
 		<element ref="organ_tabs_text"><bounds x="79" y="140" width="56" height="8"/></element>
-		<element ref="metal_btn" inputtag="cpanel:CPR_SEG3" inputmask="0x20"><!-- TAB ORGAN --><bounds x="89" y="160" width="37" height="37"/></element>
-		<element ref="led" name="cpr_led104"><!-- TAB ORGAN --><bounds x="103" y="149" width="8" height="8"/><color red="1.0" green="0.125" blue="0.125"/></element>
+		<element ref="metal_btn" inputtag="cpanel:CPR_SEG3" inputmask="0x20"><!-- ORGAN TABS --><bounds x="89" y="160" width="37" height="37"/></element>
+		<element ref="led" name="cpr_led104"><!-- ORGAN TABS --><bounds x="103" y="149" width="8" height="8"/><color red="1.0" green="0.125" blue="0.125"/></element>
 
 		<element ref="register_text"><bounds x="134" y="140" width="56" height="8"/></element>
 		<element ref="metal_btn" inputtag="cpanel:CPR_SEG2" inputmask="0x20"><!-- ACCORDION REGISTER --><bounds x="144" y="160" width="37" height="37"/></element>

@@ -2,7 +2,8 @@
 // copyright-holders:Felipe Sanches
 
 // Front panel shared by the KN6000 and KN7000 families: the sub-CPUs that scan
-// the buttons and drive the LEDs, and their serial link to the main CPU.
+// the buttons and drive the LEDs, and their serial link to the main CPU. The
+// sub-CPUs' programs are not dumped; their behaviour on the link is simulated.
 
 #ifndef MAME_MATSUSHITA_KN_CPANEL_H
 #define MAME_MATSUSHITA_KN_CPANEL_H
@@ -11,6 +12,7 @@
 
 #include <array>
 #include <span>
+#include <utility>
 
 class kn_cpanel_base_device : public device_t
 {
