@@ -213,6 +213,8 @@ private:
 	u16 m_tg_wave_bank[2];
 	u16 m_tg_wave_addr[2];
 
+	void kn2400_map(address_map &map) ATTR_COLD;
+
 	u32 screen_update_gray(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 
 	template <u32 Base> u16 io_r(offs_t offset, u16 mem_mask = ~0);
@@ -226,7 +228,6 @@ private:
 	u16 strap_r();
 	u16 sdmbx_r();
 	void sdmbx_w(u16 data);
-	void kn2400_map(address_map &map) ATTR_COLD;
 	void update_volume();
 };
 
@@ -272,6 +273,7 @@ private:
 	void sd_update_carddetect();
 	void sd_sdmbx_w(u16 data);
 	void sd_miso_w(int state);
+	void sd_card_changed(int state);
 	u32 sdport_r();
 	void sdport_w(offs_t offset, u32 data, u32 mem_mask = ~0);
 	u16 gpio8004_r();
@@ -570,6 +572,14 @@ void kn_sd_state::sd_sdmbx_w(u16 data)
 	m_maincpu->set_input_line(mn10300_device::IRQ5, HOLD_LINE);
 }
 
+// An image loaded or unloaded at run time; during the power-on hold-off the
+// timer reports the card
+void kn_sd_state::sd_card_changed(int state)
+{
+	if (m_sd_insert_timer && !m_sd_insert_timer->enabled())
+		sd_update_carddetect();
+}
+
 void kn_sd_state::sd_miso_w(int state)
 {
 	m_sd_miso = state ? 1 : 0;
@@ -681,7 +691,6 @@ u32 kn_state::screen_update_gray(screen_device &screen, bitmap_rgb32 &bitmap, co
 
 void kn_state::machine_start()
 {
-
 	std::fill(std::begin(m_kbd_fifo), std::end(m_kbd_fifo), 0);
 	std::fill(std::begin(m_tg_addr), std::end(m_tg_addr), 0);
 	std::fill(std::begin(m_tg_wave_bank), std::end(m_tg_wave_bank), 0);
@@ -952,6 +961,7 @@ void kn_sd_state::sd_add(machine_config &config)
 	SPI_SDCARD(config, m_sdcard, 0);
 	m_sdcard->set_prefer_sd();
 	m_sdcard->spi_miso_callback().set(FUNC(kn_sd_state::sd_miso_w));
+	m_sdcard->card_present_callback().set(FUNC(kn_sd_state::sd_card_changed));
 }
 
 void kn_sd_state::kn7000(machine_config &config)
