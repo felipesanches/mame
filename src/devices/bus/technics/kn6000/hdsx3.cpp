@@ -18,17 +18,16 @@
         SX-KN6000  HD-SX3      this device
         SX-KN6500  HD-SX3
 
-    The HD-AE5000 is the closest reference and the only one modelled so far.
-    Its layout matches what is described below: firmware ROM low in the card
-    window, static RAM above it, an ATA interface and a parallel port, and
-    serial audio driven from the host's clocks so the unit can provide its own
-    outputs.
+    The HD-AE5000 is the closest reference and the only one modelled so far:
+    firmware ROM and static RAM in the card window, an ATA interface and a
+    parallel port, and serial audio driven from the host's clocks so the unit
+    can provide its own outputs.
 
     What is known comes from three places. The KN6500 service manual shows the
-    expansion connector CN106, 70 pins, labelled "TO HDD", carrying HDDCS,
-    HDDINT, PP.INT, the audio clocks DACCK/BCK/LRCK, the DO1/DO2 outputs, the
-    A/D bus and +/-15 V; the chip-select decoder on the same sheet emits
-    EXP.CS0 and EXP.CS1. The host side is present in the keyboards' own
+    expansion connector CN106, 70 pins, labelled "TO HDD", carrying HDD.CS,
+    HDD.INT, PP.INT, the audio clocks DACCK/BCK/LRCK, the SDO1/SDO2 outputs,
+    the A/D bus and the supplies; the chip-select decoder on the same sheet
+    emits EXP.CS0 and EXP.CS1. The host side is present in the keyboards' own
     firmware, which contains the strings "HD-SX3 MAIN MENU", "TT_EXTAPR",
     "TT_HDDEXT" and "HDDTEST_SW". And the firmware below carries its own
     identification: "PROTECT HDD", "HDD Format will erase all files at once",
@@ -44,8 +43,9 @@
 
     Whether the code runs on the keyboard's own MN103002A through the
     expansion chip selects, or on a processor inside the unit, is not yet
-    established. Until that is settled the connector's signals are not
-    modelled and this device only carries the firmware.
+    established. The firmware is mapped at its link address in the host's
+    program space, with work RAM above it; the connector's other signals are
+    not modelled.
 
 ***************************************************************************/
 
@@ -59,10 +59,13 @@ class hdsx3_device : public device_t, public device_kn6000_expansion_interface
 public:
 	hdsx3_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 
+	// device_kn6000_expansion_interface implementation
+	virtual void program_map(address_space_installer &space) override;
+
 protected:
+	// device_t implementation
 	virtual void device_start() override ATTR_COLD;
 	virtual const tiny_rom_entry *device_rom_region() const override ATTR_COLD;
-	virtual void program_map(address_space_installer &space) override;
 
 private:
 	void card_map(address_map &map) ATTR_COLD;

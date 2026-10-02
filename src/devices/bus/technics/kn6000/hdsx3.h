@@ -1,10 +1,10 @@
 // license:GPL-2.0+
 // copyright-holders:Felipe Sanches
 
+// HD-SX3 hard disk expansion unit for the SX-KN6000 and SX-KN6500
+
 #ifndef MAME_BUS_TECHNICS_KN6000_HDSX3_H
 #define MAME_BUS_TECHNICS_KN6000_HDSX3_H
-
-// HD-SX3 hard disk expansion unit for the SX-KN6000 and SX-KN6500
 
 #pragma once
 
