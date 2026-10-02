@@ -48,8 +48,6 @@ protected:
 class device_kn6000_expansion_interface : public device_interface
 {
 public:
-	virtual ~device_kn6000_expansion_interface() = default;
-
 	virtual void program_map(address_space_installer &space) = 0;
 
 protected:

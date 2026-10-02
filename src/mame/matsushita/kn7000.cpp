@@ -58,7 +58,7 @@
 
 #include "emu.h"
 
-#include "bus/technics/kn6000/hdsx3.h"
+#include "bus/technics/kn6000/kn6000_expansion.h"
 #include "machine/intelfsh.h"
 
 
