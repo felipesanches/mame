@@ -24,10 +24,10 @@
     can provide its own outputs.
 
     What is known comes from three places. The KN6500 service manual shows the
-    expansion connector CN106, 70 pins, labelled "TO HDD", carrying HDD.CS,
-    HDD.INT, PP.INT, the audio clocks DACCK/BCK/LRCK, the SDO1/SDO2 outputs,
-    the A/D bus and the supplies; the chip-select decoder on the same sheet
-    emits EXP.CS0 and EXP.CS1. The host side is present in the keyboards' own
+    expansion connector CN106, 70 pins, labelled "TO HDD", carrying HDDCS,
+    HDDINT, PP.INT, the audio clocks DACCK/BCK/LRCK, the DO1/DO2 outputs, the
+    A/D bus and the supplies; the chip-select decoder on the same sheet emits
+    EXP.CS0 and EXP.CS1. The host side is present in the keyboards' own
     firmware, which contains the strings "HD-SX3 MAIN MENU", "TT_EXTAPR",
     "TT_HDDEXT" and "HDDTEST_SW". And the firmware below carries its own
     identification: "PROTECT HDD", "HDD Format will erase all files at once",
@@ -70,8 +70,9 @@ protected:
 	virtual const tiny_rom_entry *device_rom_region() const override ATTR_COLD;
 
 private:
-	void card_map(address_map &map) ATTR_COLD;
 	required_memory_region m_rom;
+
+	void card_map(address_map &map) ATTR_COLD;
 };
 
 hdsx3_device::hdsx3_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
