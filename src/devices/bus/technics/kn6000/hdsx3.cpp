@@ -8,9 +8,9 @@
     An optional unit, rarely encountered. No example has been available for
     inspection, so nothing here is derived from the hardware itself.
 
-    Technics fitted an expansion connector of this kind across the whole KN
-    line, each generation with its own board, so this is one of a family
-    rather than a one-off:
+    Technics fitted an expansion connector of this kind on several KN models,
+    each generation with its own board, so this is one of a family rather
+    than a one-off:
 
         SX-KN1000  MEC1000     memory expansion, EPROM and SRAM
         SX-KN3000  HD-HSO3000
@@ -96,8 +96,8 @@ void hdsx3_device::card_map(address_map &map)
 	// The firmware links at 0x97800000; which chip select decodes this window is not known
 	map(0x000000, 0x0bffff).rom().region(m_rom, 0);
 
-	// Work RAM for the data segment and BSS. Its size is not known; this is the
-	// range the firmware references.
+	// Work RAM for the data segment and BSS. Its size is not known; this covers
+	// the range the firmware references, rounded out to 64 KiB.
 	map(0x100000, 0x1affff).ram();
 }
 
@@ -105,7 +105,6 @@ ROM_START(hdsx3)
 	ROM_REGION32_LE(0xc0000, "rom", 0)
 	ROM_DEFAULT_BIOS("v11")
 
-	// The image identifies itself: "Version: 1.1 (REV3) Date: 07-21-2001".
 	ROM_SYSTEM_BIOS(0, "v11", "Version 1.1 (REV3) - July 21st, 2001")
 	ROMX_LOAD("hd-sx3_v1_1.bin", 0x000000, 0x0c0000, CRC(83b8a6f1) SHA1(88699a7e9584e0c30c175babd1482e5aa586ad3d), ROM_BIOS(0))
 ROM_END
