@@ -10,16 +10,13 @@
 // service manual shows it as CN106, a 70-pin connector labelled "TO HDD", and
 // the chip-select decoder on the same sheet emits EXP.CS0 and EXP.CS1 for it.
 //
-// Signals carried on CN106, per the KN6500 service manual's connector table:
-//   HDD.CS  HDD.IOCS  HDD.INT      chip select, I/O select and interrupt for the unit
-//   PP.INT                         interrupt from the unit's parallel-port interface
-//   R/NW  RE  WE2  WE3  IORST      bus strobes and I/O reset
-//   D0..D11+  A18  A19  ...        data and address bus
-//   SDO1  SDO2  BCK  LRCK  DACCK  serial AUDIO OUT from the unit, plus its bit and
-//                                  word clocks -- the same arrangement the HD-AE5000
-//                                  uses on the KN5000 to provide separate outputs
-//   CLK1  CKOUT                    clocks
-//   +15M  +5A  +5D  +3.3D  E       supplies and ground
+// Signals carried on CN106, per the KN6500 service manual's pin table:
+//   HDDCS  HDDINT  PP.INT                chip select and interrupts for the unit
+//   R/NW  RE  WE2  WE3  IORST  ISOROM    bus strobes, I/O reset and ROM select
+//   D0-D15  A1-A20                       data and address bus
+//   DO1  DO2  BCK  LRCK  DACCK           serial audio from the unit, with its clocks,
+//                                        as the HD-AE5000 provides on the KN5000
+//   +15M  +15A  -15A  +5A  +5D  +3.3D  E supplies and ground
 //
 // Modelled here: the slot, and a hook for the fitted unit to map itself into the
 // host's program space.
@@ -29,9 +26,6 @@ class device_kn6000_expansion_interface;
 class kn6000_expansion_connector : public device_t, public device_single_card_slot_interface<device_kn6000_expansion_interface>
 {
 public:
-	// let the fitted unit decode its own window in the host program space
-	void program_map(address_space_installer &space);
-
 	template <typename T>
 	kn6000_expansion_connector(const machine_config &mconfig, const char *tag, device_t *owner, T &&opts, const char *dflt)
 		: kn6000_expansion_connector(mconfig, tag, owner, 0)
@@ -41,7 +35,11 @@ public:
 
 	kn6000_expansion_connector(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 
+	// let the fitted unit decode its own window in the host program space
+	void program_map(address_space_installer &space);
+
 protected:
+	// device_t implementation
 	virtual void device_start() override ATTR_COLD;
 };
 
