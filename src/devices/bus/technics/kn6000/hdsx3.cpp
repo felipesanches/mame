@@ -57,6 +57,8 @@ namespace {
 class hdsx3_device : public device_t, public device_kn6000_expansion_interface
 {
 public:
+	static constexpr feature_type unemulated_features() { return feature::DISK | feature::SOUND; }
+
 	hdsx3_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 
 	// device_kn6000_expansion_interface implementation
@@ -85,12 +87,12 @@ void hdsx3_device::device_start()
 
 void hdsx3_device::program_map(address_space_installer &space)
 {
-	space.install_device(0x97800000, 0x978fffff, *this, &hdsx3_device::card_map);
+	space.install_device(0x97800000, 0x979fffff, *this, &hdsx3_device::card_map);
 }
 
 void hdsx3_device::card_map(address_map &map)
 {
-	// The firmware links at 0x97800000; CN106 selects the unit with HDD.CS
+	// The firmware links at 0x97800000; which chip select decodes this window is not known
 	map(0x000000, 0x0bffff).rom().region(m_rom, 0);
 
 	// Work RAM for the data segment and BSS. Its size is not known; this is the
